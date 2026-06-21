@@ -3,14 +3,13 @@ mod paimon_table_provider;
 use crate::table_format::paimon::paimon_table_provider::DobbyDbPaimonTableProvider;
 use datafusion::catalog::TableProvider;
 use datafusion::common::{DataFusionError, Result, TableReference};
-use dobbydb_storage::storage::{HDFS_SCHEMA, OSS_SCHEMA, S3_SCHEMA, S3A_SCHEMA, Storage};
+use dobbydb_storage::storage::Storage;
 use paimon::catalog::Identifier;
 use paimon::io::FileIO;
 use paimon::table::{SchemaManager, Table};
 use paimon_datafusion::PaimonTableProvider;
 use std::collections::HashMap;
 use std::sync::Arc;
-use url::Url;
 
 pub const PAIMON_INPUT_FORMAT: &str = "org.apache.paimon.hive.mapred.PaimonInputFormat";
 
@@ -22,8 +21,6 @@ impl PaimonTableProviderFactory {
         table_location: String,
         storage: Option<Storage>,
     ) -> Result<Arc<dyn TableProvider>> {
-        validate_storage_scheme(&table_location)?;
-
         let properties = storage
             .as_ref()
             .map(Storage::build_paimon_file_io_properties)
@@ -46,8 +43,8 @@ impl PaimonTableProviderFactory {
             (*schema).clone(),
             None,
         );
-        let inner = PaimonTableProvider::try_new(table)?;
-        let provider = DobbyDbPaimonTableProvider::try_new(table_reference, table_location, inner)?;
+        let inner_provider = PaimonTableProvider::try_new(table)?;
+        let provider = DobbyDbPaimonTableProvider::try_new(table_reference, table_location, inner_provider)?;
         Ok(Arc::new(provider))
     }
 }
@@ -56,17 +53,6 @@ fn build_file_io(table_location: &str, properties: HashMap<String, String>) -> R
     FileIO::from_path(table_location)
         .and_then(|builder| builder.with_props(properties).build())
         .map_err(to_datafusion_error)
-}
-
-fn validate_storage_scheme(table_location: &str) -> Result<()> {
-    let url =
-        Url::parse(table_location).map_err(|error| DataFusionError::External(Box::new(error)))?;
-    match url.scheme() {
-        S3_SCHEMA | S3A_SCHEMA | OSS_SCHEMA | HDFS_SCHEMA => Ok(()),
-        scheme => Err(DataFusionError::NotImplemented(format!(
-            "unsupported Paimon storage scheme: {scheme}"
-        ))),
-    }
 }
 
 fn table_identifier_parts(table_reference: &TableReference) -> Result<(String, String)> {

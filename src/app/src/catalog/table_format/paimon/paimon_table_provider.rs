@@ -21,20 +21,20 @@ impl DobbyDbPaimonTableProvider {
     pub fn try_new(
         table_reference: TableReference,
         table_location: String,
-        inner: PaimonTableProvider,
+        inner_provider: PaimonTableProvider,
     ) -> Result<Self> {
-        let table = inner.table();
+        let table = inner_provider.table();
         let partition_column_names = table.schema().partition_keys().to_vec();
         let table_definition = TableDefinitionBuilder::new(
             TableFormat::Paimon,
             table_reference,
-            inner.schema().as_ref().clone(),
+            inner_provider.schema().as_ref().clone(),
             table_location,
         )
         .with_partition_column_names(partition_column_names)
         .build()?;
         Ok(Self {
-            inner,
+            inner: inner_provider,
             table_definition,
         })
     }

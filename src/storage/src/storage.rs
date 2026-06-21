@@ -43,6 +43,8 @@ impl Storage {
         if let Some(s3_storage) = &self.s3_storage {
             if let Some(region) = &s3_storage.region {
                 map.insert("s3.region".to_string(), region.clone());
+            } else {
+                map.insert("s3.region".to_string(), "us-east-1".to_string());
             }
             if let Some(endpoint) = &s3_storage.endpoint {
                 map.insert("s3.endpoint".to_string(), endpoint.clone());
