@@ -44,7 +44,8 @@ impl PaimonTableProviderFactory {
             None,
         );
         let inner_provider = PaimonTableProvider::try_new(table)?;
-        let provider = DobbyDbPaimonTableProvider::try_new(table_reference, table_location, inner_provider)?;
+        let provider =
+            DobbyDbPaimonTableProvider::try_new(table_reference, table_location, inner_provider)?;
         Ok(Arc::new(provider))
     }
 }
