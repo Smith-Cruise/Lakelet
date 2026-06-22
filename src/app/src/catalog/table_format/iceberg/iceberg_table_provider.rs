@@ -48,10 +48,10 @@ fn build_table_definition(
     let partition_column_names = build_partition_column_names(table)?;
 
     TableDefinitionBuilder::new(
-        TableFormat::Iceberg,
         table_reference.clone(),
-        table_schema,
         table_location,
+        TableFormat::Iceberg,
+        table_schema,
     )
     .with_partition_column_names(partition_column_names)
     .build()

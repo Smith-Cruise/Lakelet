@@ -26,10 +26,10 @@ impl DobbyDbPaimonTableProvider {
         let table = inner_provider.table();
         let partition_column_names = table.schema().partition_keys().to_vec();
         let table_definition = TableDefinitionBuilder::new(
-            TableFormat::Paimon,
             table_reference,
-            inner_provider.schema().as_ref().clone(),
             table_location,
+            TableFormat::Paimon,
+            inner_provider.schema().as_ref().clone(),
         )
         .with_partition_column_names(partition_column_names)
         .build()?;

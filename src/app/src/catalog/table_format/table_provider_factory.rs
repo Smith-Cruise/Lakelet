@@ -108,10 +108,10 @@ impl TableProviderBuilder {
                 (Some(storage_info), Some(partitions)) => {
                     let io_handle = self.dobbydb_context.runtime_manager.io_handle();
                     let table_definition = TableDefinitionBuilder::new(
-                        TableFormat::Hive,
                         self.table_reference.clone(),
-                        storage_info.table_schema.table_schema().as_ref().clone(),
                         self.table_location.clone(),
+                        TableFormat::Hive,
+                        storage_info.table_schema.table_schema().as_ref().clone(),
                     )
                     .with_partition_column_names(
                         storage_info

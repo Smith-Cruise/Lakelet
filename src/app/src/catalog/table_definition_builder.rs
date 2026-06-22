@@ -5,26 +5,26 @@ use datafusion::common::{DataFusionError, Result};
 
 #[derive(Debug)]
 pub struct TableDefinitionBuilder {
-    table_format: TableFormat,
     table_reference: TableReference,
+    table_location: String,
+    table_format: TableFormat,
     table_schema: Schema,
     partition_column_names: Vec<String>,
-    location: String,
 }
 
 impl TableDefinitionBuilder {
     pub fn new(
-        table_format: TableFormat,
         table_reference: TableReference,
+        table_location: impl Into<String>,
+        table_format: TableFormat,
         table_schema: Schema,
-        location: impl Into<String>,
     ) -> Self {
         Self {
-            table_format,
             table_reference,
+            table_location: table_location.into(),
+            table_format,
             table_schema,
             partition_column_names: vec![],
-            location: location.into(),
         }
     }
 
@@ -71,7 +71,10 @@ impl TableDefinitionBuilder {
         }
 
         definition.push_str(&format!("USING {}\n", table_format_sql(self.table_format)));
-        definition.push_str(&format!("LOCATION '{}'", escape_sql_string(&self.location)));
+        definition.push_str(&format!(
+            "LOCATION '{}'",
+            escape_sql_string(&self.table_location)
+        ));
         Ok(definition)
     }
 }
@@ -121,10 +124,10 @@ mod tests {
         ]);
 
         let definition = TableDefinitionBuilder::new(
-            TableFormat::Hive,
             TableReference::full("catalog", "schema", "table"),
-            schema,
             "s3://bucket/path",
+            TableFormat::Hive,
+            schema,
         )
         .with_partition_column_names(vec!["dt".to_string()])
         .build()?;
@@ -141,10 +144,10 @@ mod tests {
         let schema = Schema::new(vec![Field::new("id", DataType::Int64, true)]);
 
         let definition = TableDefinitionBuilder::new(
-            TableFormat::Hive,
             TableReference::full("catalog", "schema", "table"),
-            schema,
             "s3://bucket/path",
+            TableFormat::Hive,
+            schema,
         )
         .build()?;
 
@@ -160,10 +163,10 @@ mod tests {
         let schema = Schema::new(vec![Field::new("a`b", DataType::Utf8, true)]);
 
         let definition = TableDefinitionBuilder::new(
-            TableFormat::Hive,
             TableReference::full("cat`alog", "schema", "ta`ble"),
-            schema,
             "s3://bucket/o'hara",
+            TableFormat::Hive,
+            schema,
         )
         .build()?;
 
@@ -179,10 +182,10 @@ mod tests {
         let schema = Schema::new(vec![Field::new("id", DataType::Int64, true)]);
 
         let definition = TableDefinitionBuilder::new(
-            TableFormat::Iceberg,
             TableReference::full("catalog", "schema", "table"),
-            schema,
             "s3://bucket/path",
+            TableFormat::Iceberg,
+            schema,
         )
         .build()?;
 
@@ -202,10 +205,10 @@ mod tests {
         ]);
 
         let definition = TableDefinitionBuilder::new(
-            TableFormat::Iceberg,
             TableReference::full("catalog", "schema", "table"),
-            schema,
             "s3://bucket/path",
+            TableFormat::Iceberg,
+            schema,
         )
         .with_partition_column_names(vec!["dt".to_string(), "id".to_string()])
         .build()?;
@@ -222,10 +225,10 @@ mod tests {
         let schema = Schema::new(vec![Field::new("a`b", DataType::Utf8, true)]);
 
         let definition = TableDefinitionBuilder::new(
-            TableFormat::Iceberg,
             TableReference::full("cat`alog", "schema", "ta`ble"),
-            schema,
             "s3://bucket/o'hara",
+            TableFormat::Iceberg,
+            schema,
         )
         .build()?;
 
@@ -241,10 +244,10 @@ mod tests {
         let schema = Schema::new(vec![Field::new("id", DataType::Int64, true)]);
 
         let definition = TableDefinitionBuilder::new(
-            TableFormat::Delta,
             TableReference::full("catalog", "schema", "table"),
-            schema,
             "s3://bucket/path",
+            TableFormat::Delta,
+            schema,
         )
         .build()?;
 
@@ -263,10 +266,10 @@ mod tests {
         ]);
 
         let definition = TableDefinitionBuilder::new(
-            TableFormat::Delta,
             TableReference::full("catalog", "schema", "table"),
-            schema,
             "s3://bucket/path",
+            TableFormat::Delta,
+            schema,
         )
         .with_partition_column_names(vec!["dt".to_string()])
         .build()?;
@@ -286,10 +289,10 @@ mod tests {
         ]);
 
         let definition = TableDefinitionBuilder::new(
-            TableFormat::Paimon,
             TableReference::full("catalog", "schema", "table"),
-            schema,
             "hdfs://namenode:8020/warehouse/schema.db/table",
+            TableFormat::Paimon,
+            schema,
         )
         .with_partition_column_names(vec!["dt".to_string()])
         .build()?;

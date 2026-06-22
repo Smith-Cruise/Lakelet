@@ -1,9 +1,10 @@
 ## Project Description
-DobbyDB is a datafusion based query engine. It focuses on data lake query.
+DobbyDB is a Datafusion based query engine. It focuses on data lake query.
 
 ### Supported Table Format
 * Iceberg (parquet)
 * Delta Lake (parquet)
+* Paimon (parquet)
 * Hive (textfile, parquet)
 
 ### Supported Metastore
