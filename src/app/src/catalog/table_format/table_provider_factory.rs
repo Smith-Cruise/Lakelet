@@ -7,7 +7,7 @@ use crate::table_format::hive::hive_partition::HivePartition;
 use crate::table_format::hive::hive_storage_info::HiveStorageInfo;
 use crate::table_format::iceberg::IcebergTableProviderFactory;
 use crate::table_format::metadata_table::MetadataTableType;
-use crate::table_format::paimon::{PAIMON_INPUT_FORMAT, PaimonTableProviderFactory};
+use crate::table_format::paimon::PaimonTableProviderFactory;
 use datafusion::catalog::TableProvider;
 use datafusion::common::Result;
 use datafusion::error::DataFusionError;
@@ -171,18 +171,17 @@ pub fn parse_table_reference(tbl_name: &str) -> Result<(String, Option<MetadataT
     Ok((table_name.to_string(), metadata_table_type))
 }
 
-pub fn deduce_table_format(
-    table_properties: &HashMap<String, String>,
-    input_format: Option<&str>,
-) -> Result<TableFormat> {
-    if input_format == Some(PAIMON_INPUT_FORMAT) {
-        return Ok(TableFormat::Paimon);
-    }
+pub fn deduce_table_format(table_properties: &HashMap<String, String>) -> Result<TableFormat> {
     if table_properties.contains_key("metadata_location") {
         return Ok(TableFormat::Iceberg);
     }
+    if let Some(table_type) = table_properties.get("table_type")
+        && table_type.eq_ignore_ascii_case("PAIMON")
+    {
+        return Ok(TableFormat::Paimon);
+    }
     if let Some(spark_provider) = table_properties.get("spark.sql.sources.provider")
-        && spark_provider == "DELTA"
+        && spark_provider.eq_ignore_ascii_case("DELTA")
     {
         return Ok(TableFormat::Delta);
     }
@@ -231,7 +230,7 @@ mod tests {
             HashMap::from([("metadata_location".to_string(), "path".to_string())]);
         assert_eq!(
             TableFormat::Iceberg,
-            deduce_table_format(&table_properties, None).unwrap()
+            deduce_table_format(&table_properties).unwrap()
         );
         let table_properties = HashMap::from([(
             "spark.sql.sources.provider".to_string(),
@@ -239,26 +238,31 @@ mod tests {
         )]);
         assert_eq!(
             TableFormat::Delta,
-            deduce_table_format(&table_properties, None).unwrap()
+            deduce_table_format(&table_properties).unwrap()
+        );
+        let table_properties = HashMap::from([(
+            "spark.sql.sources.provider".to_string(),
+            "delta".to_string(),
+        )]);
+        assert_eq!(
+            TableFormat::Delta,
+            deduce_table_format(&table_properties).unwrap()
         );
         let table_properties = HashMap::from([]);
         assert_eq!(
             TableFormat::Hive,
-            deduce_table_format(&table_properties, None).unwrap()
+            deduce_table_format(&table_properties).unwrap()
         );
 
-        let table_properties = HashMap::new();
+        let table_properties = HashMap::from([("table_type".to_string(), "PAIMON".to_string())]);
         assert_eq!(
             TableFormat::Paimon,
-            deduce_table_format(&table_properties, Some(PAIMON_INPUT_FORMAT)).unwrap()
+            deduce_table_format(&table_properties).unwrap()
         );
+        let table_properties = HashMap::from([("table_type".to_string(), "paimon".to_string())]);
         assert_eq!(
-            TableFormat::Hive,
-            deduce_table_format(
-                &table_properties,
-                Some("org.apache.paimon.hive.mapred.PaimonOutputFormat")
-            )
-            .unwrap()
+            TableFormat::Paimon,
+            deduce_table_format(&table_properties).unwrap()
         );
     }
 

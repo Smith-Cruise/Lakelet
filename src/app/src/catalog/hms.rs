@@ -211,10 +211,7 @@ impl AsyncSchemaProvider for HMSSchema {
             .as_ref()
             .map(ToString::to_string)
             .ok_or_else(|| DataFusionError::Internal("location not existed".to_string()))?;
-        let table_format = deduce_table_format(
-            &hms_table_properties,
-            storage_descriptor.input_format.as_deref(),
-        )?;
+        let table_format = deduce_table_format(&hms_table_properties)?;
         let (hive_storage_info, hive_partitions) = if table_format == TableFormat::Hive {
             let hive_storage_info = HiveStorageInfo::try_new_from_hms_table(&hms_table)?;
             let hive_partitions = if !hive_storage_info

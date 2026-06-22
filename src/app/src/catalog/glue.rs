@@ -141,8 +141,7 @@ impl AsyncSchemaProvider for GlueSchema {
             .location()
             .map(ToString::to_string)
             .ok_or_else(|| DataFusionError::Internal("location not existed".to_string()))?;
-        let table_format =
-            deduce_table_format(&glue_table_properties, storage_descriptor.input_format())?;
+        let table_format = deduce_table_format(&glue_table_properties)?;
         let (hive_storage_info, hive_partitions) = if table_format == TableFormat::Hive {
             let hive_storage_info = HiveStorageInfo::try_new_from_glue_table(&glue_table)?;
             let hive_partitions = if !hive_storage_info

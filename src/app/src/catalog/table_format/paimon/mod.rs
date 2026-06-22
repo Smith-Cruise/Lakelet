@@ -11,8 +11,6 @@ use paimon_datafusion::PaimonTableProvider;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub const PAIMON_INPUT_FORMAT: &str = "org.apache.paimon.hive.mapred.PaimonInputFormat";
-
 pub struct PaimonTableProviderFactory;
 
 impl PaimonTableProviderFactory {
@@ -21,11 +19,11 @@ impl PaimonTableProviderFactory {
         table_location: String,
         storage: Option<Storage>,
     ) -> Result<Arc<dyn TableProvider>> {
-        let properties = storage
+        let file_io_properties = storage
             .as_ref()
             .map(Storage::build_paimon_file_io_properties)
             .unwrap_or_default();
-        let file_io = build_file_io(&table_location, properties)?;
+        let file_io = build_file_io(&table_location, file_io_properties)?;
         let schema = SchemaManager::new(file_io.clone(), table_location.clone())
             .latest()
             .await
@@ -36,14 +34,14 @@ impl PaimonTableProviderFactory {
                 )
             })?;
         let (database, table_name) = table_identifier_parts(&table_reference)?;
-        let table = Table::new(
+        let inner_table = Table::new(
             file_io,
             Identifier::new(database, table_name),
             table_location.clone(),
             (*schema).clone(),
             None,
         );
-        let inner_provider = PaimonTableProvider::try_new(table)?;
+        let inner_provider = PaimonTableProvider::try_new(inner_table)?;
         let provider =
             DobbyDbPaimonTableProvider::try_new(table_reference, table_location, inner_provider)?;
         Ok(Arc::new(provider))
