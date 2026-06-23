@@ -22,8 +22,12 @@ pub struct IcebergTableProvider {
 }
 
 impl IcebergTableProvider {
-    pub async fn try_new_from_table(table_reference: TableReference, table: Table) -> Result<Self> {
-        let table_definition = build_table_definition(&table_reference, &table)?;
+    pub async fn try_new_from_table(
+        table_reference: TableReference,
+        table_location: String,
+        table: Table,
+    ) -> Result<Self> {
+        let table_definition = build_table_definition(&table_reference, &table_location, &table)?;
         let inner = IcebergStaticTableProvider::try_new_from_table(table)
             .await
             .map_err(|e| DataFusionError::External(Box::new(e)))?;
@@ -34,16 +38,20 @@ impl IcebergTableProvider {
     }
 }
 
-fn build_table_definition(table_reference: &TableReference, table: &Table) -> Result<String> {
+fn build_table_definition(
+    table_reference: &TableReference,
+    table_location: &str,
+    table: &Table,
+) -> Result<String> {
     let table_schema = schema_to_arrow_schema(table.metadata().current_schema())
         .map_err(|e| DataFusionError::External(Box::new(e)))?;
     let partition_column_names = build_partition_column_names(table)?;
 
     TableDefinitionBuilder::new(
-        TableFormat::Iceberg,
         table_reference.clone(),
+        table_location,
+        TableFormat::Iceberg,
         table_schema,
-        table.metadata().location(),
     )
     .with_partition_column_names(partition_column_names)
     .build()

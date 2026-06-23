@@ -90,3 +90,12 @@ SELECT * FROM `table_name$manifests`;
 Delta Lake integration exists in the source tree, and tables are detected when
 `spark.sql.sources.provider` is exactly `DELTA`. However, Delta Lake is not yet
 perfectly supported and should be treated as incomplete.
+
+## Paimon
+
+An HMS or Glue table is treated as Paimon when its storage descriptor input
+format is exactly:
+
+```text
+org.apache.paimon.hive.mapred.PaimonInputFormat
+```

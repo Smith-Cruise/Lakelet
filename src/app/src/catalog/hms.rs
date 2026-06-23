@@ -203,6 +203,16 @@ impl AsyncSchemaProvider for HMSSchema {
             }
         }
 
+        let storage_descriptor = hms_table.sd.as_ref().ok_or_else(|| {
+            DataFusionError::Internal("Storage descriptor not existed".to_string())
+        })?;
+        // TODO: For Paimon Hive catalogs with location-in-properties=true, derive the
+        // table location from table properties before falling back to sd.location.
+        let table_location = storage_descriptor
+            .location
+            .as_ref()
+            .map(ToString::to_string)
+            .ok_or_else(|| DataFusionError::Internal("location not existed".to_string()))?;
         let table_format = deduce_table_format(&hms_table_properties)?;
         let (hive_storage_info, hive_partitions) = if table_format == TableFormat::Hive {
             let hive_storage_info = HiveStorageInfo::try_new_from_hms_table(&hms_table)?;
@@ -234,6 +244,7 @@ impl AsyncSchemaProvider for HMSSchema {
 
         let table_provider_builder = TableProviderBuilder::new(
             self.dobbydb_context.clone(),
+            table_location,
             table_reference,
             hms_table_properties,
             table_format,
