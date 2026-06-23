@@ -28,6 +28,8 @@ pub struct GlueCatalogConfig {
     pub aws_glue_access_key: Option<String>,
     #[serde(rename = "aws-glue-secret-key")]
     pub aws_glue_secret_key: Option<String>,
+    #[serde(rename = "aws-glue-endpoint")]
+    pub aws_glue_endpoint: Option<String>,
     #[serde(flatten)]
     pub storage: Option<Storage>,
 }
@@ -42,6 +44,9 @@ async fn build_glue_client(config: &GlueCatalogConfig) -> Client {
     }
     if let Some(region) = &config.aws_glue_region {
         aws_config = aws_config.region(Region::new(region.clone()));
+    }
+    if let Some(endpoint) = &config.aws_glue_endpoint {
+        aws_config = aws_config.endpoint_url(endpoint.clone());
     }
     let aws_config = aws_config.load().await;
     Client::new(&aws_config)
@@ -60,6 +65,7 @@ impl GlueCatalog {
         }
     }
 }
+
 #[async_trait]
 impl AsyncCatalogProvider for GlueCatalog {
     async fn schema(&self, schema_name: &str) -> Result<Option<Arc<dyn AsyncSchemaProvider>>> {
@@ -267,5 +273,33 @@ impl DobbyDbCatalogProvider for GlueCatalog {
             }
             Err(err) => Err(DataFusionError::External(Box::new(err))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_glue_catalog_config() {
+        let config: GlueCatalogConfig = toml::from_str(
+            r#"
+            name = "glue_local"
+            aws-glue-region = "us-east-1"
+            aws-glue-access-key = "access-key"
+            aws-glue-secret-key = "secret-key"
+            aws-glue-endpoint = "http://127.0.0.1:4566"
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(config.name, "glue_local");
+        assert_eq!(config.aws_glue_region.as_deref(), Some("us-east-1"));
+        assert_eq!(config.aws_glue_access_key.as_deref(), Some("access-key"));
+        assert_eq!(config.aws_glue_secret_key.as_deref(), Some("secret-key"));
+        assert_eq!(
+            config.aws_glue_endpoint.as_deref(),
+            Some("http://127.0.0.1:4566")
+        );
     }
 }
