@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct DobbyDbPaimonTableProvider {
-    inner: PaimonTableProvider,
+    inner_provider: PaimonTableProvider,
     table_definition: String,
 }
 
@@ -34,7 +34,7 @@ impl DobbyDbPaimonTableProvider {
         .with_partition_column_names(partition_column_names)
         .build()?;
         Ok(Self {
-            inner: inner_provider,
+            inner_provider,
             table_definition,
         })
     }
@@ -47,11 +47,11 @@ impl TableProvider for DobbyDbPaimonTableProvider {
     }
 
     fn schema(&self) -> SchemaRef {
-        self.inner.schema()
+        self.inner_provider.schema()
     }
 
     fn table_type(&self) -> TableType {
-        self.inner.table_type()
+        self.inner_provider.table_type()
     }
 
     fn get_table_definition(&self) -> Option<&str> {
@@ -65,13 +65,13 @@ impl TableProvider for DobbyDbPaimonTableProvider {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        self.inner.scan(state, projection, filters, limit).await
+        self.inner_provider.scan(state, projection, filters, limit).await
     }
 
     fn supports_filters_pushdown(
         &self,
         filters: &[&Expr],
     ) -> Result<Vec<TableProviderFilterPushDown>> {
-        self.inner.supports_filters_pushdown(filters)
+        self.inner_provider.supports_filters_pushdown(filters)
     }
 }
