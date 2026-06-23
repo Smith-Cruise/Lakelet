@@ -65,7 +65,9 @@ impl TableProvider for DobbyDbPaimonTableProvider {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        self.inner_provider.scan(state, projection, filters, limit).await
+        self.inner_provider
+            .scan(state, projection, filters, limit)
+            .await
     }
 
     fn supports_filters_pushdown(
