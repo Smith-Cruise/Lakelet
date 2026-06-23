@@ -137,6 +137,8 @@ impl AsyncSchemaProvider for GlueSchema {
         let storage_descriptor = glue_table.storage_descriptor.as_ref().ok_or_else(|| {
             DataFusionError::Internal("Storage descriptor not existed".to_string())
         })?;
+        // TODO: For Paimon Hive catalogs with location-in-properties=true, derive the
+        // table location from table properties before falling back to sd.location.
         let table_location = storage_descriptor
             .location()
             .map(ToString::to_string)
