@@ -1,0 +1,7 @@
+[[catalog.glue]]
+name = "moto_glue"
+aws-glue-region = "us-east-1"
+aws-glue-access-key = "test"
+aws-glue-secret-key = "test"
+aws-glue-endpoint = "http://127.0.0.1:5000"
+s3-storage = { region = "us-east-1", endpoint = "http://127.0.0.1:5000", access-key = "test", secret-key = "test", path-style-access = true }
