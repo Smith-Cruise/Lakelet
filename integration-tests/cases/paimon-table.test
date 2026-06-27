@@ -1,6 +1,5 @@
 -- TEST: paimon_orders
 -- DATABASE: paimon_db
--- SETUP: orders
 
 -- QUERY
 SELECT count(*) FROM orders;
