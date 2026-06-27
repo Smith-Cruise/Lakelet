@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -35,13 +36,21 @@ def test_e2e_file(test_file: Path):
     for index, block in enumerate(parsed.blocks, start=1):
         actual = run_query(block.query, parsed.database)
         expected = block.expected.strip()
-        assert actual == expected, (
+        assert_result_matches(actual, expected), (
             f"{test_file}: query block {index} failed\n\n"
             f"SQL:\n{block.query.strip()}\n\n"
             f"Expected:\n{expected}\n\n"
             f"Actual:\n{actual}"
         )
     print(f"PASSED {test_file.relative_to(CASES_DIR)} ({len(parsed.blocks)} queries)", flush=True)
+
+
+def assert_result_matches(actual: str, expected: str) -> bool:
+    if "{{ANY}}" not in expected:
+        return actual == expected
+
+    pattern = re.escape(expected).replace(re.escape("{{ANY}}"), ".*")
+    return re.fullmatch(pattern, actual, flags=re.DOTALL) is not None
 
 
 def parse_test_file(path: Path) -> E2ETestFile:

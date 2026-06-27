@@ -4,14 +4,29 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_FILE="${REPO_ROOT}/integration-tests/docker-compose.yml"
+KEEP_COMPOSE=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --keep-compose)
+      KEEP_COMPOSE=1
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      echo "Usage: $0 [--keep-compose]" >&2
+      exit 1
+      ;;
+  esac
+done
 
 cd "${REPO_ROOT}"
 
 cleanup() {
-  if [[ "${KEEP_COMPOSE:-0}" != "1" ]]; then
+  if [[ "${KEEP_COMPOSE}" != "1" ]]; then
     docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans
   else
-    echo "KEEP_COMPOSE=1, leaving integration test containers running"
+    echo "--keep-compose set, leaving integration test containers running"
   fi
 }
 trap cleanup EXIT
