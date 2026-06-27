@@ -80,6 +80,8 @@ impl Storage {
         if let Some(s3_storage) = &self.s3_storage {
             if let Some(region) = &s3_storage.region {
                 map.insert(S3_REGION.into(), region.clone());
+            } else {
+                map.insert(S3_REGION.into(), "us-east-1".to_string());
             }
             if let Some(endpoint) = &s3_storage.endpoint {
                 map.insert(S3_ENDPOINT.into(), endpoint.clone());
@@ -115,6 +117,8 @@ impl Storage {
         if let Some(s3_storage) = &self.s3_storage {
             if let Some(region) = &s3_storage.region {
                 map.insert(AWS_REGION.to_string(), region.clone());
+            } else {
+                map.insert(AWS_REGION.to_string(), "us-east-1".to_string());
             }
             if let Some(endpoint) = &s3_storage.endpoint {
                 map.insert(AWS_ENDPOINT_URL.to_string(), endpoint.clone());
@@ -210,7 +214,8 @@ mod tests {
     };
     use datafusion::execution::object_store::ObjectStoreUrl;
     use datafusion::prelude::SessionContext;
-    use iceberg::io::S3_PATH_STYLE_ACCESS;
+    use deltalake::aws::constants::AWS_REGION;
+    use iceberg::io::{S3_PATH_STYLE_ACCESS, S3_REGION};
 
     #[test]
     fn test_parse_storage() {
@@ -268,6 +273,36 @@ mod tests {
         assert_eq!(
             properties.get(S3_PATH_STYLE_ACCESS).map(String::as_str),
             Some("false")
+        );
+    }
+
+    #[test]
+    fn test_build_iceberg_file_io_properties_defaults_s3_region() {
+        let text = r#"
+            s3-storage = { endpoint = "http://127.0.0.1:9000", access-key = "admin", secret-key = "password" }
+        "#;
+
+        let storage: Storage = toml::from_str(text).unwrap();
+        let properties = storage.build_iceberg_file_io_properties();
+
+        assert_eq!(
+            properties.get(S3_REGION).map(String::as_str),
+            Some("us-east-1")
+        );
+    }
+
+    #[test]
+    fn test_build_delta_storage_options_defaults_s3_region() {
+        let text = r#"
+            s3-storage = { endpoint = "http://127.0.0.1:9000", access-key = "admin", secret-key = "password" }
+        "#;
+
+        let storage: Storage = toml::from_str(text).unwrap();
+        let properties = storage.build_delta_storage_options();
+
+        assert_eq!(
+            properties.get(AWS_REGION).map(String::as_str),
+            Some("us-east-1")
         );
     }
 
