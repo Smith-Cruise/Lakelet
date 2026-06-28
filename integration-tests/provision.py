@@ -15,10 +15,12 @@ REGION = "us-east-1"
 ACCESS_KEY = "test"
 SECRET_KEY = "test"
 BUCKET = "dobbydb-e2e"
+TABLE = "orders"
 PAIMON_DATABASE = "paimon_db"
 ICEBERG_DATABASE = "iceberg_db"
-TABLE = "orders"
+DELTA_DATABASE = "delta_db"
 PAIMON_LOCATION = f"s3://{BUCKET}/warehouse/{PAIMON_DATABASE}.db/{TABLE}"
+DELTA_LOCATION = f"s3://{BUCKET}/warehouse/{DELTA_DATABASE}.db/{TABLE}"
 PAIMON_JARS = ",".join(
     [
         "/opt/spark/extra-jars/paimon-spark-4.0_2.13-1.4.1.jar",
@@ -29,6 +31,15 @@ ICEBERG_JARS = ",".join(
     [
         "/opt/spark/extra-jars/iceberg-spark-runtime-4.0_2.13-1.11.0.jar",
         "/opt/spark/extra-jars/iceberg-aws-bundle-1.11.0.jar",
+    ]
+)
+DELTA_JARS = ",".join(
+    [
+        "/opt/spark/extra-jars/delta-spark_2.13-4.0.0.jar",
+        "/opt/spark/extra-jars/delta-storage-4.0.0.jar",
+        "/opt/spark/extra-jars/antlr4-runtime-4.13.1.jar",
+        "/opt/spark/extra-jars/hadoop-aws-3.4.1.jar",
+        "/opt/spark/extra-jars/bundle-2.24.6.jar",
     ]
 )
 
@@ -151,6 +162,80 @@ def create_iceberg_data() -> None:
     )
 
 
+def create_delta_data() -> None:
+    subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(COMPOSE_FILE),
+            "exec",
+            "-T",
+            "spark",
+            "/opt/spark/bin/spark-sql",
+            "--jars",
+            DELTA_JARS,
+            "--conf",
+            "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension",
+            "--conf",
+            "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog",
+            "--conf",
+            "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem",
+            "--conf",
+            "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem",
+            "--conf",
+            f"spark.hadoop.fs.s3a.endpoint={SPARK_ENDPOINT}",
+            "--conf",
+            f"spark.hadoop.fs.s3a.endpoint.region={REGION}",
+            "--conf",
+            f"spark.hadoop.fs.s3a.access.key={ACCESS_KEY}",
+            "--conf",
+            f"spark.hadoop.fs.s3a.secret.key={SECRET_KEY}",
+            "--conf",
+            "spark.hadoop.fs.s3a.path.style.access=true",
+            "--conf",
+            "spark.hadoop.fs.s3a.connection.ssl.enabled=false",
+            "--conf",
+            "spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+            "-f",
+            "/integration-tests/create-delta-table.sql",
+        ],
+        check=True,
+    )
+
+
+def register_delta_table() -> None:
+    glue = client("glue")
+    try:
+        glue.delete_table(DatabaseName=DELTA_DATABASE, Name=TABLE)
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") != "EntityNotFoundException":
+            raise
+
+    glue.create_table(
+        DatabaseName=DELTA_DATABASE,
+        TableInput={
+            "Name": TABLE,
+            "TableType": "EXTERNAL_TABLE",
+            "Parameters": {
+                "EXTERNAL": "TRUE",
+                "spark.sql.sources.provider": "delta",
+                "table_type": "DELTA",
+            },
+            "StorageDescriptor": {
+                "Columns": [],
+                "Location": DELTA_LOCATION,
+                "InputFormat": "org.apache.hadoop.mapred.FileInputFormat",
+                "OutputFormat": "org.apache.hadoop.mapred.FileOutputFormat",
+                "SerdeInfo": {
+                    "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe",
+                    "Parameters": {},
+                },
+            },
+        },
+    )
+
+
 def register_paimon_table() -> None:
     glue = client("glue")
     try:
@@ -187,9 +272,12 @@ def main() -> None:
     ensure_bucket()
     ensure_database(PAIMON_DATABASE)
     ensure_database(ICEBERG_DATABASE)
+    ensure_database(DELTA_DATABASE)
     create_paimon_data()
     register_paimon_table()
     create_iceberg_data()
+    create_delta_data()
+    register_delta_table()
 
 
 if __name__ == "__main__":
