@@ -5,6 +5,21 @@ DobbyDB support to connect HMS and Glue catalog.
 Storage settings are embedded directly in each catalog entry. See
 [Storage](storage.md) for their complete field reference.
 
+## Catalog SQL
+
+DobbyDB supports these catalog-related SQL statements:
+
+```sql
+-- List all catalogs.
+show catalogs;
+
+-- Change the current catalog.
+use catalog hms_prod;
+
+-- Change both the current catalog and current database.
+use hms_prod.default;
+```
+
 ## HMS
 
 Use `[[catalog.hms]]` to connect to a Hive Metastore through Thrift.

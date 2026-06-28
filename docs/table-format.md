@@ -65,7 +65,7 @@ An unpartitioned table returns no rows.
 An HMS or Glue table is treated as Iceberg when its properties contain
 `metadata_location`. DobbyDB loads the table directly from that metadata file.
 
-Data file format only support *Parquet* now.
+Only Parquet data files are currently supported.
 
 ### Data Types
 
@@ -87,15 +87,34 @@ SELECT * FROM `table_name$manifests`;
 
 ## Delta Lake
 
-Delta Lake integration exists in the source tree, and tables are detected when
-`spark.sql.sources.provider` is exactly `DELTA`. However, Delta Lake is not yet
-perfectly supported and should be treated as incomplete.
+An HMS or Glue table is treated as Delta Lake when its properties contain
+`spark.sql.sources.provider` with value `DELTA`, case-insensitively. DobbyDB
+loads the table from its table location and reads the Delta transaction log
+through `delta-rs`.
+
+Delta Lake support is not yet complete and should be treated as experimental.
+
+### Data Types
+
+The same as `delta-rs`.
+
+### Metadata Table
+
+Delta Lake metadata tables are not currently exposed by DobbyDB.
 
 ## Paimon
 
-An HMS or Glue table is treated as Paimon when its storage descriptor input
-format is exactly:
+An HMS or Glue table is treated as Paimon when its properties contain
+`table_type` with value `PAIMON`, case-insensitively. DobbyDB loads the latest
+Paimon schema from the table location and reads the table through
+`paimon-datafusion`.
 
-```text
-org.apache.paimon.hive.mapred.PaimonInputFormat
-```
+Only Parquet data files are currently supported.
+
+### Data Types
+
+The same as `paimon-rust`.
+
+### Metadata Table
+
+Paimon metadata tables are not currently exposed by DobbyDB.

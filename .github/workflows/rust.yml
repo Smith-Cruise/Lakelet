@@ -55,3 +55,55 @@ jobs:
     - name: Run tests
       if: steps.changes.outputs.src_changed == 'true'
       run: cargo test --all-targets --all-features --verbose
+
+  integration-test:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Check integration test changes
+      id: changes
+      run: |
+        # Keep the required check visible for every PR, but only run integration tests
+        # when src or integration test files change.
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+        else
+          base="${{ github.event.before }}"
+          head="${{ github.sha }}"
+        fi
+
+        if git diff --name-only "$base" "$head" | grep -Eq '^(src/|integration-tests/)'; then
+          echo "integration_changed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "integration_changed=false" >> "$GITHUB_OUTPUT"
+        fi
+    - name: Install Rust toolchain
+      if: steps.changes.outputs.integration_changed == 'true'
+      uses: dtolnay/rust-toolchain@stable
+    - name: Rust Cache
+      if: steps.changes.outputs.integration_changed == 'true'
+      uses: Swatinem/rust-cache@v2
+    - name: Set up Python
+      if: steps.changes.outputs.integration_changed == 'true'
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: integration-tests/requirements.txt
+    - name: Integration test jar cache
+      if: steps.changes.outputs.integration_changed == 'true'
+      uses: actions/cache@v4
+      with:
+        path: integration-tests/.jars
+        key: integration-test-jars-${{ runner.os }}-${{ hashFiles('integration-tests/download-jars.sh') }}
+    - name: Docker Compose version
+      if: steps.changes.outputs.integration_changed == 'true'
+      run: docker compose version
+    - name: Run integration tests
+      if: steps.changes.outputs.integration_changed == 'true'
+      run: ./integration-tests/integration-test.sh
