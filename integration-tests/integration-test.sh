@@ -43,6 +43,14 @@ if lsof -nP -iTCP:5050 -sTCP:LISTEN >/tmp/dobbydb-integration-port-5050.txt 2>/d
 fi
 
 docker compose -f "${COMPOSE_FILE}" up -d --wait
-cargo build -p dobbydb-app --bin dobbydb
+if [[ -n "${DOBBYDB_BIN:-}" ]]; then
+  if [[ ! -x "${DOBBYDB_BIN}" ]]; then
+    echo "DOBBYDB_BIN is set but not executable: ${DOBBYDB_BIN}" >&2
+    exit 1
+  fi
+else
+  cargo build -p dobbydb-app --bin dobbydb
+  export DOBBYDB_BIN="${REPO_ROOT}/target/debug/dobbydb"
+fi
 python3 integration-tests/provision.py
 python3 -m pytest -s integration-tests
