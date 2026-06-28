@@ -1,0 +1,34 @@
+services:
+  moto:
+    image: motoserver/moto:5.2.2
+    command: ["-H", "0.0.0.0", "-p", "5000"]
+    ports:
+      - "127.0.0.1:5050:5000"
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  spark:
+    image: apache/spark:4.0.3
+    command: ["/bin/bash", "-lc", "tail -f /dev/null"]
+    depends_on:
+      moto:
+        condition: service_healthy
+    volumes:
+      - ./:/integration-tests
+      - ./.jars:/opt/spark/extra-jars:ro
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+    healthcheck:
+      test: ["CMD", "test", "-x", "/opt/spark/bin/spark-sql"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

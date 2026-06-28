@@ -5,7 +5,7 @@ use datafusion::common::DataFusionError;
 use datafusion::common::Result;
 use datafusion::object_store::ObjectStore;
 use deltalake::aws::constants::{
-    AWS_ACCESS_KEY_ID, AWS_ENDPOINT_URL, AWS_REGION, AWS_SECRET_ACCESS_KEY,
+    AWS_ACCESS_KEY_ID, AWS_ENDPOINT_URL, AWS_REGION, AWS_S3_ADDRESSING_STYLE, AWS_SECRET_ACCESS_KEY,
 };
 use hdfs_native_object_store::HdfsObjectStoreBuilder;
 use iceberg::io::{
@@ -21,6 +21,7 @@ pub const S3_SCHEMA: &str = "s3";
 pub const S3A_SCHEMA: &str = "s3a";
 pub const OSS_SCHEMA: &str = "oss";
 pub const HDFS_SCHEMA: &str = "hdfs";
+const AWS_VIRTUAL_HOSTED_STYLE_REQUEST: &str = "aws_virtual_hosted_style_request";
 
 pub trait StorageTrait {
     fn build_object_store(
@@ -80,6 +81,8 @@ impl Storage {
         if let Some(s3_storage) = &self.s3_storage {
             if let Some(region) = &s3_storage.region {
                 map.insert(S3_REGION.into(), region.clone());
+            } else {
+                map.insert(S3_REGION.into(), "us-east-1".to_string());
             }
             if let Some(endpoint) = &s3_storage.endpoint {
                 map.insert(S3_ENDPOINT.into(), endpoint.clone());
@@ -115,6 +118,8 @@ impl Storage {
         if let Some(s3_storage) = &self.s3_storage {
             if let Some(region) = &s3_storage.region {
                 map.insert(AWS_REGION.to_string(), region.clone());
+            } else {
+                map.insert(AWS_REGION.to_string(), "us-east-1".to_string());
             }
             if let Some(endpoint) = &s3_storage.endpoint {
                 map.insert(AWS_ENDPOINT_URL.to_string(), endpoint.clone());
@@ -125,6 +130,19 @@ impl Storage {
             if let Some(secret_key) = &s3_storage.secret_key {
                 map.insert(AWS_SECRET_ACCESS_KEY.to_string(), secret_key.clone());
             }
+            map.insert(
+                AWS_S3_ADDRESSING_STYLE.to_string(),
+                if s3_storage.path_style_access {
+                    "path"
+                } else {
+                    "virtual"
+                }
+                .to_string(),
+            );
+            map.insert(
+                AWS_VIRTUAL_HOSTED_STYLE_REQUEST.to_string(),
+                (!s3_storage.path_style_access).to_string(),
+            );
         }
 
         if let Some(oss_storage) = &self.oss_storage {
@@ -137,6 +155,19 @@ impl Storage {
             if let Some(secret_key) = &oss_storage.secret_key {
                 map.insert(AWS_SECRET_ACCESS_KEY.to_string(), secret_key.clone());
             }
+            map.insert(
+                AWS_S3_ADDRESSING_STYLE.to_string(),
+                if oss_storage.path_style_access {
+                    "path"
+                } else {
+                    "virtual"
+                }
+                .to_string(),
+            );
+            map.insert(
+                AWS_VIRTUAL_HOSTED_STYLE_REQUEST.to_string(),
+                (!oss_storage.path_style_access).to_string(),
+            );
         }
         map
     }
@@ -206,11 +237,13 @@ pub fn parse_location_schema_authority(path: &str) -> Result<(String, String)> {
 #[cfg(test)]
 mod tests {
     use crate::storage::{
-        Storage, parse_location_schema_authority, try_register_storage_info_session,
+        AWS_VIRTUAL_HOSTED_STYLE_REQUEST, Storage, parse_location_schema_authority,
+        try_register_storage_info_session,
     };
     use datafusion::execution::object_store::ObjectStoreUrl;
     use datafusion::prelude::SessionContext;
-    use iceberg::io::S3_PATH_STYLE_ACCESS;
+    use deltalake::aws::constants::{AWS_REGION, AWS_S3_ADDRESSING_STYLE};
+    use iceberg::io::{S3_PATH_STYLE_ACCESS, S3_REGION};
 
     #[test]
     fn test_parse_storage() {
@@ -268,6 +301,58 @@ mod tests {
         assert_eq!(
             properties.get(S3_PATH_STYLE_ACCESS).map(String::as_str),
             Some("false")
+        );
+    }
+
+    #[test]
+    fn test_build_iceberg_file_io_properties_defaults_s3_region() {
+        let text = r#"
+            s3-storage = { endpoint = "http://127.0.0.1:9000", access-key = "admin", secret-key = "password" }
+        "#;
+
+        let storage: Storage = toml::from_str(text).unwrap();
+        let properties = storage.build_iceberg_file_io_properties();
+
+        assert_eq!(
+            properties.get(S3_REGION).map(String::as_str),
+            Some("us-east-1")
+        );
+    }
+
+    #[test]
+    fn test_build_delta_storage_options_defaults_s3_region() {
+        let text = r#"
+            s3-storage = { endpoint = "http://127.0.0.1:9000", access-key = "admin", secret-key = "password" }
+        "#;
+
+        let storage: Storage = toml::from_str(text).unwrap();
+        let properties = storage.build_delta_storage_options();
+
+        assert_eq!(
+            properties.get(AWS_REGION).map(String::as_str),
+            Some("us-east-1")
+        );
+    }
+
+    #[test]
+    fn test_build_delta_storage_options_includes_addressing_style() {
+        let text = r#"
+            s3-storage = { endpoint = "http://127.0.0.1:9000", access-key = "admin", secret-key = "password", path-style-access = true }
+            oss-storage = { endpoint = "https://bucket.oss-cn-hangzhou.aliyuncs.com", access-key = "oss-ak", secret-key = "oss-sk", path-style-access = false }
+        "#;
+
+        let storage: Storage = toml::from_str(text).unwrap();
+        let properties = storage.build_delta_storage_options();
+
+        assert_eq!(
+            properties.get(AWS_S3_ADDRESSING_STYLE).map(String::as_str),
+            Some("virtual")
+        );
+        assert_eq!(
+            properties
+                .get(AWS_VIRTUAL_HOSTED_STYLE_REQUEST)
+                .map(String::as_str),
+            Some("true")
         );
     }
 

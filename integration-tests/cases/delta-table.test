@@ -1,0 +1,43 @@
+-- TEST: delta_orders
+-- DATABASE: delta_db
+
+-- QUERY
+SELECT count(*) FROM orders;
+-- EXPECTED
+count(*)
+4
+
+-- QUERY
+SELECT id, name
+FROM orders
+WHERE dt = '2026-06-25'
+ORDER BY id;
+-- EXPECTED
+id,name
+1,alice
+2,bob
+
+-- QUERY
+SELECT dt, sum(amount)
+FROM orders
+GROUP BY dt
+ORDER BY dt;
+-- EXPECTED
+dt,sum(orders.amount)
+2026-06-24,19.30
+2026-06-25,30.75
+
+-- QUERY
+SHOW CREATE TABLE orders;
+-- EXPECTED
+definition
+CREATE TABLE `moto_glue`.`delta_db`.`orders`
+(
+`id` Int32,
+`name` Utf8,
+`amount` Decimal128(10, 2),
+`dt` Utf8
+)
+PARTITIONED BY (`dt`)
+USING DELTA
+LOCATION 's3://dobbydb-e2e/warehouse/delta_db.db/orders'
