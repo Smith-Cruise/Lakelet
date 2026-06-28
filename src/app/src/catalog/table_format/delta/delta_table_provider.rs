@@ -1,3 +1,5 @@
+use crate::catalog::TableDefinitionBuilder;
+use crate::table_format::TableFormat;
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::catalog::Session;
 use datafusion::common::Result;
@@ -36,11 +38,12 @@ pub fn register_object_store() {
 pub struct DeltaTableProvider {
     delta_scan: DeltaScanNext,
     log_store: LogStoreRef,
+    table_definition: String,
 }
 
 impl DeltaTableProvider {
     pub async fn try_new(
-        _table_reference: TableReference,
+        table_reference: TableReference,
         table_location: String,
         storage: Option<Storage>,
     ) -> Result<Self> {
@@ -61,9 +64,24 @@ impl DeltaTableProvider {
             .await
             .map_err(|e| DataFusionError::External(Box::new(e)))?;
         let delta_scan = delta_table.table_provider().build().await?;
+        let partition_column_names = delta_table
+            .snapshot()
+            .map_err(|e| DataFusionError::External(Box::new(e)))?
+            .metadata()
+            .partition_columns()
+            .to_vec();
+        let table_definition = TableDefinitionBuilder::new(
+            table_reference,
+            table_location,
+            TableFormat::Delta,
+            delta_scan.schema().as_ref().clone(),
+        )
+        .with_partition_column_names(partition_column_names)
+        .build()?;
         Ok(Self {
             delta_scan,
             log_store: delta_table.log_store(),
+            table_definition,
         })
     }
 
@@ -95,6 +113,10 @@ impl TableProvider for DeltaTableProvider {
 
     fn table_type(&self) -> TableType {
         self.delta_scan.table_type()
+    }
+
+    fn get_table_definition(&self) -> Option<&str> {
+        Some(&self.table_definition)
     }
 
     async fn scan(
