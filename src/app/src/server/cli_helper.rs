@@ -8,12 +8,12 @@ use rustyline::hint::{Hinter, HistoryHinter};
 use rustyline::validate::{ValidationContext, ValidationResult, Validator};
 use rustyline::{Context, Helper, Result};
 
-pub struct DobbyDbCliHelper {
+pub struct LakeletCliHelper {
     hinter: HistoryHinter,
     highlighter: SyntaxHighlighter,
 }
 
-impl DobbyDbCliHelper {
+impl LakeletCliHelper {
     pub fn new(dialect: &Dialect) -> Self {
         Self {
             hinter: HistoryHinter::new(),
@@ -22,7 +22,7 @@ impl DobbyDbCliHelper {
     }
 }
 
-impl Hinter for DobbyDbCliHelper {
+impl Hinter for LakeletCliHelper {
     type Hint = String;
 
     fn hint(&self, line: &str, pos: usize, ctx: &Context<'_>) -> Option<String> {
@@ -30,7 +30,7 @@ impl Hinter for DobbyDbCliHelper {
     }
 }
 
-impl Highlighter for DobbyDbCliHelper {
+impl Highlighter for LakeletCliHelper {
     fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
         self.highlighter.highlight(line, pos)
     }
@@ -44,7 +44,7 @@ impl Highlighter for DobbyDbCliHelper {
     }
 }
 
-impl Completer for DobbyDbCliHelper {
+impl Completer for LakeletCliHelper {
     type Candidate = String;
 
     fn complete(
@@ -57,10 +57,10 @@ impl Completer for DobbyDbCliHelper {
     }
 }
 
-impl Validator for DobbyDbCliHelper {
+impl Validator for LakeletCliHelper {
     fn validate(&self, _ctx: &mut ValidationContext<'_>) -> Result<ValidationResult> {
         Ok(ValidationResult::Valid(None))
     }
 }
 
-impl Helper for DobbyDbCliHelper {}
+impl Helper for LakeletCliHelper {}

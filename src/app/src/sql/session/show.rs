@@ -66,7 +66,7 @@ impl ExtendedSessionContext {
         &self,
         show_catalogs: &ShowCatalogsStatement,
     ) -> Result<DataFrame> {
-        let catalogs = self.dobbydb_context.catalog_manager.list_catalogs();
+        let catalogs = self.lakelet_context.catalog_manager.list_catalogs();
         let mut catalog_names = Vec::with_capacity(catalogs.len());
         let mut catalog_types = Vec::with_capacity(catalogs.len());
         let mut catalog_configs = Vec::with_capacity(catalogs.len());
@@ -126,7 +126,7 @@ impl ExtendedSessionContext {
             .map_or_else(|| default_catalog, |parts| parts[0].clone());
 
         let schema_names = self
-            .dobbydb_context
+            .lakelet_context
             .catalog_manager
             .list_schema_names(&catalog_name)
             .await?;
@@ -153,7 +153,7 @@ impl ExtendedSessionContext {
             };
 
         let table_names = self
-            .dobbydb_context
+            .lakelet_context
             .catalog_manager
             .list_table_names(&catalog_name, &schema_name)
             .await?;

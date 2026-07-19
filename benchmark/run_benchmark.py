@@ -51,7 +51,7 @@ class BenchmarkOutput:
         output_root = output_root.expanduser()
         if not output_root.is_absolute():
             output_root = output_root.resolve()
-        run_dir = output_root / f"dobbydb-benchmark-{timestamp}-{os.getpid()}"
+        run_dir = output_root / f"lakelet-benchmark-{timestamp}-{os.getpid()}"
         run_dir.mkdir(parents=True, exist_ok=False)
         return cls(run_dir)
 
@@ -134,7 +134,7 @@ class EngineRunner(ABC):
         pass
 
 
-class DobbyDbRunner(EngineRunner):
+class LakeletRunner(EngineRunner):
     def __init__(
         self,
         repo_root: Path,
@@ -182,11 +182,11 @@ class DobbyDbRunner(EngineRunner):
                 start_new_session=True,
             )
         except OSError as exc:
-            raw_output = format_dobbydb_output(command, sql, str(exc))
+            raw_output = format_lakelet_output(command, sql, str(exc))
             raise BenchmarkError(
-                f"failed to execute DobbyDB process: {exc}", raw_output=raw_output
+                f"failed to execute Lakelet process: {exc}", raw_output=raw_output
             ) from exc
-        raw_output = format_dobbydb_output(command, sql, result.stdout)
+        raw_output = format_lakelet_output(command, sql, result.stdout)
         if result.returncode != 0:
             raise BenchmarkError(
                 format_process_failure(result.returncode, result.stdout),
@@ -196,7 +196,7 @@ class DobbyDbRunner(EngineRunner):
         elapsed_seconds = parse_elapsed_seconds(result.stdout)
         if elapsed_seconds is None:
             raise BenchmarkError(
-                "failed to parse elapsed time from DobbyDB output:\n"
+                "failed to parse elapsed time from Lakelet output:\n"
                 f"{result.stdout.rstrip()}",
                 raw_output=raw_output,
             )
@@ -311,14 +311,14 @@ def format_process_failure(returncode: int, output: str) -> str:
             signal_name = signal.Signals(signal_number).name
         except ValueError:
             signal_name = f"signal {signal_number}"
-        message = f"DobbyDB process was terminated by {signal_name}"
+        message = f"Lakelet process was terminated by {signal_name}"
         if output:
             return f"{message}: {output}"
         return message
 
     if output:
         return output
-    return f"DobbyDB process exited with status {returncode}"
+    return f"Lakelet process exited with status {returncode}"
 
 
 def quote_identifier(identifier: str) -> str:
@@ -326,8 +326,8 @@ def quote_identifier(identifier: str) -> str:
     return f"`{escaped}`"
 
 
-def format_dobbydb_output(command: Sequence[str], sql: str, process_output: str) -> str:
-    sql_result = extract_dobbydb_sql_result(process_output)
+def format_lakelet_output(command: Sequence[str], sql: str, process_output: str) -> str:
+    sql_result = extract_lakelet_sql_result(process_output)
     return "\n".join(
         [
             "command:",
@@ -346,7 +346,7 @@ def format_dobbydb_output(command: Sequence[str], sql: str, process_output: str)
     )
 
 
-def extract_dobbydb_sql_result(process_output: str) -> str:
+def extract_lakelet_sql_result(process_output: str) -> str:
     result_lines = []
     for line in process_output.splitlines():
         if line.startswith("Elapsed ") or re.match(r"^\d+ row\(s\) fetched\.", line):
@@ -356,7 +356,7 @@ def extract_dobbydb_sql_result(process_output: str) -> str:
     result = "\n".join(result_lines).strip()
     if result:
         return result
-    return "(no SQL result captured from DobbyDB stdout)"
+    return "(no SQL result captured from Lakelet stdout)"
 
 
 def format_starrocks_output(
@@ -438,11 +438,11 @@ def normalize_query_name(query_name: str) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run DobbyDB and AP database benchmarks.",
+        description="Run Lakelet and AP database benchmarks.",
     )
     parser.add_argument(
         "--engine",
-        choices=("dobbydb", "starrocks"),
+        choices=("lakelet", "starrocks"),
         required=True,
         help="Benchmark engine to run.",
     )
@@ -481,9 +481,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory for benchmark output artifacts. Defaults to /tmp.",
     )
 
-    dobbydb = parser.add_argument_group("DobbyDB connection")
-    dobbydb.add_argument("--bin", help="Path to the DobbyDB binary.")
-    dobbydb.add_argument("--config", help="Path to the DobbyDB config file.")
+    lakelet = parser.add_argument_group("Lakelet connection")
+    lakelet.add_argument("--bin", help="Path to the Lakelet binary.")
+    lakelet.add_argument("--config", help="Path to the Lakelet config file.")
 
     starrocks = parser.add_argument_group("StarRocks connection")
     starrocks.add_argument("--host", help="StarRocks host.")
@@ -503,11 +503,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    if args.engine == "dobbydb":
+    if args.engine == "lakelet":
         if not args.bin:
-            parser.error("--bin is required when --engine dobbydb")
+            parser.error("--bin is required when --engine lakelet")
         if not args.config:
-            parser.error("--config is required when --engine dobbydb")
+            parser.error("--config is required when --engine lakelet")
     elif args.engine == "starrocks":
         if not args.host:
             parser.error("--host is required when --engine starrocks")
@@ -516,8 +516,8 @@ def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
 
 
 def build_runner(args: argparse.Namespace, repo_root: Path) -> EngineRunner:
-    if args.engine == "dobbydb":
-        return DobbyDbRunner(
+    if args.engine == "lakelet":
+        return LakeletRunner(
             repo_root=repo_root,
             benchmark_type=args.benchmark_type,
             bin_path=Path(args.bin).expanduser().resolve(),

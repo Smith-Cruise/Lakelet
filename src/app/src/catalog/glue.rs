@@ -1,5 +1,5 @@
-use crate::catalog::{CatalogConfig, DobbyDbCatalogProvider};
-use crate::context::DobbyDbContext;
+use crate::catalog::{CatalogConfig, LakeletCatalogProvider};
+use crate::context::LakeletContext;
 use crate::table_format::TableFormat;
 use crate::table_format::hive::hive_partition::HivePartition;
 use crate::table_format::hive::hive_storage_info::HiveStorageInfo;
@@ -14,7 +14,7 @@ use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvid
 use datafusion::common::Result;
 use datafusion::common::TableReference;
 use datafusion::error::DataFusionError;
-use dobbydb_storage::storage::Storage;
+use lakelet_storage::storage::Storage;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::sync::Arc;
@@ -39,7 +39,7 @@ async fn build_glue_client(config: &GlueCatalogConfig) -> Client {
     if let (Some(access_key), Some(secret_key)) =
         (&config.aws_glue_access_key, &config.aws_glue_secret_key)
     {
-        let credential_provider = Credentials::new(access_key, secret_key, None, None, "DobbyDB");
+        let credential_provider = Credentials::new(access_key, secret_key, None, None, "Lakelet");
         aws_config = aws_config.credentials_provider(credential_provider);
     }
     if let Some(region) = &config.aws_glue_region {
@@ -53,14 +53,14 @@ async fn build_glue_client(config: &GlueCatalogConfig) -> Client {
 }
 
 pub struct GlueCatalog {
-    dobbydb_context: Arc<DobbyDbContext>,
+    lakelet_context: Arc<LakeletContext>,
     config: Arc<GlueCatalogConfig>,
 }
 
 impl GlueCatalog {
-    pub fn new(dobbydb_context: Arc<DobbyDbContext>, config: Arc<GlueCatalogConfig>) -> Self {
+    pub fn new(lakelet_context: Arc<LakeletContext>, config: Arc<GlueCatalogConfig>) -> Self {
         Self {
-            dobbydb_context,
+            lakelet_context,
             config,
         }
     }
@@ -70,7 +70,7 @@ impl GlueCatalog {
 impl AsyncCatalogProvider for GlueCatalog {
     async fn schema(&self, schema_name: &str) -> Result<Option<Arc<dyn AsyncSchemaProvider>>> {
         Ok(Some(Arc::new(GlueSchema::new(
-            self.dobbydb_context.clone(),
+            self.lakelet_context.clone(),
             self.config.clone(),
             schema_name.to_string(),
         ))))
@@ -78,19 +78,19 @@ impl AsyncCatalogProvider for GlueCatalog {
 }
 
 pub struct GlueSchema {
-    dobbydb_context: Arc<DobbyDbContext>,
+    lakelet_context: Arc<LakeletContext>,
     config: Arc<GlueCatalogConfig>,
     schema_name: String,
 }
 
 impl GlueSchema {
     pub fn new(
-        dobbydb_context: Arc<DobbyDbContext>,
+        lakelet_context: Arc<LakeletContext>,
         config: Arc<GlueCatalogConfig>,
         schema_name: String,
     ) -> Self {
         Self {
-            dobbydb_context,
+            lakelet_context,
             config,
             schema_name,
         }
@@ -185,7 +185,7 @@ impl AsyncSchemaProvider for GlueSchema {
         };
 
         let table_provider_builder = TableProviderBuilder::new(
-            self.dobbydb_context.clone(),
+            self.lakelet_context.clone(),
             table_location,
             table_reference,
             glue_table_properties,
@@ -202,7 +202,7 @@ impl AsyncSchemaProvider for GlueSchema {
 }
 
 #[async_trait]
-impl DobbyDbCatalogProvider for GlueCatalog {
+impl LakeletCatalogProvider for GlueCatalog {
     async fn list_schema_names(&self) -> Result<Vec<String>> {
         let glue_client = build_glue_client(&self.config).await;
         let paginator = glue_client.get_databases().into_paginator().send();

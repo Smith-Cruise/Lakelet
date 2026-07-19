@@ -1,19 +1,19 @@
 # Getting Started
 
-DobbyDB's philosophy is to be simple, run on a single machine, and be easy to use.
+Lakelet's philosophy is to be simple, run on a single machine, and be easy to use.
 
-## Build DobbyDB
+## Build Lakelet
 
-DobbyDB requires a Rust toolchain. Build the release binary from the repository
+Lakelet requires a Rust toolchain. Build the release binary from the repository
 root:
 
 ```bash
-git clone https://github.com/Smith-Cruise/DobbyDB.git
-cd DobbyDB
+git clone https://github.com/Smith-Cruise/Lakelet.git
+cd Lakelet
 cargo build --release
 ```
 
-The binary is written to `target/release/dobbydb`.
+The binary is written to `target/release/lakelet`.
 
 ## Create a Configuration File
 
@@ -55,14 +55,14 @@ s3-storage = { region = "us-east-1", endpoint = "http://127.0.0.1:9000", access-
 See [Server](server.md), [Catalog](catalog.md), and [Storage](storage.md) for
 the complete configuration reference.
 
-## Start DobbyDB
+## Start Lakelet
 
 Pass the configuration file with `--config`:
 
 ```bash
-target/release/dobbydb --config config.toml
+target/release/lakelet --config config.toml
 ```
 
 The configuration file is required for normal execution.
 
-You can get more help by `target/release/dobbydb --help`.
+You can get more help by `target/release/lakelet --help`.

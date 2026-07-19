@@ -40,4 +40,4 @@ CREATE TABLE `moto_glue`.`iceberg_db`.`orders`
 )
 PARTITIONED BY (`dt`)
 USING ICEBERG
-LOCATION 's3://dobbydb-e2e/warehouse/iceberg_db.db/orders'
+LOCATION 's3://lakelet-e2e/warehouse/iceberg_db.db/orders'

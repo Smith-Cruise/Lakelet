@@ -1,5 +1,5 @@
 [package]
-name = "dobbydb-common"
+name = "lakelet-common"
 version = { workspace = true }
 edition = { workspace = true }
 

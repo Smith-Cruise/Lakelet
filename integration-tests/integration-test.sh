@@ -36,21 +36,21 @@ integration-tests/download-jars.sh
 
 docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans
 
-if lsof -nP -iTCP:5050 -sTCP:LISTEN >/tmp/dobbydb-integration-port-5050.txt 2>/dev/null; then
+if lsof -nP -iTCP:5050 -sTCP:LISTEN >/tmp/lakelet-integration-port-5050.txt 2>/dev/null; then
   echo "Port 5050 is already in use:" >&2
-  cat /tmp/dobbydb-integration-port-5050.txt >&2
+  cat /tmp/lakelet-integration-port-5050.txt >&2
   exit 1
 fi
 
 docker compose -f "${COMPOSE_FILE}" up -d --wait
-if [[ -n "${DOBBYDB_BIN:-}" ]]; then
-  if [[ ! -x "${DOBBYDB_BIN}" ]]; then
-    echo "DOBBYDB_BIN is set but not executable: ${DOBBYDB_BIN}" >&2
+if [[ -n "${LAKELET_BIN:-}" ]]; then
+  if [[ ! -x "${LAKELET_BIN}" ]]; then
+    echo "LAKELET_BIN is set but not executable: ${LAKELET_BIN}" >&2
     exit 1
   fi
 else
-  cargo build -p dobbydb-app --bin dobbydb
-  export DOBBYDB_BIN="${REPO_ROOT}/target/debug/dobbydb"
+  cargo build -p lakelet-app --bin lakelet
+  export LAKELET_BIN="${REPO_ROOT}/target/debug/lakelet"
 fi
 python3 integration-tests/provision.py
 python3 -m pytest -s integration-tests

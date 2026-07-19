@@ -8,8 +8,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CASES_DIR = REPO_ROOT / "integration-tests" / "cases"
-CONFIG_PATH = REPO_ROOT / "integration-tests" / "dobbydb-integration.toml"
-DOBBYDB_BIN = Path(os.environ.get("DOBBYDB_BIN", REPO_ROOT / "target" / "debug" / "dobbydb"))
+CONFIG_PATH = REPO_ROOT / "integration-tests" / "lakelet-integration.toml"
+LAKELET_BIN = Path(os.environ.get("LAKELET_BIN", REPO_ROOT / "target" / "debug" / "lakelet"))
 
 
 @dataclass(frozen=True)
@@ -115,7 +115,7 @@ def run_query(sql: str, database: str) -> str:
     try:
         output = subprocess.run(
             [
-                str(DOBBYDB_BIN),
+                str(LAKELET_BIN),
                 "--config",
                 str(CONFIG_PATH),
                 "--default-catalog",
@@ -134,7 +134,7 @@ def run_query(sql: str, database: str) -> str:
         query_path.unlink(missing_ok=True)
 
     if output.returncode != 0:
-        raise AssertionError(f"DobbyDB query failed with status {output.returncode}\nSQL:\n{sql}\n\n{output.stdout}")
+        raise AssertionError(f"Lakelet query failed with status {output.returncode}\nSQL:\n{sql}\n\n{output.stdout}")
 
     return normalize_query_result(output.stdout)
 

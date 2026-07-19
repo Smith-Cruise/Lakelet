@@ -1,4 +1,4 @@
-# DobbyDB configuration demo.
+# Lakelet configuration demo.
 # Copy this file, adjust the values, and pass it via `--config <path>`.
 # All keys use kebab-case. Required fields are marked; everything else is optional.
 
@@ -10,6 +10,9 @@
 # Accepts a number with an optional unit suffix (case-insensitive):
 # b, kb, mb, gb, tb. A bare number is treated as bytes. Example: "4GB".
 memory-limit = "4GB"
+# Required when starting with `--flight-sql-server`. Port the Arrow Flight SQL
+# server listens on. The server binds to 0.0.0.0 (note: no authentication yet).
+# flight-sql-server-port = 32010
 
 # ---------------------------------------------------------------------------
 # Glue catalogs. Repeat the [[catalog.glue]] block for each catalog.

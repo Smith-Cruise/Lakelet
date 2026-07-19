@@ -40,4 +40,4 @@ CREATE TABLE `moto_glue`.`delta_db`.`orders`
 )
 PARTITIONED BY (`dt`)
 USING DELTA
-LOCATION 's3://dobbydb-e2e/warehouse/delta_db.db/orders'
+LOCATION 's3://lakelet-e2e/warehouse/delta_db.db/orders'

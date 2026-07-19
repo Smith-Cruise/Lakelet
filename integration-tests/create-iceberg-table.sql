@@ -10,7 +10,7 @@ CREATE TABLE iceberg.`iceberg_db`.`orders` (
 )
 USING iceberg
 PARTITIONED BY (dt)
-LOCATION 's3://dobbydb-e2e/warehouse/iceberg_db.db/orders';
+LOCATION 's3://lakelet-e2e/warehouse/iceberg_db.db/orders';
 
 INSERT INTO iceberg.`iceberg_db`.`orders`
 VALUES

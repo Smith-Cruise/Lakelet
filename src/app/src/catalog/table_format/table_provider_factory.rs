@@ -1,5 +1,5 @@
 use crate::catalog::{CatalogConfig, TableDefinitionBuilder};
-use crate::context::DobbyDbContext;
+use crate::context::LakeletContext;
 use crate::table_format::TableFormat;
 use crate::table_format::delta::DeltaTableProviderFactory;
 use crate::table_format::hive::HiveTableProviderFactory;
@@ -12,12 +12,12 @@ use datafusion::catalog::TableProvider;
 use datafusion::common::Result;
 use datafusion::error::DataFusionError;
 use datafusion::sql::TableReference;
-use dobbydb_storage::storage::Storage;
+use lakelet_storage::storage::Storage;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 pub struct TableProviderBuilder {
-    dobbydb_context: Arc<DobbyDbContext>,
+    lakelet_context: Arc<LakeletContext>,
     table_location: String,
     table_reference: TableReference,
     table_properties: HashMap<String, String>,
@@ -30,7 +30,7 @@ pub struct TableProviderBuilder {
 
 impl TableProviderBuilder {
     pub fn new(
-        dobbydb_context: Arc<DobbyDbContext>,
+        lakelet_context: Arc<LakeletContext>,
         table_location: String,
         table_reference: TableReference,
         table_properties: HashMap<String, String>,
@@ -45,7 +45,7 @@ impl TableProviderBuilder {
             }
         };
         Self {
-            dobbydb_context,
+            lakelet_context,
             table_location,
             table_reference,
             table_properties,
@@ -106,7 +106,7 @@ impl TableProviderBuilder {
             }
             TableFormat::Hive => match (self.hive_storage_info, self.hive_partitions) {
                 (Some(storage_info), Some(partitions)) => {
-                    let io_handle = self.dobbydb_context.runtime_manager.io_handle();
+                    let io_handle = self.lakelet_context.runtime_manager.io_handle();
                     let table_definition = TableDefinitionBuilder::new(
                         self.table_reference.clone(),
                         self.table_location.clone(),
@@ -269,7 +269,7 @@ mod tests {
     #[tokio::test]
     async fn test_build_hive_provider_generates_table_definition() -> Result<()> {
         let provider = TableProviderBuilder::new(
-            Arc::new(DobbyDbContext::default()),
+            Arc::new(LakeletContext::default()),
             "s3://bucket/path".to_string(),
             TableReference::full("catalog", "schema", "table"),
             HashMap::new(),

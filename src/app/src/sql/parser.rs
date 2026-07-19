@@ -24,12 +24,12 @@ macro_rules! parser_err {
 }
 
 const DEFAULT_RECURSION_LIMIT: usize = 50;
-const DEFAULT_DIALECT: DobbyDialect = DobbyDialect {};
+const DEFAULT_DIALECT: LakeletDialect = LakeletDialect {};
 
 #[derive(Debug)]
-struct DobbyDialect;
+struct LakeletDialect;
 
-impl Dialect for DobbyDialect {
+impl Dialect for LakeletDialect {
     fn dialect(&self) -> TypeId {
         TypeId::of::<DatabricksDialect>()
     }

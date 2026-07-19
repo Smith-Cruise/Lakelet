@@ -7,7 +7,7 @@ FROM `orders$snapshots`
 ORDER BY committed_at;
 -- EXPECTED
 committed_at,snapshot_id,parent_id,operation,manifest_list,summary
-{{ANY}},{{ANY}},,append,s3://dobbydb-e2e/warehouse/iceberg_db.db/orders/metadata/snap-{{ANY}}.avro,{{ANY}}
+{{ANY}},{{ANY}},,append,s3://lakelet-e2e/warehouse/iceberg_db.db/orders/metadata/snap-{{ANY}}.avro,{{ANY}}
 
 -- QUERY
 SELECT *
@@ -15,4 +15,4 @@ FROM `orders$manifests`
 ORDER BY path;
 -- EXPECTED
 content,path,length,partition_spec_id,added_snapshot_id,added_data_files_count,existing_data_files_count,deleted_data_files_count,added_delete_files_count,existing_delete_files_count,deleted_delete_files_count,partition_summaries
-0,s3://dobbydb-e2e/warehouse/iceberg_db.db/orders/metadata/{{ANY}}.avro,{{ANY}},0,{{ANY}},2,0,0,2,0,0,{{ANY}}
+0,s3://lakelet-e2e/warehouse/iceberg_db.db/orders/metadata/{{ANY}}.avro,{{ANY}},0,{{ANY}},2,0,0,2,0,0,{{ANY}}

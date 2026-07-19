@@ -14,7 +14,10 @@ members = [
 datafusion = "53.1.0"
 datafusion-cli = "53.1.0"
 sqlparser = "0.61.0"
-tokio = { version = "1.0", features = ["rt-multi-thread", "tracing", "rt"] }
+arrow-flight = { version = "58.1.0", features = ["flight-sql"] }
+tonic = "0.14"
+prost = "0.14"
+tokio = { version = "1.0", features = ["rt-multi-thread", "tracing", "rt", "signal"] }
 console-subscriber = "0.5.0"
 serde = { version = "1.0.228", features = ["derive"] }
 typetag = "0.2"
@@ -31,9 +34,9 @@ deltalake-aws = "0.15.0"
 hdfs-native-object-store = "0.16"
 paimon = { version = "0.2.0", features = ["storage-s3", "storage-oss", "storage-hdfs"] }
 paimon-datafusion = "0.2.0"
-dobbydb-app = { path = "src/app" }
-dobbydb-storage = {path = "src/storage"}
-dobbydb-common = {path = "src/common"}
+lakelet-app = { path = "src/app" }
+lakelet-storage = {path = "src/storage"}
+lakelet-common = {path = "src/common"}
 
 [profile.release]
 lto = true

@@ -12,12 +12,12 @@ use std::any::Any;
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub struct DobbyDbPaimonTableProvider {
+pub struct LakeletPaimonTableProvider {
     inner_provider: PaimonTableProvider,
     table_definition: String,
 }
 
-impl DobbyDbPaimonTableProvider {
+impl LakeletPaimonTableProvider {
     pub fn try_new(
         table_reference: TableReference,
         table_location: String,
@@ -41,7 +41,7 @@ impl DobbyDbPaimonTableProvider {
 }
 
 #[async_trait]
-impl TableProvider for DobbyDbPaimonTableProvider {
+impl TableProvider for LakeletPaimonTableProvider {
     fn as_any(&self) -> &dyn Any {
         self
     }

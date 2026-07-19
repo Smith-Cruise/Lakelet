@@ -4,7 +4,7 @@ pub mod sql;
 
 pub(crate) mod catalog;
 
-pub use context::DobbyDbContext;
+pub use context::LakeletContext;
 
 pub(crate) use catalog::data_file_format;
 pub(crate) use catalog::glue as glue_catalog;

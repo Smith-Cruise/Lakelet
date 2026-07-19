@@ -4,7 +4,7 @@ use crate::table_format::delta::delta_table_provider::DeltaTableProvider;
 use datafusion::catalog::TableProvider;
 use datafusion::common::Result;
 use datafusion::common::TableReference;
-use dobbydb_storage::storage::Storage;
+use lakelet_storage::storage::Storage;
 use std::sync::Arc;
 
 pub struct DeltaTableProviderFactory {}

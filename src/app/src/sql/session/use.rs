@@ -46,7 +46,7 @@ impl ExtendedSessionContext {
         };
 
         if !self
-            .dobbydb_context
+            .lakelet_context
             .catalog_manager
             .catalog_exists(&catalog_name)
         {
@@ -66,7 +66,7 @@ impl ExtendedSessionContext {
 
         if let Some(schema_name) = schema_name {
             if !self
-                .dobbydb_context
+                .lakelet_context
                 .catalog_manager
                 .schema_exist(&catalog_name, &schema_name)
                 .await?

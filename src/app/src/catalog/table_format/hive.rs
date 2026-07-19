@@ -14,7 +14,7 @@ use crate::table_format::hive::hive_table_provider::HiveTableProvider;
 use crate::table_format::metadata_table::MetadataTableType;
 use datafusion::catalog::TableProvider;
 use datafusion::common::{DataFusionError, Result};
-use dobbydb_storage::storage::Storage;
+use lakelet_storage::storage::Storage;
 use std::sync::Arc;
 use tokio::runtime::Handle;
 

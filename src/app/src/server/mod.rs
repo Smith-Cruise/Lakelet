@@ -2,10 +2,10 @@ pub mod cli_helper;
 pub mod flight;
 pub mod repl;
 
-use crate::context::DobbyDbContext;
+use crate::context::LakeletContext;
 use crate::sql::session::ExtendedSessionContext;
 use clap::Parser;
-use datafusion::common::error::Result;
+use datafusion::common::error::{DataFusionError, Result};
 use datafusion::execution::runtime_env::RuntimeEnvBuilder;
 use datafusion_cli::object_storage::instrumented::{
     InstrumentedObjectStoreMode, InstrumentedObjectStoreRegistry,
@@ -18,7 +18,7 @@ use std::time::Duration;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
-struct DobbyDbArgs {
+struct LakeletArgs {
     #[clap(
         long,
         required_unless_present = "agent_help",
@@ -57,10 +57,17 @@ struct DobbyDbArgs {
         conflicts_with = "command"
     )]
     file: Option<String>,
+
+    #[clap(
+        long,
+        help = "Start an Arrow Flight SQL server instead of the interactive REPL. Requires 'flight-sql-server-port' under [server] in the config file. Conflicts with --command and --file.",
+        conflicts_with_all = ["command", "file"]
+    )]
+    flight_sql_server: bool,
 }
 
 pub fn run() -> Result<()> {
-    let args = DobbyDbArgs::parse();
+    let args = LakeletArgs::parse();
     if args.agent_help {
         print_agent_help();
         return Ok(());
@@ -70,27 +77,28 @@ pub fn run() -> Result<()> {
         .config
         .as_deref()
         .expect("clap requires --config unless --agent-help is present");
-    let mut dobbydb_context = DobbyDbContext::new(Some(config))?;
-    dobbydb_context.default_catalog = args.default_catalog.clone();
-    dobbydb_context.default_schema = args.default_schema.clone();
-    let dobbydb_context = Arc::new(dobbydb_context);
-    let cpu_handle = dobbydb_context.runtime_manager.cpu_handle();
-    cpu_handle.block_on(async_run(dobbydb_context.clone(), args))
+    let mut lakelet_context = LakeletContext::new(Some(config))?;
+    lakelet_context.default_catalog = args.default_catalog.clone();
+    lakelet_context.default_schema = args.default_schema.clone();
+    let lakelet_context = Arc::new(lakelet_context);
+    let cpu_handle = lakelet_context.runtime_manager.cpu_handle();
+    cpu_handle.block_on(async_run(lakelet_context.clone(), args))
 }
 
 fn print_agent_help() {
     println!(
-        r#"DobbyDB Agent Guide
+        r#"Lakelet Agent Guide
 
-DobbyDB is a lakehouse SQL query engine based on DataFusion. Use it to query
+Lakelet is a lakehouse SQL query engine based on DataFusion. Use it to query
 tables from configured HMS or Glue catalogs.
 
 Basic commands:
-  dobbydb --config config.toml
-  dobbydb --config config.toml --command "show catalogs;"
-  dobbydb --config config.toml --command "show schemas;"
-  dobbydb --config config.toml --command "show tables;"
-  dobbydb --config config.toml --file query.sql
+  lakelet --config config.toml
+  lakelet --config config.toml --command "show catalogs;"
+  lakelet --config config.toml --command "show schemas;"
+  lakelet --config config.toml --command "show tables;"
+  lakelet --config config.toml --file query.sql
+  lakelet --config config.toml --flight-sql-server
 
 Recommended discovery workflow:
   1. show catalogs;
@@ -117,6 +125,8 @@ Useful SQL:
 Config examples:
   [server]
   memory-limit = "4GB"
+  # Required for --flight-sql-server
+  flight-sql-server-port = 32010
 
   [[catalog.hms]]
   name = "hms_1"
@@ -136,12 +146,12 @@ Notes:
     );
 }
 
-async fn async_run(dobbydb_context: Arc<DobbyDbContext>, args: DobbyDbArgs) -> Result<()> {
+async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> Result<()> {
     let instrumented_registry = Arc::new(
         InstrumentedObjectStoreRegistry::new().with_profile_mode(args.object_store_profiling),
     );
     let mut runtime_env_builder = RuntimeEnvBuilder::new();
-    if let Some(memory_limit) = dobbydb_context.server_config.memory_limit {
+    if let Some(memory_limit) = lakelet_context.server_config.memory_limit {
         runtime_env_builder = runtime_env_builder.with_memory_limit(memory_limit, 1.0);
     }
     let runtime_env = runtime_env_builder
@@ -150,6 +160,15 @@ async fn async_run(dobbydb_context: Arc<DobbyDbContext>, args: DobbyDbArgs) -> R
         .with_object_store_registry(instrumented_registry.clone())
         .build_arc()?;
 
+    if args.flight_sql_server {
+        let Some(port) = lakelet_context.server_config.flight_sql_server_port else {
+            return Err(DataFusionError::Configuration(
+                "--flight-sql-server requires 'flight-sql-server-port' under [server] in the config file".to_string(),
+            ));
+        };
+        return flight::serve(lakelet_context, runtime_env, port).await;
+    }
+
     let print_options = PrintOptions {
         format: PrintFormat::Table,
         quiet: false,
@@ -157,7 +176,7 @@ async fn async_run(dobbydb_context: Arc<DobbyDbContext>, args: DobbyDbArgs) -> R
         color: true,
         instrumented_registry: instrumented_registry.clone(),
     };
-    let session_context = ExtendedSessionContext::new(dobbydb_context, runtime_env);
+    let session_context = ExtendedSessionContext::new(lakelet_context, runtime_env);
     let command = args.command;
     let file = args.file;
     if let Some(command) = command {
@@ -200,8 +219,8 @@ mod tests {
 
     #[test]
     fn test_parse_single_command() {
-        let args = DobbyDbArgs::try_parse_from([
-            "dobbydb",
+        let args = LakeletArgs::try_parse_from([
+            "lakelet",
             "--config",
             "config.toml",
             "--command",
@@ -221,8 +240,8 @@ mod tests {
         let file = NamedTempFile::new().expect("temp sql file should be created");
         fs::write(file.path(), "show catalogs;show variables;")
             .expect("temp sql file should be written");
-        let args = DobbyDbArgs::try_parse_from([
-            "dobbydb",
+        let args = LakeletArgs::try_parse_from([
+            "lakelet",
             "--config",
             "config.toml",
             "--file",
@@ -241,7 +260,7 @@ mod tests {
 
     #[test]
     fn test_parse_agent_help_without_config() {
-        let args = DobbyDbArgs::try_parse_from(["dobbydb", "--agent-help"])
+        let args = LakeletArgs::try_parse_from(["lakelet", "--agent-help"])
             .expect("--agent-help should not require --config");
 
         assert!(args.agent_help);
@@ -250,9 +269,43 @@ mod tests {
 
     #[test]
     fn test_parse_requires_config_without_agent_help() {
-        let err = DobbyDbArgs::try_parse_from(["dobbydb", "--command", "show catalogs;"])
+        let err = LakeletArgs::try_parse_from(["lakelet", "--command", "show catalogs;"])
             .expect_err("normal execution should require --config");
 
         assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn test_parse_flight_sql_server() {
+        let args = LakeletArgs::try_parse_from([
+            "lakelet",
+            "--config",
+            "config.toml",
+            "--flight-sql-server",
+        ])
+        .expect("--flight-sql-server should parse");
+
+        assert!(args.flight_sql_server);
+    }
+
+    #[test]
+    fn test_parse_flight_sql_server_conflicts_with_command_and_file() {
+        let file = NamedTempFile::new().expect("temp sql file should be created");
+        let file_path = file
+            .path()
+            .to_str()
+            .expect("temp sql file path should be valid utf-8");
+
+        for conflicting in [
+            vec!["--command", "show catalogs;"],
+            vec!["--file", file_path],
+        ] {
+            let mut argv = vec!["lakelet", "--config", "config.toml", "--flight-sql-server"];
+            argv.extend(conflicting);
+            let err = LakeletArgs::try_parse_from(argv)
+                .expect_err("--flight-sql-server should conflict with --command/--file");
+
+            assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+        }
     }
 }

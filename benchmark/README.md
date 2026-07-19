@@ -8,7 +8,7 @@ Currently supported benchmark suite:
 
 Currently supported engines:
 
-- `dobbydb`
+- `lakelet`
 - `starrocks`
 
 ## Setup
@@ -19,14 +19,14 @@ Install Python dependencies when running StarRocks benchmarks:
 python3 -m pip install -r benchmark/requirements.txt
 ```
 
-DobbyDB benchmarks do not require the Python dependencies because the runner
-executes the DobbyDB binary directly.
+Lakelet benchmarks do not require the Python dependencies because the runner
+executes the Lakelet binary directly.
 
 ## Common Options
 
 The runner requires these options for all engines:
 
-- `--engine`: benchmark engine, such as `dobbydb` or `starrocks`.
+- `--engine`: benchmark engine, such as `lakelet` or `starrocks`.
 - `--benchmark-type`: benchmark suite. Currently only `tpch` is supported.
 - `--default-catalog`: default catalog for the benchmark session.
 - `--default-schema`: default schema or database for the benchmark session.
@@ -39,19 +39,19 @@ Optional common options:
 - `--output`: parent directory for benchmark output artifacts. Defaults to
   `/tmp`.
 
-## DobbyDB
+## Lakelet
 
 Run one query:
 
 ```bash
 python3 benchmark/run_benchmark.py \
-  --engine dobbydb \
+  --engine lakelet \
   --benchmark-type tpch \
   --default-catalog hms_catalog \
   --default-schema tpch_hive_sf1 \
   --runs 1 \
   --query q01 \
-  --bin target/debug/dobbydb \
+  --bin target/debug/lakelet \
   --config config.toml
 ```
 
@@ -59,17 +59,17 @@ Run the full TPC-H suite:
 
 ```bash
 python3 benchmark/run_benchmark.py \
-  --engine dobbydb \
+  --engine lakelet \
   --benchmark-type tpch \
   --default-catalog hms_catalog \
   --default-schema tpch_hive_sf1 \
   --runs 1 \
-  --bin target/debug/dobbydb \
+  --bin target/debug/lakelet \
   --config config.toml
 ```
 
-The DobbyDB runner executes each SQL file with `--file` and parses elapsed time
-from DobbyDB output.
+The Lakelet runner executes each SQL file with `--file` and parses elapsed time
+from Lakelet output.
 
 ## StarRocks
 
@@ -125,7 +125,7 @@ Successful runs: 1
 Failed runs: 0
 Total elapsed(s): 2.862
 Average per run(s): 2.862
-Benchmark output: /tmp/dobbydb-benchmark-20260425-153000-12345
+Benchmark output: /tmp/lakelet-benchmark-20260425-153000-12345
 ```
 
 Each benchmark run creates a timestamped directory under `--output` with:
@@ -133,7 +133,7 @@ Each benchmark run creates a timestamped directory under `--output` with:
 - `console.txt`: benchmark console output.
 - `results.csv`: query, run index, status, elapsed seconds, and error message.
 - `raw/<query>/run<N>.txt`: SQL text and SQL output result for each run.
-  DobbyDB raw files include both extracted `sql_result` and full `raw_output`.
+  Lakelet raw files include both extracted `sql_result` and full `raw_output`.
 
 If one SQL run fails, the runner records it as `failed`, prints a `Skip ...`
 message, and continues with the remaining runs.
