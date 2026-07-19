@@ -5,7 +5,7 @@ pub mod repl;
 use crate::context::DobbyDbContext;
 use crate::sql::session::ExtendedSessionContext;
 use clap::Parser;
-use datafusion::common::error::Result;
+use datafusion::common::error::{DataFusionError, Result};
 use datafusion::execution::runtime_env::RuntimeEnvBuilder;
 use datafusion_cli::object_storage::instrumented::{
     InstrumentedObjectStoreMode, InstrumentedObjectStoreRegistry,
@@ -57,6 +57,13 @@ struct DobbyDbArgs {
         conflicts_with = "command"
     )]
     file: Option<String>,
+
+    #[clap(
+        long,
+        help = "Start an Arrow Flight SQL server instead of the interactive REPL. Requires 'flight-sql-server-port' under [server] in the config file. Conflicts with --command and --file.",
+        conflicts_with_all = ["command", "file"]
+    )]
+    flight_sql_server: bool,
 }
 
 pub fn run() -> Result<()> {
@@ -91,6 +98,7 @@ Basic commands:
   dobbydb --config config.toml --command "show schemas;"
   dobbydb --config config.toml --command "show tables;"
   dobbydb --config config.toml --file query.sql
+  dobbydb --config config.toml --flight-sql-server
 
 Recommended discovery workflow:
   1. show catalogs;
@@ -117,6 +125,8 @@ Useful SQL:
 Config examples:
   [server]
   memory-limit = "4GB"
+  # Required for --flight-sql-server
+  flight-sql-server-port = 32010
 
   [[catalog.hms]]
   name = "hms_1"
@@ -149,6 +159,15 @@ async fn async_run(dobbydb_context: Arc<DobbyDbContext>, args: DobbyDbArgs) -> R
         .with_object_list_cache_ttl(Some(Duration::from_hours(1))) // 1 hour cache
         .with_object_store_registry(instrumented_registry.clone())
         .build_arc()?;
+
+    if args.flight_sql_server {
+        let Some(port) = dobbydb_context.server_config.flight_sql_server_port else {
+            return Err(DataFusionError::Configuration(
+                "--flight-sql-server requires 'flight-sql-server-port' under [server] in the config file".to_string(),
+            ));
+        };
+        return flight::serve(dobbydb_context, runtime_env, port).await;
+    }
 
     let print_options = PrintOptions {
         format: PrintFormat::Table,
@@ -254,5 +273,39 @@ mod tests {
             .expect_err("normal execution should require --config");
 
         assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn test_parse_flight_sql_server() {
+        let args = DobbyDbArgs::try_parse_from([
+            "dobbydb",
+            "--config",
+            "config.toml",
+            "--flight-sql-server",
+        ])
+        .expect("--flight-sql-server should parse");
+
+        assert!(args.flight_sql_server);
+    }
+
+    #[test]
+    fn test_parse_flight_sql_server_conflicts_with_command_and_file() {
+        let file = NamedTempFile::new().expect("temp sql file should be created");
+        let file_path = file
+            .path()
+            .to_str()
+            .expect("temp sql file path should be valid utf-8");
+
+        for conflicting in [
+            vec!["--command", "show catalogs;"],
+            vec!["--file", file_path],
+        ] {
+            let mut argv = vec!["dobbydb", "--config", "config.toml", "--flight-sql-server"];
+            argv.extend(conflicting);
+            let err = DobbyDbArgs::try_parse_from(argv)
+                .expect_err("--flight-sql-server should conflict with --command/--file");
+
+            assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+        }
     }
 }

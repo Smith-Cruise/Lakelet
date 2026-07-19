@@ -9,6 +9,9 @@ clap = { version = "4.5.48", features = ["derive"] }
 datafusion = { workspace = true }
 datafusion-cli = { workspace = true }
 sqlparser = { workspace = true }
+arrow-flight = { workspace = true }
+tonic = { workspace = true }
+prost = { workspace = true }
 tokio = { workspace = true }
 dobbydb-common = { workspace = true }
 dobbydb-storage = { workspace = true }

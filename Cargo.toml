@@ -14,7 +14,10 @@ members = [
 datafusion = "53.1.0"
 datafusion-cli = "53.1.0"
 sqlparser = "0.61.0"
-tokio = { version = "1.0", features = ["rt-multi-thread", "tracing", "rt"] }
+arrow-flight = { version = "58.1.0", features = ["flight-sql"] }
+tonic = "0.14"
+prost = "0.14"
+tokio = { version = "1.0", features = ["rt-multi-thread", "tracing", "rt", "signal"] }
 console-subscriber = "0.5.0"
 serde = { version = "1.0.228", features = ["derive"] }
 typetag = "0.2"

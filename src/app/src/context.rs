@@ -21,6 +21,9 @@ pub struct ServerConfig {
         deserialize_with = "deserialize_memory_size"
     )]
     pub memory_limit: Option<usize>,
+
+    #[serde(rename = "flight-sql-server-port", default)]
+    pub flight_sql_server_port: Option<u16>,
 }
 
 fn deserialize_memory_size<'de, D>(deserializer: D) -> std::result::Result<Option<usize>, D::Error>
@@ -121,5 +124,30 @@ mod tests {
                 Some(4 * 1024 * 1024 * 1024)
             );
         }
+    }
+
+    #[test]
+    fn parse_flight_sql_server_config() {
+        let config: DobbyDbConfig = toml::from_str(
+            r#"
+            [server]
+            flight-sql-server-port = 32010
+            "#,
+        )
+        .unwrap();
+
+        let server_config = config.server_config.unwrap();
+        assert_eq!(server_config.flight_sql_server_port, Some(32010));
+
+        let config: DobbyDbConfig = toml::from_str(
+            r#"
+            [server]
+            memory-limit = "1gb"
+            "#,
+        )
+        .unwrap();
+
+        let server_config = config.server_config.unwrap();
+        assert_eq!(server_config.flight_sql_server_port, None);
     }
 }

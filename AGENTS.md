@@ -14,7 +14,7 @@ DobbyDB is a Datafusion based query engine. It focuses on data lake query.
 ## Agents rules
 Agents should follow below rules:
 
-* The language of the response matches the language of the user's question.
+* The language of the proposed plan matches the language of the user's question.
 * Code's comments, commit message, pull request must use English.
 * If config items are modified, please note that the `@docs/` needs to be updated.
 * Keep the PR descriptions as concise as possible.
