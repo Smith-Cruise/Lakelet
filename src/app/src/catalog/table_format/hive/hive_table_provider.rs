@@ -30,10 +30,10 @@ use datafusion::execution::object_store::ObjectStoreUrl;
 use datafusion::logical_expr::{Expr, TableProviderFilterPushDown};
 use datafusion::physical_plan::ExecutionPlan;
 use datafusion::scalar::ScalarValue;
+use futures::StreamExt;
 use lakelet_storage::storage::{
     Storage, parse_location_schema_authority, try_register_storage_info_session,
 };
-use futures::StreamExt;
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

@@ -1,7 +1,7 @@
 mod show;
 mod r#use;
 
-use crate::catalog::{CatalogManager, LakeletCatalogProviderList, INTERNAL_CATALOG};
+use crate::catalog::{CatalogManager, INTERNAL_CATALOG, LakeletCatalogProviderList};
 use crate::context::LakeletContext;
 use crate::parser::ExtendedParser;
 use crate::statements::ExtendedStatement;

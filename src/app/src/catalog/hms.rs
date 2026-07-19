@@ -11,11 +11,11 @@ use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvid
 use datafusion::common::Result;
 use datafusion::common::TableReference;
 use datafusion::error::DataFusionError;
-use lakelet_storage::storage::Storage;
 use hive_metastore::{
     GetTableRequest, ThriftHiveMetastoreClient, ThriftHiveMetastoreClientBuilder,
     ThriftHiveMetastoreGetDatabaseException, ThriftHiveMetastoreGetTableReqException,
 };
+use lakelet_storage::storage::Storage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
