@@ -1,6 +1,6 @@
 # Table Format
 
-DobbyDB determines a table format from metastore table properties. Table
+Lakelet determines a table format from metastore table properties. Table
 formats are discovered through HMS or Glue.
 
 ## Hive
@@ -63,7 +63,7 @@ An unpartitioned table returns no rows.
 ## Iceberg
 
 An HMS or Glue table is treated as Iceberg when its properties contain
-`metadata_location`. DobbyDB loads the table directly from that metadata file.
+`metadata_location`. Lakelet loads the table directly from that metadata file.
 
 Only Parquet data files are currently supported.
 
@@ -88,7 +88,7 @@ SELECT * FROM `table_name$manifests`;
 ## Delta Lake
 
 An HMS or Glue table is treated as Delta Lake when its properties contain
-`spark.sql.sources.provider` with value `DELTA`, case-insensitively. DobbyDB
+`spark.sql.sources.provider` with value `DELTA`, case-insensitively. Lakelet
 loads the table from its table location and reads the Delta transaction log
 through `delta-rs`.
 
@@ -100,12 +100,12 @@ The same as `delta-rs`.
 
 ### Metadata Table
 
-Delta Lake metadata tables are not currently exposed by DobbyDB.
+Delta Lake metadata tables are not currently exposed by Lakelet.
 
 ## Paimon
 
 An HMS or Glue table is treated as Paimon when its properties contain
-`table_type` with value `PAIMON`, case-insensitively. DobbyDB loads the latest
+`table_type` with value `PAIMON`, case-insensitively. Lakelet loads the latest
 Paimon schema from the table location and reads the table through
 `paimon-datafusion`.
 
@@ -117,4 +117,4 @@ The same as `paimon-rust`.
 
 ### Metadata Table
 
-Paimon metadata tables are not currently exposed by DobbyDB.
+Paimon metadata tables are not currently exposed by Lakelet.

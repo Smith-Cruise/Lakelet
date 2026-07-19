@@ -1,8 +1,8 @@
 mod show;
 mod r#use;
 
-use crate::catalog::{CatalogManager, DobbyDbCatalogProviderList, INTERNAL_CATALOG};
-use crate::context::DobbyDbContext;
+use crate::catalog::{CatalogManager, LakeletCatalogProviderList, INTERNAL_CATALOG};
+use crate::context::LakeletContext;
 use crate::parser::ExtendedParser;
 use crate::statements::ExtendedStatement;
 use datafusion::catalog::AsyncCatalogProviderList;
@@ -16,7 +16,7 @@ use datafusion::execution::runtime_env::RuntimeEnv;
 use datafusion::logical_expr::ExplainFormat;
 use datafusion::logical_expr::sqlparser::ast::Statement;
 use datafusion::prelude::{SessionConfig, SessionContext};
-use dobbydb_common::runtime::RuntimeManager;
+use lakelet_common::runtime::RuntimeManager;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -61,13 +61,13 @@ impl SessionManager {
 }
 
 pub struct ExtendedSessionContext {
-    dobbydb_context: Arc<DobbyDbContext>,
+    lakelet_context: Arc<LakeletContext>,
     session_context: SessionContext,
 }
 
 impl Default for ExtendedSessionContext {
     fn default() -> Self {
-        let dobbydb_context = Arc::new(DobbyDbContext {
+        let lakelet_context = Arc::new(LakeletContext {
             server_config: Default::default(),
             catalog_manager: Arc::new(CatalogManager::default()),
             runtime_manager: Arc::new(RuntimeManager::default()),
@@ -75,17 +75,17 @@ impl Default for ExtendedSessionContext {
             default_schema: None,
         });
         let runtime_env = Arc::new(RuntimeEnv::default());
-        Self::new(dobbydb_context, runtime_env)
+        Self::new(lakelet_context, runtime_env)
     }
 }
 
 impl ExtendedSessionContext {
-    pub fn new(dobbydb_context: Arc<DobbyDbContext>, runtime_env: Arc<RuntimeEnv>) -> Self {
-        let catalog = dobbydb_context
+    pub fn new(lakelet_context: Arc<LakeletContext>, runtime_env: Arc<RuntimeEnv>) -> Self {
+        let catalog = lakelet_context
             .default_catalog
             .as_deref()
             .unwrap_or(INTERNAL_CATALOG);
-        let schema = dobbydb_context
+        let schema = lakelet_context
             .default_schema
             .as_deref()
             .unwrap_or(INFORMATION_SCHEMA);
@@ -96,7 +96,7 @@ impl ExtendedSessionContext {
         let session_context = SessionContext::new_with_config_rt(session_config, runtime_env);
         Self {
             session_context,
-            dobbydb_context,
+            lakelet_context,
         }
     }
 
@@ -158,7 +158,7 @@ impl ExtendedSessionContext {
 
         // Now we can asynchronously resolve the table references to get a cached catalog
         // that we can use for our query
-        let catalog_provider_list = DobbyDbCatalogProviderList::new(self.dobbydb_context.clone());
+        let catalog_provider_list = LakeletCatalogProviderList::new(self.lakelet_context.clone());
         let resolved_catalog_providers = catalog_provider_list
             .resolve(&references, state.config())
             .await?;
@@ -203,8 +203,8 @@ mod tests {
         let runtime_env = RuntimeEnvBuilder::new()
             .with_object_store_registry(instrumented_registry.clone())
             .build_arc()?;
-        let dobbydb_context = Arc::new(DobbyDbContext::default());
-        let session = ExtendedSessionContext::new(dobbydb_context, runtime_env);
+        let lakelet_context = Arc::new(LakeletContext::default());
+        let session = ExtendedSessionContext::new(lakelet_context, runtime_env);
 
         let store_url = Url::parse("memory://bucket").unwrap();
         let object_store = Arc::new(InMemory::new());

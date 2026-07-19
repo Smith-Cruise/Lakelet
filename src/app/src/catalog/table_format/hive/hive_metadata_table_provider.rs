@@ -15,7 +15,7 @@ use datafusion::execution::object_store::ObjectStoreUrl;
 use datafusion::logical_expr::Expr;
 use datafusion::object_store::{ObjectMeta, ObjectStore};
 use datafusion::physical_plan::ExecutionPlan;
-use dobbydb_storage::storage::{
+use lakelet_storage::storage::{
     Storage, parse_location_schema_authority, try_register_storage_info_session,
 };
 use std::any::Any;

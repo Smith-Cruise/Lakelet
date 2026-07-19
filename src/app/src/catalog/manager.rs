@@ -1,4 +1,4 @@
-use crate::context::DobbyDbContext;
+use crate::context::LakeletContext;
 use crate::glue_catalog::{GlueCatalog, GlueCatalogConfig};
 use crate::hms_catalog::{HMSCatalog, HMSCatalogConfig};
 use crate::internal_catalog::{INTERNAL_CATALOG, InternalCatalog};
@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncCatalogProviderList};
 use datafusion::common::Result;
 use datafusion::error::DataFusionError;
-use dobbydb_common::runtime::RuntimeManager;
+use lakelet_common::runtime::RuntimeManager;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -88,11 +88,11 @@ impl CatalogManager {
     fn build_catalog_provider(
         &self,
         catalog_name: &str,
-    ) -> Result<Box<dyn DobbyDbCatalogProvider + Send + Sync>> {
+    ) -> Result<Box<dyn LakeletCatalogProvider + Send + Sync>> {
         let catalog_config = self
             .get_catalog(catalog_name)
             .ok_or_else(|| DataFusionError::Plan(format!("unknown catalog {}", catalog_name)))?;
-        let dobbydb_context = Arc::new(DobbyDbContext {
+        let lakelet_context = Arc::new(LakeletContext {
             server_config: Default::default(),
             catalog_manager: Arc::new(self.clone()),
             runtime_manager: Arc::new(RuntimeManager::default()),
@@ -101,13 +101,13 @@ impl CatalogManager {
         });
 
         match catalog_config {
-            CatalogConfig::Internal => Ok(Box::new(InternalCatalog::new(dobbydb_context))),
+            CatalogConfig::Internal => Ok(Box::new(InternalCatalog::new(lakelet_context))),
             CatalogConfig::HMS(hms_catalog) => Ok(Box::new(HMSCatalog::new(
-                dobbydb_context,
+                lakelet_context,
                 Arc::new(hms_catalog.clone()),
             ))),
             CatalogConfig::GLUE(glue_catalog) => Ok(Box::new(GlueCatalog::new(
-                dobbydb_context,
+                lakelet_context,
                 Arc::new(glue_catalog.clone()),
             ))),
         }
@@ -151,21 +151,21 @@ impl CatalogManager {
     }
 }
 
-pub struct DobbyDbCatalogProviderList {
-    dobbydb_context: Arc<DobbyDbContext>,
+pub struct LakeletCatalogProviderList {
+    lakelet_context: Arc<LakeletContext>,
 }
 
-impl DobbyDbCatalogProviderList {
-    pub fn new(dobbydb_context: Arc<DobbyDbContext>) -> DobbyDbCatalogProviderList {
-        Self { dobbydb_context }
+impl LakeletCatalogProviderList {
+    pub fn new(lakelet_context: Arc<LakeletContext>) -> LakeletCatalogProviderList {
+        Self { lakelet_context }
     }
 }
 
 #[async_trait]
-impl AsyncCatalogProviderList for DobbyDbCatalogProviderList {
+impl AsyncCatalogProviderList for LakeletCatalogProviderList {
     async fn catalog(&self, catalog_name: &str) -> Result<Option<Arc<dyn AsyncCatalogProvider>>> {
         let catalog_config = if let Some(catalog_config) = self
-            .dobbydb_context
+            .lakelet_context
             .catalog_manager
             .get_catalog(catalog_name)
         {
@@ -176,14 +176,14 @@ impl AsyncCatalogProviderList for DobbyDbCatalogProviderList {
 
         match catalog_config {
             CatalogConfig::Internal => Ok(Some(Arc::new(
-                crate::internal_catalog::InternalCatalog::new(self.dobbydb_context.clone()),
+                crate::internal_catalog::InternalCatalog::new(self.lakelet_context.clone()),
             ))),
             CatalogConfig::HMS(hms_catalog) => Ok(Some(Arc::new(HMSCatalog::new(
-                self.dobbydb_context.clone(),
+                self.lakelet_context.clone(),
                 Arc::new(hms_catalog),
             )))),
             CatalogConfig::GLUE(glue_catalog) => Ok(Some(Arc::new(GlueCatalog::new(
-                self.dobbydb_context.clone(),
+                self.lakelet_context.clone(),
                 Arc::new(glue_catalog),
             )))),
         }
@@ -191,7 +191,7 @@ impl AsyncCatalogProviderList for DobbyDbCatalogProviderList {
 }
 
 #[async_trait]
-pub trait DobbyDbCatalogProvider {
+pub trait LakeletCatalogProvider {
     async fn list_schema_names(&self) -> Result<Vec<String>>;
 
     async fn list_table_names(&self, schema_name: &str) -> Result<Vec<String>>;

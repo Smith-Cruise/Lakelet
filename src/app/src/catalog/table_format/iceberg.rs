@@ -6,7 +6,7 @@ use datafusion::catalog::TableProvider;
 use datafusion::common::Result;
 use datafusion::error::DataFusionError;
 use datafusion::sql::TableReference;
-use dobbydb_storage::storage::{HDFS_SCHEMA, OSS_SCHEMA, S3_SCHEMA, S3A_SCHEMA, Storage};
+use lakelet_storage::storage::{HDFS_SCHEMA, OSS_SCHEMA, S3_SCHEMA, S3A_SCHEMA, Storage};
 use iceberg::io::{FileIO, FileIOBuilder, LocalFsStorageFactory};
 use iceberg::table::StaticTable;
 use iceberg::{NamespaceIdent, TableIdent};

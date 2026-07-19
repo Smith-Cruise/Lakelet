@@ -15,7 +15,7 @@ use deltalake::delta_datafusion::engine::AsObjectStoreUrl;
 use deltalake::logstore::{LogStore, LogStoreRef, logstore_factories, object_store_factories};
 use deltalake_aws::S3LogStoreFactory;
 use deltalake_aws::storage::S3ObjectStoreFactory;
-use dobbydb_storage::storage::Storage;
+use lakelet_storage::storage::Storage;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;

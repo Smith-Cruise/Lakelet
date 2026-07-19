@@ -2880,63 +2880,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dobbydb-app"
-version = "0.1.0"
-dependencies = [
- "arrow-flight",
- "async-trait",
- "aws-config",
- "aws-sdk-glue",
- "bytes",
- "clap",
- "datafusion",
- "datafusion-cli",
- "deltalake",
- "deltalake-aws",
- "dobbydb-common",
- "dobbydb-storage",
- "futures",
- "hdfs-native-object-store",
- "hive_metastore",
- "iceberg",
- "iceberg-datafusion",
- "iceberg-storage-opendal",
- "paimon",
- "paimon-datafusion",
- "prost 0.14.3",
- "rustyline",
- "serde",
- "sqlparser",
- "tempfile",
- "tokio",
- "toml",
- "tonic",
- "typetag",
- "url",
- "volo-thrift",
-]
-
-[[package]]
-name = "dobbydb-common"
-version = "0.1.0"
-dependencies = [
- "tokio",
-]
-
-[[package]]
-name = "dobbydb-storage"
-version = "0.1.0"
-dependencies = [
- "datafusion",
- "deltalake",
- "hdfs-native-object-store",
- "iceberg",
- "serde",
- "toml",
- "url",
-]
-
-[[package]]
 name = "dtor"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4250,6 +4193,63 @@ checksum = "b011eec8cc36da2aab2d5cff675ec18454fad408585853910a202391cf9f8e65"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "lakelet-app"
+version = "0.1.0"
+dependencies = [
+ "arrow-flight",
+ "async-trait",
+ "aws-config",
+ "aws-sdk-glue",
+ "bytes",
+ "clap",
+ "datafusion",
+ "datafusion-cli",
+ "deltalake",
+ "deltalake-aws",
+ "futures",
+ "hdfs-native-object-store",
+ "hive_metastore",
+ "iceberg",
+ "iceberg-datafusion",
+ "iceberg-storage-opendal",
+ "lakelet-common",
+ "lakelet-storage",
+ "paimon",
+ "paimon-datafusion",
+ "prost 0.14.3",
+ "rustyline",
+ "serde",
+ "sqlparser",
+ "tempfile",
+ "tokio",
+ "toml",
+ "tonic",
+ "typetag",
+ "url",
+ "volo-thrift",
+]
+
+[[package]]
+name = "lakelet-common"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
+name = "lakelet-storage"
+version = "0.1.0"
+dependencies = [
+ "datafusion",
+ "deltalake",
+ "hdfs-native-object-store",
+ "iceberg",
+ "serde",
+ "toml",
+ "url",
 ]
 
 [[package]]

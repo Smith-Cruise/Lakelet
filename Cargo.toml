@@ -34,9 +34,9 @@ deltalake-aws = "0.15.0"
 hdfs-native-object-store = "0.16"
 paimon = { version = "0.2.0", features = ["storage-s3", "storage-oss", "storage-hdfs"] }
 paimon-datafusion = "0.2.0"
-dobbydb-app = { path = "src/app" }
-dobbydb-storage = {path = "src/storage"}
-dobbydb-common = {path = "src/common"}
+lakelet-app = { path = "src/app" }
+lakelet-storage = {path = "src/storage"}
+lakelet-common = {path = "src/common"}
 
 [profile.release]
 lto = true

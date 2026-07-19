@@ -1,9 +1,9 @@
 mod paimon_table_provider;
 
-use crate::table_format::paimon::paimon_table_provider::DobbyDbPaimonTableProvider;
+use crate::table_format::paimon::paimon_table_provider::LakeletPaimonTableProvider;
 use datafusion::catalog::TableProvider;
 use datafusion::common::{DataFusionError, Result, TableReference};
-use dobbydb_storage::storage::Storage;
+use lakelet_storage::storage::Storage;
 use paimon::catalog::Identifier;
 use paimon::io::FileIO;
 use paimon::table::{SchemaManager, Table};
@@ -43,7 +43,7 @@ impl PaimonTableProviderFactory {
         );
         let inner_provider = PaimonTableProvider::try_new(inner_table)?;
         let provider =
-            DobbyDbPaimonTableProvider::try_new(table_reference, table_location, inner_provider)?;
+            LakeletPaimonTableProvider::try_new(table_reference, table_location, inner_provider)?;
         Ok(Arc::new(provider))
     }
 }

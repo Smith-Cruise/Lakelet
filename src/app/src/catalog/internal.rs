@@ -1,5 +1,5 @@
-use crate::catalog::DobbyDbCatalogProvider;
-use crate::context::DobbyDbContext;
+use crate::catalog::LakeletCatalogProvider;
+use crate::context::LakeletContext;
 use async_trait::async_trait;
 use datafusion::arrow::array::{RecordBatch, StringBuilder};
 use datafusion::arrow::datatypes::{DataType, Field, Schema, SchemaRef};
@@ -25,19 +25,19 @@ pub fn wrap_with_stream_table(table: Arc<dyn PartitionStream>) -> Result<Arc<Str
 }
 
 pub struct InternalCatalog {
-    _dobbydb_context: Arc<DobbyDbContext>,
+    _lakelet_context: Arc<LakeletContext>,
 }
 
 impl InternalCatalog {
-    pub fn new(dobbydb_context: Arc<DobbyDbContext>) -> Self {
+    pub fn new(lakelet_context: Arc<LakeletContext>) -> Self {
         Self {
-            _dobbydb_context: dobbydb_context,
+            _lakelet_context: lakelet_context,
         }
     }
 }
 
 #[async_trait]
-impl DobbyDbCatalogProvider for InternalCatalog {
+impl LakeletCatalogProvider for InternalCatalog {
     async fn list_schema_names(&self) -> Result<Vec<String>> {
         Ok(vec![INFORMATION_SCHEMA.to_string()])
     }

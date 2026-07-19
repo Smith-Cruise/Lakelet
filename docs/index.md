@@ -9,10 +9,10 @@ hide:
 
 # Focused on Data Lake queries, powered by DataFusion
 
-DobbyDB is a query engine focused on data lake workloads. Query Iceberg,
+Lakelet is a query engine focused on data lake workloads. Query Iceberg,
 Delta Lake, and Hive tables through a unified SQL engine.
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
-[View on GitHub](https://github.com/Smith-Cruise/DobbyDB){ .md-button }
+[View on GitHub](https://github.com/Smith-Cruise/Lakelet){ .md-button }
 
 </section>

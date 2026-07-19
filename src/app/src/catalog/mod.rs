@@ -8,7 +8,7 @@ pub(crate) mod table_format;
 
 pub(crate) use internal::{INFORMATION_SCHEMA_SHOW_VARIABLES, INTERNAL_CATALOG};
 pub(crate) use manager::{
-    CatalogConfig, CatalogConfigs, CatalogManager, DobbyDbCatalogProvider,
-    DobbyDbCatalogProviderList,
+    CatalogConfig, CatalogConfigs, CatalogManager, LakeletCatalogProvider,
+    LakeletCatalogProviderList,
 };
 pub(crate) use table_definition_builder::TableDefinitionBuilder;

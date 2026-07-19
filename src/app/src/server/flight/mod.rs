@@ -1,4 +1,4 @@
-use crate::context::DobbyDbContext;
+use crate::context::LakeletContext;
 use crate::sql::session::ExtendedSessionContext;
 use arrow_flight::encode::FlightDataEncoderBuilder;
 use arrow_flight::error::FlightError;
@@ -22,7 +22,7 @@ use tonic::transport::server::TcpIncoming;
 use tonic::{Request, Response, Status, Streaming};
 
 pub async fn serve(
-    dobbydb_context: Arc<DobbyDbContext>,
+    lakelet_context: Arc<LakeletContext>,
     runtime_env: Arc<RuntimeEnv>,
     port: u16,
 ) -> Result<()> {
@@ -30,8 +30,8 @@ pub async fn serve(
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| DataFusionError::Configuration(format!("Failed to bind {addr}: {e}")))?;
-    let service = DobbyDbFlightSqlService::new(dobbydb_context, runtime_env);
-    println!("DobbyDB Flight SQL server listening on {addr}");
+    let service = LakeletFlightSqlService::new(lakelet_context, runtime_env);
+    println!("Lakelet Flight SQL server listening on {addr}");
     Server::builder()
         .add_service(FlightServiceServer::new(service))
         .serve_with_incoming_shutdown(TcpIncoming::from(listener), async {
@@ -41,15 +41,15 @@ pub async fn serve(
         .map_err(|e| DataFusionError::External(Box::new(e)))
 }
 
-pub struct DobbyDbFlightSqlService {
-    dobbydb_context: Arc<DobbyDbContext>,
+pub struct LakeletFlightSqlService {
+    lakelet_context: Arc<LakeletContext>,
     runtime_env: Arc<RuntimeEnv>,
 }
 
-impl DobbyDbFlightSqlService {
-    pub fn new(dobbydb_context: Arc<DobbyDbContext>, runtime_env: Arc<RuntimeEnv>) -> Self {
+impl LakeletFlightSqlService {
+    pub fn new(lakelet_context: Arc<LakeletContext>, runtime_env: Arc<RuntimeEnv>) -> Self {
         Self {
-            dobbydb_context,
+            lakelet_context,
             runtime_env,
         }
     }
@@ -58,7 +58,7 @@ impl DobbyDbFlightSqlService {
     // catalog list with only the catalogs resolved for that query, so a shared
     // session would race under concurrent requests.
     fn new_session(&self) -> ExtendedSessionContext {
-        ExtendedSessionContext::new(self.dobbydb_context.clone(), self.runtime_env.clone())
+        ExtendedSessionContext::new(self.lakelet_context.clone(), self.runtime_env.clone())
     }
 }
 
@@ -84,8 +84,8 @@ fn df_error_to_status(err: DataFusionError) -> Status {
 }
 
 #[tonic::async_trait]
-impl FlightSqlService for DobbyDbFlightSqlService {
-    type FlightService = DobbyDbFlightSqlService;
+impl FlightSqlService for LakeletFlightSqlService {
+    type FlightService = LakeletFlightSqlService;
 
     async fn do_handshake(
         &self,
@@ -164,9 +164,9 @@ mod tests {
     use tonic::transport::Channel;
 
     async fn start_test_server() -> Result<FlightSqlServiceClient<Channel>> {
-        let dobbydb_context = Arc::new(DobbyDbContext::default());
+        let lakelet_context = Arc::new(LakeletContext::default());
         let runtime_env = Arc::new(RuntimeEnv::default());
-        let service = DobbyDbFlightSqlService::new(dobbydb_context, runtime_env);
+        let service = LakeletFlightSqlService::new(lakelet_context, runtime_env);
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let addr = listener.local_addr()?;

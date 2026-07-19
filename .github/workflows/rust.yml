@@ -51,16 +51,16 @@ jobs:
       if: steps.changes.outputs.integration_changed == 'true'
       uses: Swatinem/rust-cache@v2
 
-    - name: Build DobbyDB binary
+    - name: Build Lakelet binary
       if: steps.changes.outputs.integration_changed == 'true'
-      run: cargo build -p dobbydb-app --bin dobbydb
+      run: cargo build -p lakelet-app --bin lakelet
 
-    - name: Upload DobbyDB binary
+    - name: Upload Lakelet binary
       if: steps.changes.outputs.integration_changed == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: dobbydb-debug-bin
-        path: target/debug/dobbydb
+        name: lakelet-debug-bin
+        path: target/debug/lakelet
         if-no-files-found: error
 
   unittest:
@@ -116,17 +116,17 @@ jobs:
     - name: Docker Compose version
       if: needs.build.outputs.integration_changed == 'true'
       run: docker compose version
-    - name: Download DobbyDB binary
+    - name: Download Lakelet binary
       if: needs.build.outputs.integration_changed == 'true'
       uses: actions/download-artifact@v4
       with:
-        name: dobbydb-debug-bin
+        name: lakelet-debug-bin
         path: target/debug
-    - name: Make DobbyDB binary executable
+    - name: Make Lakelet binary executable
       if: needs.build.outputs.integration_changed == 'true'
-      run: chmod +x target/debug/dobbydb
+      run: chmod +x target/debug/lakelet
     - name: Run integration tests
       if: needs.build.outputs.integration_changed == 'true'
       env:
-        DOBBYDB_BIN: ${{ github.workspace }}/target/debug/dobbydb
+        LAKELET_BIN: ${{ github.workspace }}/target/debug/lakelet
       run: ./integration-tests/integration-test.sh

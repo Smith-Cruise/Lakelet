@@ -1,5 +1,5 @@
 ## Project Description
-DobbyDB is a Datafusion based query engine. It focuses on data lake query.
+Lakelet is a Datafusion based query engine. It focuses on data lake query.
 
 ### Supported Table Format
 * Iceberg (parquet)

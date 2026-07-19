@@ -1,13 +1,13 @@
 # Catalog
 
-DobbyDB support to connect HMS and Glue catalog.
+Lakelet support to connect HMS and Glue catalog.
 
 Storage settings are embedded directly in each catalog entry. See
 [Storage](storage.md) for their complete field reference.
 
 ## Catalog SQL
 
-DobbyDB supports these catalog-related SQL statements:
+Lakelet supports these catalog-related SQL statements:
 
 ```sql
 -- List all catalogs.
@@ -26,7 +26,7 @@ Use `[[catalog.hms]]` to connect to a Hive Metastore through Thrift.
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `name` | String | Yes | None | Unique catalog name used by DobbyDB. |
+| `name` | String | Yes | None | Unique catalog name used by Lakelet. |
 | `metastore-uri` | String | Yes | None | Hive Metastore address in `host:port` form. |
 | `s3-storage` | Inline table | No | Not configured | Credentials and endpoint for tables stored at `s3://` or `s3a://` locations. |
 | `oss-storage` | Inline table | No | Not configured | Credentials and endpoint for tables stored at `oss://` locations. |
@@ -42,7 +42,7 @@ The metastore URI is resolved as a socket address when the catalog is accessed.
 It must not include a URI scheme such as `thrift://`.
 
 Hive tables stored at `hdfs://` locations do not need a storage configuration
-block. DobbyDB reads the NameNode host and port from the table location. Kerberos
+block. Lakelet reads the NameNode host and port from the table location. Kerberos
 is not support yet.
 
 ## Glue
@@ -51,7 +51,7 @@ Use `[[catalog.glue]]` to connect to the AWS Glue Data Catalog.
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `name` | String | Yes | None | Unique catalog name used by DobbyDB. |
+| `name` | String | Yes | None | Unique catalog name used by Lakelet. |
 | `aws-glue-region` | String | No | AWS SDK default | AWS region containing the Glue catalog. |
 | `aws-glue-access-key` | String | No | AWS SDK default credential chain | Static access key used for Glue requests. |
 | `aws-glue-secret-key` | String | No | AWS SDK default credential chain | Static secret key used for Glue requests. |

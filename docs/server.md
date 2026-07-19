@@ -25,11 +25,11 @@ The value is an integer with an optional, case-insensitive unit. With no unit, t
 
 ## Arrow Flight SQL server
 
-DobbyDB can run as an [Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html)
+Lakelet can run as an [Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html)
 server instead of the interactive REPL:
 
 ```bash
-dobbydb --config config.toml --flight-sql-server
+lakelet --config config.toml --flight-sql-server
 ```
 
 `flight-sql-server-port` must be configured under `[server]`, otherwise startup

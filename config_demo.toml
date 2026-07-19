@@ -1,4 +1,4 @@
-# DobbyDB configuration demo.
+# Lakelet configuration demo.
 # Copy this file, adjust the values, and pass it via `--config <path>`.
 # All keys use kebab-case. Required fields are marked; everything else is optional.
 

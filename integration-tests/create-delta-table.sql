@@ -1,6 +1,6 @@
-DROP TABLE IF EXISTS delta.`s3://dobbydb-e2e/warehouse/delta_db.db/orders`;
+DROP TABLE IF EXISTS delta.`s3://lakelet-e2e/warehouse/delta_db.db/orders`;
 
-CREATE TABLE delta.`s3://dobbydb-e2e/warehouse/delta_db.db/orders` (
+CREATE TABLE delta.`s3://lakelet-e2e/warehouse/delta_db.db/orders` (
     id INT,
     name STRING,
     amount DECIMAL(10, 2),
@@ -9,7 +9,7 @@ CREATE TABLE delta.`s3://dobbydb-e2e/warehouse/delta_db.db/orders` (
 USING delta
 PARTITIONED BY (dt);
 
-INSERT INTO delta.`s3://dobbydb-e2e/warehouse/delta_db.db/orders`
+INSERT INTO delta.`s3://lakelet-e2e/warehouse/delta_db.db/orders`
 VALUES
     (1, 'alice', CAST(10.50 AS DECIMAL(10, 2)), '2026-06-25'),
     (2, 'bob', CAST(20.25 AS DECIMAL(10, 2)), '2026-06-25'),

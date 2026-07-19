@@ -30,7 +30,7 @@ use datafusion::execution::object_store::ObjectStoreUrl;
 use datafusion::logical_expr::{Expr, TableProviderFilterPushDown};
 use datafusion::physical_plan::ExecutionPlan;
 use datafusion::scalar::ScalarValue;
-use dobbydb_storage::storage::{
+use lakelet_storage::storage::{
     Storage, parse_location_schema_authority, try_register_storage_info_session,
 };
 use futures::StreamExt;

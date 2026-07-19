@@ -1,5 +1,5 @@
-use crate::catalog::{CatalogConfig, DobbyDbCatalogProvider};
-use crate::context::DobbyDbContext;
+use crate::catalog::{CatalogConfig, LakeletCatalogProvider};
+use crate::context::LakeletContext;
 use crate::table_format::TableFormat;
 use crate::table_format::hive::hive_partition::HivePartition;
 use crate::table_format::hive::hive_storage_info::HiveStorageInfo;
@@ -11,7 +11,7 @@ use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvid
 use datafusion::common::Result;
 use datafusion::common::TableReference;
 use datafusion::error::DataFusionError;
-use dobbydb_storage::storage::Storage;
+use lakelet_storage::storage::Storage;
 use hive_metastore::{
     GetTableRequest, ThriftHiveMetastoreClient, ThriftHiveMetastoreClientBuilder,
     ThriftHiveMetastoreGetDatabaseException, ThriftHiveMetastoreGetTableReqException,
@@ -62,21 +62,21 @@ pub fn from_thrift_exception<T, E: Debug>(value: MaybeException<T, E>) -> Result
 }
 
 pub struct HMSCatalog {
-    dobbydb_context: Arc<DobbyDbContext>,
+    lakelet_context: Arc<LakeletContext>,
     config: Arc<HMSCatalogConfig>,
 }
 
 impl HMSCatalog {
-    pub fn new(dobbydb_context: Arc<DobbyDbContext>, config: Arc<HMSCatalogConfig>) -> Self {
+    pub fn new(lakelet_context: Arc<LakeletContext>, config: Arc<HMSCatalogConfig>) -> Self {
         Self {
-            dobbydb_context,
+            lakelet_context,
             config,
         }
     }
 }
 
 #[async_trait]
-impl DobbyDbCatalogProvider for HMSCatalog {
+impl LakeletCatalogProvider for HMSCatalog {
     async fn list_schema_names(&self) -> Result<Vec<String>> {
         let hms_client = build_hms_client(&self.config)?;
         let all_database_names = hms_client
@@ -145,7 +145,7 @@ impl DobbyDbCatalogProvider for HMSCatalog {
 impl AsyncCatalogProvider for HMSCatalog {
     async fn schema(&self, schema_name: &str) -> Result<Option<Arc<dyn AsyncSchemaProvider>>> {
         Ok(Some(Arc::new(HMSSchema::new(
-            self.dobbydb_context.clone(),
+            self.lakelet_context.clone(),
             self.config.clone(),
             schema_name,
         )?)))
@@ -153,19 +153,19 @@ impl AsyncCatalogProvider for HMSCatalog {
 }
 
 struct HMSSchema {
-    dobbydb_context: Arc<DobbyDbContext>,
+    lakelet_context: Arc<LakeletContext>,
     config: Arc<HMSCatalogConfig>,
     schema_name: String,
 }
 
 impl HMSSchema {
     pub fn new(
-        dobbydb_context: Arc<DobbyDbContext>,
+        lakelet_context: Arc<LakeletContext>,
         config: Arc<HMSCatalogConfig>,
         schema_name: &str,
     ) -> Result<Self> {
         Ok(Self {
-            dobbydb_context,
+            lakelet_context,
             config,
             schema_name: schema_name.to_string(),
         })
@@ -243,7 +243,7 @@ impl AsyncSchemaProvider for HMSSchema {
         };
 
         let table_provider_builder = TableProviderBuilder::new(
-            self.dobbydb_context.clone(),
+            self.lakelet_context.clone(),
             table_location,
             table_reference,
             hms_table_properties,

@@ -1,8 +1,8 @@
-# DobbyDB
+# Lakelet
 
 **Wake up, query the data lake.**
 
-DobbyDB is a single-binary SQL engine for lakehouse tables. No Spark cluster is
+Lakelet is a single-binary SQL engine for lakehouse tables. No Spark cluster is
 needed: point it at Hive Metastore or AWS Glue, then query Iceberg, Hive,
 Paimon, and Delta Lake tables directly with SQL.
 
@@ -42,19 +42,19 @@ s3-storage = { region = "us-east-1", endpoint = "http://127.0.0.1:9000", access-
 Start the SQL shell:
 
 ```bash
-target/release/dobbydb --config config.toml
+target/release/lakelet --config config.toml
 ```
 
 Run one SQL command and exit:
 
 ```bash
-target/release/dobbydb --config config.toml --command "show catalogs;"
+target/release/lakelet --config config.toml --command "show catalogs;"
 ```
 
 Run SQL from a file:
 
 ```bash
-target/release/dobbydb --config config.toml --file query.sql
+target/release/lakelet --config config.toml --file query.sql
 ```
 
 ## Basic SQL
@@ -76,4 +76,4 @@ select * from hms.default.my_table limit 10;
 
 ## Documentation
 
-https://smith-cruise.github.io/DobbyDB/
+https://lakelet.dev/
