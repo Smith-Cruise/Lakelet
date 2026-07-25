@@ -1,6 +1,7 @@
 pub mod cli_helper;
 pub mod flight;
 pub mod repl;
+pub mod web;
 
 use crate::context::LakeletContext;
 use crate::sql::session::ExtendedSessionContext;
@@ -64,6 +65,13 @@ struct LakeletArgs {
         conflicts_with_all = ["command", "file"]
     )]
     flight_sql_server: bool,
+
+    #[clap(
+        long,
+        help = "Start the web UI HTTP API server instead of the interactive REPL. Listens on 127.0.0.1. Requires 'web-ui-port' under [server] in the config file. Conflicts with --command, --file and --flight-sql-server.",
+        conflicts_with_all = ["command", "file", "flight_sql_server"]
+    )]
+    web_ui: bool,
 }
 
 pub fn run() -> Result<()> {
@@ -99,6 +107,7 @@ Basic commands:
   lakelet --config config.toml --command "show tables;"
   lakelet --config config.toml --file query.sql
   lakelet --config config.toml --flight-sql-server
+  lakelet --config config.toml --web-ui
 
 Recommended discovery workflow:
   1. show catalogs;
@@ -127,6 +136,8 @@ Config examples:
   memory-limit = "4GB"
   # Required for --flight-sql-server
   flight-sql-server-port = 32010
+  # Required for --web-ui (binds 127.0.0.1 only)
+  web-ui-port = 6060
 
   [[catalog.hms]]
   name = "hms_1"
@@ -167,6 +178,15 @@ async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> R
             ));
         };
         return flight::serve(lakelet_context, runtime_env, port).await;
+    }
+
+    if args.web_ui {
+        let Some(port) = lakelet_context.server_config.web_ui_port else {
+            return Err(DataFusionError::Configuration(
+                "--web-ui requires 'web-ui-port' under [server] in the config file, e.g. web-ui-port = 6060".to_string(),
+            ));
+        };
+        return web::serve(lakelet_context, runtime_env, port).await;
     }
 
     let print_options = PrintOptions {
@@ -304,6 +324,36 @@ mod tests {
             argv.extend(conflicting);
             let err = LakeletArgs::try_parse_from(argv)
                 .expect_err("--flight-sql-server should conflict with --command/--file");
+
+            assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+        }
+    }
+
+    #[test]
+    fn test_parse_web_ui() {
+        let args = LakeletArgs::try_parse_from(["lakelet", "--config", "config.toml", "--web-ui"])
+            .expect("--web-ui should parse");
+
+        assert!(args.web_ui);
+    }
+
+    #[test]
+    fn test_parse_web_ui_conflicts() {
+        let file = NamedTempFile::new().expect("temp sql file should be created");
+        let file_path = file
+            .path()
+            .to_str()
+            .expect("temp sql file path should be valid utf-8");
+
+        for conflicting in [
+            vec!["--command", "show catalogs;"],
+            vec!["--file", file_path],
+            vec!["--flight-sql-server"],
+        ] {
+            let mut argv = vec!["lakelet", "--config", "config.toml", "--web-ui"];
+            argv.extend(conflicting);
+            let err = LakeletArgs::try_parse_from(argv)
+                .expect_err("--web-ui should conflict with --command/--file/--flight-sql-server");
 
             assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
         }

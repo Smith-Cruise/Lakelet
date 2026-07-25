@@ -24,6 +24,9 @@ pub struct ServerConfig {
 
     #[serde(rename = "flight-sql-server-port", default)]
     pub flight_sql_server_port: Option<u16>,
+
+    #[serde(rename = "web-ui-port", default)]
+    pub web_ui_port: Option<u16>,
 }
 
 fn deserialize_memory_size<'de, D>(deserializer: D) -> std::result::Result<Option<usize>, D::Error>
@@ -61,6 +64,7 @@ fn parse_memory_size(size: &str) -> std::result::Result<usize, String> {
         .ok_or_else(|| format!("memory-limit '{size}' is too large"))
 }
 
+#[derive(Clone)]
 pub struct LakeletContext {
     pub server_config: ServerConfig,
     pub catalog_manager: Arc<CatalogManager>,
@@ -124,6 +128,27 @@ mod tests {
                 Some(4 * 1024 * 1024 * 1024)
             );
         }
+    }
+
+    #[test]
+    fn parse_web_ui_port_config() {
+        let config: LakeletConfig = toml::from_str(
+            r#"
+            [server]
+            web-ui-port = 8080
+            "#,
+        )
+        .unwrap();
+        assert_eq!(config.server_config.unwrap().web_ui_port, Some(8080));
+
+        let config: LakeletConfig = toml::from_str(
+            r#"
+            [server]
+            memory-limit = "1gb"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(config.server_config.unwrap().web_ui_port, None);
     }
 
     #[test]

@@ -1030,10 +1030,13 @@ checksum = "31b698c5f9a010f6573133b09e0de5408834d0c82f8d7475a89fc1867a71cd90"
 dependencies = [
  "axum-core",
  "bytes",
+ "form_urlencoded",
  "futures-util",
  "http 1.3.1",
  "http-body 1.0.1",
  "http-body-util",
+ "hyper 1.7.0",
+ "hyper-util",
  "itoa",
  "matchit",
  "memchr",
@@ -1041,10 +1044,15 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "serde_core",
+ "serde_json",
+ "serde_path_to_error",
+ "serde_urlencoded",
  "sync_wrapper",
+ "tokio",
  "tower",
  "tower-layer",
  "tower-service",
+ "tracing",
 ]
 
 [[package]]
@@ -1063,6 +1071,7 @@ dependencies = [
  "sync_wrapper",
  "tower-layer",
  "tower-service",
+ "tracing",
 ]
 
 [[package]]
@@ -4266,9 +4275,11 @@ name = "lakelet-app"
 version = "0.1.0"
 dependencies = [
  "arrow-flight",
+ "async-stream",
  "async-trait",
  "aws-config",
  "aws-sdk-glue",
+ "axum",
  "bytes",
  "clap",
  "datafusion",
@@ -4288,11 +4299,14 @@ dependencies = [
  "prost 0.14.3",
  "rustyline",
  "serde",
+ "serde_json",
  "sqlparser",
  "tempfile",
  "tokio",
  "toml",
  "tonic",
+ "tower",
+ "tower-http",
  "typetag",
  "url",
  "volo-thrift",
@@ -6600,6 +6614,17 @@ dependencies = [
  "itoa",
  "memchr",
  "ryu",
+ "serde",
+ "serde_core",
+]
+
+[[package]]
+name = "serde_path_to_error"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
+dependencies = [
+ "itoa",
  "serde",
  "serde_core",
 ]
