@@ -1,4 +1,5 @@
 site_name: Lakelet
+docs_dir: src
 site_url: https://lakelet.dev/
 site_description: A DataFusion-based query engine for lakehouse workloads
 repo_url: https://github.com/Smith-Cruise/Lakelet
