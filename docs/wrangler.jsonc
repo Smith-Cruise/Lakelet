@@ -1,0 +1,14 @@
+{
+  // Static-assets-only Worker: no script, just the site MkDocs builds into
+  // `site/`. Cloudflare's build runs with this directory as the root, so
+  // `npx wrangler deploy` picks this file up.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lakelet-docs",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "./site",
+    // MkDocs emits pretty URLs (`server/index.html`) and its own 404 page.
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}
