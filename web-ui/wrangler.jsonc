@@ -1,0 +1,14 @@
+{
+  // Static-assets-only Worker: no script, just the site Vite builds into
+  // `dist/`. Cloudflare's build runs with this directory as the root, so
+  // `npx wrangler deploy` picks this file up.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lakelet-web-ui",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "./dist",
+    // Serve index.html for unknown paths. The app has no router today, but
+    // this is how a Vite SPA is expected to behave if one is added.
+    "not_found_handling": "single-page-application"
+  }
+}
