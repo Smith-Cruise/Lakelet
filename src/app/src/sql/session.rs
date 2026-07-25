@@ -103,8 +103,11 @@ impl ExtendedSessionContext {
     pub async fn sql(&self, sql: &str) -> Result<DataFrame> {
         let parser = ExtendedParser::parse_sql(sql)?;
         if parser.len() != 1 {
-            return Err(DataFusionError::Execution(format!(
-                "Invalid query: {}",
+            // A client error, not an execution failure: callers map `Plan` to
+            // 400 / INVALID_ARGUMENT rather than a generic internal error.
+            return Err(DataFusionError::Plan(format!(
+                "Expected exactly one SQL statement, got {}: {}",
+                parser.len(),
                 sql
             )));
         }

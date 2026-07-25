@@ -309,6 +309,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn multi_statement_requests_are_client_errors() {
+        // The editor can easily hold two statements; that is bad input, not an
+        // internal failure.
+        let session = ExtendedSessionContext::default();
+        let err = session
+            .sql("select 1; select 2")
+            .await
+            .expect_err("multiple statements should be rejected");
+        assert_eq!(
+            df_error_to_response(err).status(),
+            StatusCode::BAD_REQUEST,
+            "statement-count validation must map to invalid_sql"
+        );
+    }
+
+    #[tokio::test]
     async fn preflight_allows_any_origin_and_private_network() {
         let response = test_router()
             .oneshot(
