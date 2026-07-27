@@ -13,20 +13,36 @@ pub struct LakeletConfig {
     pub catalog: Option<CatalogConfigs>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// Used when `flight-sql-server-port` is not set in the config file.
+pub const DEFAULT_FLIGHT_SQL_SERVER_PORT: u16 = 32010;
+
+/// Used when `web-ui-port` is not set in the config file.
+pub const DEFAULT_WEB_UI_PORT: u16 = 6060;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ServerConfig {
-    #[serde(
-        rename = "memory-limit",
-        default,
-        deserialize_with = "deserialize_memory_size"
-    )]
+    #[serde(rename = "memory-limit", deserialize_with = "deserialize_memory_size")]
     pub memory_limit: Option<usize>,
 
-    #[serde(rename = "flight-sql-server-port", default)]
-    pub flight_sql_server_port: Option<u16>,
+    /// Port for the Arrow Flight SQL server started by `--flight-sql-server`.
+    #[serde(rename = "flight-sql-server-port")]
+    pub flight_sql_server_port: u16,
 
-    #[serde(rename = "web-ui-port", default)]
-    pub web_ui_port: Option<u16>,
+    /// Port for the server started by `--ui`: the REST API plus the web UI
+    /// (served by reverse-proxying the hosted static site).
+    #[serde(rename = "web-ui-port")]
+    pub web_ui_port: u16,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            memory_limit: None,
+            flight_sql_server_port: DEFAULT_FLIGHT_SQL_SERVER_PORT,
+            web_ui_port: DEFAULT_WEB_UI_PORT,
+        }
+    }
 }
 
 fn deserialize_memory_size<'de, D>(deserializer: D) -> std::result::Result<Option<usize>, D::Error>
@@ -139,7 +155,7 @@ mod tests {
             "#,
         )
         .unwrap();
-        assert_eq!(config.server_config.unwrap().web_ui_port, Some(8080));
+        assert_eq!(config.server_config.unwrap().web_ui_port, 8080);
 
         let config: LakeletConfig = toml::from_str(
             r#"
@@ -148,7 +164,10 @@ mod tests {
             "#,
         )
         .unwrap();
-        assert_eq!(config.server_config.unwrap().web_ui_port, None);
+        assert_eq!(
+            config.server_config.unwrap().web_ui_port,
+            DEFAULT_WEB_UI_PORT
+        );
     }
 
     #[test]
@@ -156,13 +175,13 @@ mod tests {
         let config: LakeletConfig = toml::from_str(
             r#"
             [server]
-            flight-sql-server-port = 32010
+            flight-sql-server-port = 12345
             "#,
         )
         .unwrap();
 
         let server_config = config.server_config.unwrap();
-        assert_eq!(server_config.flight_sql_server_port, Some(32010));
+        assert_eq!(server_config.flight_sql_server_port, 12345);
 
         let config: LakeletConfig = toml::from_str(
             r#"
@@ -173,6 +192,9 @@ mod tests {
         .unwrap();
 
         let server_config = config.server_config.unwrap();
-        assert_eq!(server_config.flight_sql_server_port, None);
+        assert_eq!(
+            server_config.flight_sql_server_port,
+            DEFAULT_FLIGHT_SQL_SERVER_PORT
+        );
     }
 }

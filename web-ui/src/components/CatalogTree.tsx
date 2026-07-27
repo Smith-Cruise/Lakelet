@@ -25,12 +25,7 @@ interface CatalogNode {
   schemas: SchemaNode[] | null;
 }
 
-interface CatalogTreeProps {
-  /** Insert a fully qualified table name into the editor. */
-  onPickTable: (qualifiedName: string) => void;
-}
-
-export function CatalogTree({ onPickTable }: CatalogTreeProps) {
+export function CatalogTree() {
   const [catalogs, setCatalogs] = useState<CatalogNode[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -195,17 +190,14 @@ export function CatalogTree({ onPickTable }: CatalogTreeProps) {
                   )}
                   {schema.expanded &&
                     schema.tables?.map((table) => (
-                      <button
+                      <div
                         key={table}
-                        className="flex w-full items-center gap-1.5 rounded-md py-1 pr-2 pl-12 text-left hover:bg-accent"
-                        onClick={() =>
-                          onPickTable(`${q(catalog.name)}.${q(schema.name)}.${q(table)}`)
-                        }
-                        title={`Insert ${catalog.name}.${schema.name}.${table}`}
+                        className="flex w-full items-center gap-1.5 rounded-md py-1 pr-2 pl-12"
+                        title={`${catalog.name}.${schema.name}.${table}`}
                       >
                         <Table2 className="size-3.5 shrink-0 text-muted-foreground" />
                         <span className="truncate">{table}</span>
-                      </button>
+                      </div>
                     ))}
                 </div>
               ))}

@@ -1,63 +1,44 @@
 import { create } from "zustand";
-import { getInfo, setApiBase, type ServerInfo } from "@/lib/api";
-import { baseUrl, loadPort, savePort } from "@/lib/connection";
+import { getInfo, type ServerInfo } from "@/lib/api";
 
 /** Which screen to show. `probing` is only the initial silent probe. */
-export type ConnectionStatus = "probing" | "setup" | "connected";
+export type ConnectionStatus = "probing" | "disconnected" | "connected";
 
 interface ConnectionState {
   status: ConnectionStatus;
-  /** A connection attempt is in flight (initial probe or a reconnect). */
+  /** A connection attempt is in flight (initial probe or a retry). */
   probing: boolean;
-  port: number;
   info: ServerInfo | null;
   error: string | null;
-  /** Settings dialog visibility while already connected. */
-  dialogOpen: boolean;
-  connect: (port: number) => Promise<void>;
-  openSettings: () => void;
-  closeSettings: () => void;
+  connect: () => Promise<void>;
 }
 
-export const useConnection = create<ConnectionState>((set, get) => ({
+// The API is same-origin: this page is served by `lakelet --ui` next to the
+// API routes. There is no server address to configure — if the probe fails,
+// the page was opened without a Lakelet server behind it (e.g. directly on
+// the CDN) and all we can do is explain and retry.
+export const useConnection = create<ConnectionState>((set) => ({
   status: "probing",
   probing: true,
-  port: loadPort(),
   info: null,
   error: null,
-  dialogOpen: false,
 
-  connect: async (port: number) => {
-    // `port` only moves on success, so a failed reconnect keeps the status
-    // bar pointing at the server actually in use.
+  connect: async () => {
     set({ probing: true, error: null });
     try {
-      const info = await getInfo(baseUrl(port), AbortSignal.timeout(3000));
-      setApiBase(baseUrl(port));
-      savePort(port);
-      set({ status: "connected", port, info, error: null, probing: false, dialogOpen: false });
+      const info = await getInfo(AbortSignal.timeout(3000));
+      set({ status: "connected", info, error: null, probing: false });
     } catch (err) {
       let message: string;
       if (err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError")) {
-        message = `Connection to 127.0.0.1:${port} timed out`;
+        message = "Connection to the Lakelet server timed out";
       } else if (err instanceof TypeError) {
         // fetch network failures surface as bare TypeErrors ("Failed to fetch").
-        message = `Could not reach 127.0.0.1:${port} — is the Lakelet server running?`;
+        message = "Could not reach the Lakelet server behind this page";
       } else {
         message = err instanceof Error ? err.message : String(err);
       }
-      // A failed reconnect keeps the working session (and the editor with it);
-      // the error shows inside the still-open settings dialog.
-      const connected = get().status === "connected";
-      set({
-        status: connected ? "connected" : "setup",
-        error: message,
-        probing: false,
-        info: connected ? get().info : null,
-      });
+      set({ status: "disconnected", error: message, probing: false, info: null });
     }
   },
-
-  openSettings: () => set({ dialogOpen: true }),
-  closeSettings: () => set({ dialogOpen: false, error: null }),
 }));

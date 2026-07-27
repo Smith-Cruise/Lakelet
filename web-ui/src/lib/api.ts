@@ -16,13 +16,8 @@ export class QueryError extends Error {
   }
 }
 
-// Set once a connection is established; every request goes to the local
-// Lakelet server the user configured, not to the (CDN) origin of this page.
-let apiBase = "";
-
-export function setApiBase(base: string): void {
-  apiBase = base;
-}
+// All requests are same-origin relative: this page is served by
+// `lakelet --ui`, which mounts the API routes next to the UI proxy.
 
 async function errorFromResponse(resp: Response): Promise<QueryError> {
   try {
@@ -33,8 +28,8 @@ async function errorFromResponse(resp: Response): Promise<QueryError> {
   }
 }
 
-export async function getInfo(base?: string, signal?: AbortSignal): Promise<ServerInfo> {
-  const resp = await fetch(`${base ?? apiBase}/api/info`, { signal });
+export async function getInfo(signal?: AbortSignal): Promise<ServerInfo> {
+  const resp = await fetch("/api/info", { signal });
   if (!resp.ok) {
     throw await errorFromResponse(resp);
   }
@@ -54,7 +49,7 @@ export async function runQuery(
   onSchema: (schema: Schema) => void,
   onBatch: (batch: RecordBatch) => void,
 ): Promise<void> {
-  const resp = await fetch(`${apiBase}/api/query`, {
+  const resp = await fetch("/api/query", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ sql, ...context }),

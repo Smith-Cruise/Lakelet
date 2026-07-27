@@ -9,7 +9,6 @@ import { classHighlighter } from "@lezer/highlight";
 export interface SqlEditorHandle {
   getValue: () => string;
   setValue: (value: string) => void;
-  insertAtCursor: (text: string) => void;
   focus: () => void;
 }
 
@@ -64,16 +63,6 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: value },
       });
-    },
-    insertAtCursor: (text: string) => {
-      const view = viewRef.current;
-      if (!view) return;
-      const { from, to } = view.state.selection.main;
-      view.dispatch({
-        changes: { from, to, insert: text },
-        selection: { anchor: from + text.length },
-      });
-      view.focus();
     },
     focus: () => viewRef.current?.focus(),
   }));

@@ -35,7 +35,7 @@ hdfs-native-object-store = "0.16"
 paimon = { version = "0.2.0", features = ["storage-s3", "storage-oss", "storage-hdfs"] }
 paimon-datafusion = "0.2.0"
 axum = "0.8"
-tower-http = { version = "0.6", features = ["cors"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 serde_json = "1"
 async-stream = "0.3"
 lakelet-app = { path = "src/app" }

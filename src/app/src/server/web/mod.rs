@@ -1,11 +1,13 @@
-//! HTTP API server behind `lakelet --web-ui`.
+//! HTTP server behind `lakelet --ui`.
 //!
-//! The binary serves the API only; the web UI is a separately hosted static
-//! site (see `web-ui/`) that connects to this server from the browser.
+//! One listener on `web-ui-port` serves both the REST API documented below
+//! and the web UI: any path that is not an API route is served by
+//! reverse-proxying the hosted static site (see [`proxy`]). The browser
+//! talks to one origin for both the UI and the API, so no CORS is involved.
 //!
 //! # REST API
 //!
-//! Base URL: `http://127.0.0.1:<web-ui-port>` (loopback only, no authentication).
+//! Base URL: `http://<host>:<web-ui-port>` (no authentication).
 //!
 //! ## `GET /api/info`
 //!
@@ -49,24 +51,23 @@
 //!
 //! ## Any other path
 //!
-//! `404 Not Found` with the same JSON error shape and code `not_found`.
+//! Proxied to the hosted UI site (which answers unknown paths with the SPA's
+//! `index.html`).
 //!
-//! ## CORS
+//! # Security
 //!
-//! All origins are allowed, and preflights answer Chrome's Private Network
-//! Access check (`Access-Control-Allow-Private-Network: true`), so a UI
-//! hosted anywhere can call this API cross-origin.
-//!
-//! Note what this means: binding loopback stops other hosts from connecting
-//! directly, but not a browser on this machine. While `--web-ui` runs, any
-//! page the user visits can query this API and read the results. Run it only
-//! on machines and catalogs where that is acceptable.
+//! There is no CORS allowance: browsers only reach the API same-origin.
+//! The server has no authentication, so any host that can reach the port
+//! can query the configured catalogs. Only expose it on networks you trust.
+
+mod proxy;
 
 use crate::context::LakeletContext;
 use crate::sql::session::ExtendedSessionContext;
 use axum::Router;
 use axum::body::Body;
 use axum::extract::State;
+use axum::handler::Handler;
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -81,10 +82,8 @@ use datafusion::execution::runtime_env::RuntimeEnv;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::io::IsTerminal;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
-use tower_http::cors::{Any, CorsLayer};
 
 const ARROW_STREAM_CONTENT_TYPE: &str = "application/vnd.apache.arrow.stream";
 
@@ -114,20 +113,15 @@ pub async fn serve(
     runtime_env: Arc<RuntimeEnv>,
     port: u16,
 ) -> Result<()> {
-    // Localhost only: the API has no authentication, so it must not be
-    // reachable from other hosts. This does not make it private to this
-    // process: with the any-origin CORS policy below (needed by the
-    // separately hosted UI), any page in a browser on this machine can call
-    // it too. See the module docs.
-    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .map_err(|e| DataFusionError::Configuration(format!("Failed to bind {addr}: {e}")))?;
+        .map_err(|e| super::bind_error(port, "web-ui-port", &e))?;
     let app = router(AppState {
         lakelet_context,
         runtime_env,
     });
-    println!("Lakelet web UI API listening on http://{addr}");
+    print_instructions(port);
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
@@ -136,22 +130,29 @@ pub async fn serve(
         .map_err(|e| DataFusionError::External(Box::new(e)))
 }
 
+// 127.0.0.1, not `localhost`: the server binds IPv4 only, while `localhost`
+// may resolve to ::1 in some clients. The API is an internal detail of the
+// UI, so the instructions mention only the UI address.
+fn print_instructions(port: u16) {
+    println!("Lakelet is running:");
+    println!("  Web UI: http://127.0.0.1:{port}");
+    if let Some(upstream) = proxy::ProxyState::upstream_override() {
+        println!(
+            "  UI upstream override ({}): {upstream}",
+            proxy::UI_UPSTREAM_ENV
+        );
+    }
+    println!("Press Ctrl+C to stop.");
+}
+
+// API routes win over the fallback, so everything that is not the API is
+// served by proxying the hosted UI site — one origin for both.
 fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/query", post(query))
         .route("/api/info", get(info))
-        .fallback(fallback)
-        .layer(cors_layer())
         .with_state(state)
-}
-
-fn cors_layer() -> CorsLayer {
-    CorsLayer::new()
-        .allow_origin(Any) // the UI can be hosted anywhere; see the module docs
-        .allow_methods(Any)
-        .allow_headers(Any) // content-type: application/json triggers a preflight
-        .allow_private_network(true) // Chrome Private Network Access preflight
-        .max_age(Duration::from_secs(3600))
+        .fallback_service(proxy::proxy_ui.with_state(proxy::ProxyState::from_env()))
 }
 
 async fn info(State(state): State<AppState>) -> Response {
@@ -245,19 +246,6 @@ fn df_error_to_response(err: DataFusionError) -> Response {
         .into_response()
 }
 
-async fn fallback() -> Response {
-    (
-        StatusCode::NOT_FOUND,
-        axum::Json(ErrorBody {
-            error: "Lakelet serves the HTTP API only (POST /api/query, GET /api/info); \
-                    the web UI is hosted separately"
-                .to_string(),
-            code: "not_found",
-        }),
-    )
-        .into_response()
-}
-
 fn log_executing(sql: &str) {
     // Strip control characters: the SQL is attacker-controllable, and escape
     // sequences would otherwise let it forge terminal output.
@@ -271,23 +259,15 @@ fn log_executing(sql: &str) {
         .collect();
     // Colorize only when stdout is a terminal, so redirected logs stay clean.
     if std::io::stdout().is_terminal() {
-        println!("\x1b[1;34m[web-ui]\x1b[0m Executing: \x1b[36m{sql}\x1b[0m");
+        println!("\x1b[1;34m[ui]\x1b[0m Executing: \x1b[36m{sql}\x1b[0m");
     } else {
-        println!("[web-ui] Executing: {sql}");
+        println!("[ui] Executing: {sql}");
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::Request;
-    use tower::ServiceExt;
-
-    // The API handlers need a full LakeletContext, but the CORS layer and the
-    // fallback are independent of it, so test them on a stateless router.
-    fn test_router() -> Router {
-        Router::new().fallback(fallback).layer(cors_layer())
-    }
 
     #[test]
     fn planning_errors_map_to_bad_request_through_wrappers() {
@@ -322,48 +302,5 @@ mod tests {
             StatusCode::BAD_REQUEST,
             "statement-count validation must map to invalid_sql"
         );
-    }
-
-    #[tokio::test]
-    async fn preflight_allows_any_origin_and_private_network() {
-        let response = test_router()
-            .oneshot(
-                Request::builder()
-                    .method("OPTIONS")
-                    .uri("/api/query")
-                    .header("origin", "https://ui.example.com")
-                    .header("access-control-request-method", "POST")
-                    .header("access-control-request-headers", "content-type")
-                    .header("access-control-request-private-network", "true")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let headers = response.headers();
-        assert_eq!(headers["access-control-allow-origin"], "*");
-        assert_eq!(headers["access-control-allow-private-network"], "true");
-    }
-
-    #[tokio::test]
-    async fn fallback_returns_not_found_json_with_cors() {
-        let response = test_router()
-            .oneshot(
-                Request::builder()
-                    .uri("/")
-                    .header("origin", "https://ui.example.com")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        assert_eq!(response.headers()["access-control-allow-origin"], "*");
-        let body = axum::body::to_bytes(response.into_body(), 4096)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["code"], "not_found");
     }
 }

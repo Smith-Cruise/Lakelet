@@ -12,10 +12,13 @@ web-ui-port = 6060
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `memory-limit` | String | No | Unlimited | Caps the memory available to the query engine. |
-| `flight-sql-server-port` | Integer | Required for `--flight-sql-server` | None | Port the Arrow Flight SQL server listens on. |
-| `web-ui-port` | Integer | Required for `--web-ui` | None | Port the web UI HTTP API listens on. Binds `127.0.0.1` only. |
+| `flight-sql-server-port` | Integer | No | 32010 | Port the Arrow Flight SQL server started by `--flight-sql-server` listens on. |
+| `web-ui-port` | Integer | No | 6060 | Port the web UI started by `--ui` listens on. |
 
-The value is an integer with an optional, case-insensitive unit. With no unit, the value is treated as bytes.
+The two ports must differ (after defaults are applied); startup fails with a
+configuration error if they are equal.
+
+The `memory-limit` value is an integer with an optional, case-insensitive unit. With no unit, the value is treated as bytes.
 
 | Unit | Meaning |
 | --- | --- |
@@ -34,10 +37,8 @@ server instead of the interactive REPL:
 lakelet --config config.toml --flight-sql-server
 ```
 
-`flight-sql-server-port` must be configured under `[server]`, otherwise startup
-fails. The server binds to `0.0.0.0` and accepts remote connections. Note that
-the server currently has **no authentication**, so only expose it on networks
-you trust.
+The server listens on `flight-sql-server-port` under `[server]` (default
+32010).
 
 Currently supported: statement execution (`CommandStatementQuery`) with
 streaming Arrow results. Prepared statements and catalog metadata commands
@@ -62,27 +63,23 @@ dft -c "select 1" --flightsql            # CLI
 dft                                      # TUI: switch to the FlightSQL tab
 ```
 
-## Web UI API server
+## Web UI
 
-Lakelet can serve an HTTP API for the browser-based web UI:
+Lakelet can serve a browser-based web UI:
 
 ```bash
-lakelet --config config.toml --web-ui
+lakelet --config config.toml --ui
 ```
 
-`web-ui-port` must be configured under `[server]`, otherwise startup fails.
-The server binds `127.0.0.1` only and has no authentication; any-origin CORS
-(including Chrome's Private Network Access preflight) is enabled so the
-separately hosted UI can reach it cross-origin.
+The server listens on `web-ui-port` under `[server]` (default 6060) and
+prints where to open it:
 
-The binary contains no UI assets. The UI lives in `web-ui/` in this
-repository: run it locally with `npm install && npm run dev`, or build with
-`npm run build` and host the generated `web-ui/dist/` on any static host or
-CDN. When opened, the page asks for the local port (pre-filled with 6060) and
-connects to `http://127.0.0.1:<web-ui-port>`.
+```text
+Lakelet is running:
+  Web UI: http://127.0.0.1:6060
+Press Ctrl+C to stop.
+```
 
-Endpoints: `POST /api/query` (JSON in, streaming Arrow IPC out) and
-`GET /api/info`. See the module docs in `src/app/src/server/web/mod.rs` for
-the full request/response reference. Each request runs in its own session,
-so `USE` does not carry over — pass `catalog`/`schema` in the request body or
-use fully qualified table names.
+Each query runs in its own session, so `USE` does not carry over between
+queries — use fully qualified table names (`<catalog>.<schema>.<table>`) or
+set `--default-catalog` / `--default-schema` at startup.
