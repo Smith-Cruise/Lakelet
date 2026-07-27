@@ -5,6 +5,9 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "lakelet-web-ui",
   "compatibility_date": "2026-07-01",
+  // The domain `lakelet --ui` reverse-proxies (DEFAULT_UI_UPSTREAM in
+  // src/app/src/server/web/proxy.rs).
+  "routes": [{ "pattern": "ui.lakelet.dev", "custom_domain": true }],
   "assets": {
     "directory": "./dist",
     // Serve index.html for unknown paths. The app has no router today, but

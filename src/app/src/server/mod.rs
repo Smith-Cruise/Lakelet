@@ -6,7 +6,8 @@ pub mod web;
 use crate::context::LakeletContext;
 use crate::sql::session::ExtendedSessionContext;
 use clap::Parser;
-use datafusion::common::error::{DataFusionError, Result};
+use datafusion::common::error::Result;
+use datafusion::error::DataFusionError;
 use datafusion::execution::runtime_env::RuntimeEnvBuilder;
 use datafusion_cli::object_storage::instrumented::{
     InstrumentedObjectStoreMode, InstrumentedObjectStoreRegistry,
@@ -16,6 +17,18 @@ use datafusion_cli::print_options::{MaxRows, PrintOptions};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+
+/// Turns a TCP bind failure into a configuration error. When the port is
+/// already taken, points the user at the config key that controls it.
+fn bind_error(port: u16, config_key: &str, e: &std::io::Error) -> DataFusionError {
+    let mut message = format!("Failed to bind port {port}: {e}");
+    if e.kind() == std::io::ErrorKind::AddrInUse {
+        message.push_str(&format!(
+            "; set a different '{config_key}' under [server] in the config file"
+        ));
+    }
+    DataFusionError::Configuration(message)
+}
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -61,17 +74,17 @@ struct LakeletArgs {
 
     #[clap(
         long,
-        help = "Start an Arrow Flight SQL server instead of the interactive REPL. Requires 'flight-sql-server-port' under [server] in the config file. Conflicts with --command and --file.",
+        help = "Start an Arrow Flight SQL server instead of the interactive REPL. Listens on 'flight-sql-server-port' under [server] in the config file (default 32010). Conflicts with --command, --file and --ui.",
         conflicts_with_all = ["command", "file"]
     )]
     flight_sql_server: bool,
 
     #[clap(
         long,
-        help = "Start the web UI HTTP API server instead of the interactive REPL. Listens on 127.0.0.1. Requires 'web-ui-port' under [server] in the config file. Conflicts with --command, --file and --flight-sql-server.",
+        help = "Start the local web UI server instead of the interactive REPL. Listens on 'web-ui-port' under [server] in the config file (default 6060). Conflicts with --command, --file and --flight-sql-server.",
         conflicts_with_all = ["command", "file", "flight_sql_server"]
     )]
-    web_ui: bool,
+    ui: bool,
 }
 
 pub fn run() -> Result<()> {
@@ -107,7 +120,7 @@ Basic commands:
   lakelet --config config.toml --command "show tables;"
   lakelet --config config.toml --file query.sql
   lakelet --config config.toml --flight-sql-server
-  lakelet --config config.toml --web-ui
+  lakelet --config config.toml --ui
 
 Recommended discovery workflow:
   1. show catalogs;
@@ -134,9 +147,9 @@ Useful SQL:
 Config examples:
   [server]
   memory-limit = "4GB"
-  # Required for --flight-sql-server
+  # Port for --flight-sql-server, optional, default 32010
   flight-sql-server-port = 32010
-  # Required for --web-ui (binds 127.0.0.1 only)
+  # Port for --ui, optional, default 6060
   web-ui-port = 6060
 
   [[catalog.hms]]
@@ -172,20 +185,12 @@ async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> R
         .build_arc()?;
 
     if args.flight_sql_server {
-        let Some(port) = lakelet_context.server_config.flight_sql_server_port else {
-            return Err(DataFusionError::Configuration(
-                "--flight-sql-server requires 'flight-sql-server-port' under [server] in the config file".to_string(),
-            ));
-        };
+        let port = lakelet_context.server_config.flight_sql_server_port;
         return flight::serve(lakelet_context, runtime_env, port).await;
     }
 
-    if args.web_ui {
-        let Some(port) = lakelet_context.server_config.web_ui_port else {
-            return Err(DataFusionError::Configuration(
-                "--web-ui requires 'web-ui-port' under [server] in the config file, e.g. web-ui-port = 6060".to_string(),
-            ));
-        };
+    if args.ui {
+        let port = lakelet_context.server_config.web_ui_port;
         return web::serve(lakelet_context, runtime_env, port).await;
     }
 
@@ -330,15 +335,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_web_ui() {
-        let args = LakeletArgs::try_parse_from(["lakelet", "--config", "config.toml", "--web-ui"])
-            .expect("--web-ui should parse");
+    fn test_parse_ui() {
+        let args = LakeletArgs::try_parse_from(["lakelet", "--config", "config.toml", "--ui"])
+            .expect("--ui should parse");
 
-        assert!(args.web_ui);
+        assert!(args.ui);
     }
 
     #[test]
-    fn test_parse_web_ui_conflicts() {
+    fn test_parse_ui_conflicts() {
         let file = NamedTempFile::new().expect("temp sql file should be created");
         let file_path = file
             .path()
@@ -350,10 +355,10 @@ mod tests {
             vec!["--file", file_path],
             vec!["--flight-sql-server"],
         ] {
-            let mut argv = vec!["lakelet", "--config", "config.toml", "--web-ui"];
+            let mut argv = vec!["lakelet", "--config", "config.toml", "--ui"];
             argv.extend(conflicting);
             let err = LakeletArgs::try_parse_from(argv)
-                .expect_err("--web-ui should conflict with --command/--file/--flight-sql-server");
+                .expect_err("--ui should conflict with --command/--file/--flight-sql-server");
 
             assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
         }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { Download, History, Play, Square, TableProperties } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
-import { ConnectScreen } from "@/components/ConnectScreen";
+import { NotConnected } from "@/components/NotConnected";
 import { CatalogTree } from "@/components/CatalogTree";
 import { HistoryList } from "@/components/HistoryList";
 import { SqlEditor, type SqlEditorHandle } from "@/components/SqlEditor";
@@ -18,18 +18,17 @@ import { DEFAULT_ROW_LIMIT } from "@/lib/limit";
 export default function App() {
   const status = useConnection((state) => state.status);
   const connect = useConnection((state) => state.connect);
-  const port = useConnection((state) => state.port);
 
-  // Probe the saved/default port once on load; failure shows the connect form.
+  // Probe the same-origin server once on load; failure shows instructions.
   useEffect(() => {
-    void connect(port);
+    void connect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div className="flex h-full flex-col">
       <TopBar />
-      {status === "connected" ? <Workspace /> : <ConnectScreen />}
+      {status === "connected" ? <Workspace /> : <NotConnected />}
     </div>
   );
 }
@@ -59,10 +58,6 @@ function Workspace() {
     editorRef.current?.focus();
   }, []);
 
-  const insertTable = useCallback((qualifiedName: string) => {
-    editorRef.current?.insertAtCursor(qualifiedName);
-  }, []);
-
   return (
     // The right gutter keeps the content column off the browser edge,
     // mirroring the breathing room the sidebar gives on the left.
@@ -78,7 +73,7 @@ function Workspace() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="catalog" className="flex min-h-0 flex-col">
-            <CatalogTree onPickTable={insertTable} />
+            <CatalogTree />
           </TabsContent>
           <TabsContent value="history" className="flex min-h-0 flex-col">
             <HistoryList onPick={pickFromHistory} />

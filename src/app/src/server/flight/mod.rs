@@ -29,9 +29,9 @@ pub async fn serve(
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .map_err(|e| DataFusionError::Configuration(format!("Failed to bind {addr}: {e}")))?;
+        .map_err(|e| super::bind_error(port, "flight-sql-server-port", &e))?;
     let service = LakeletFlightSqlService::new(lakelet_context, runtime_env);
-    println!("Lakelet Flight SQL server listening on {addr}");
+    println!("Lakelet Flight SQL server listening on port {port}");
     Server::builder()
         .add_service(FlightServiceServer::new(service))
         .serve_with_incoming_shutdown(TcpIncoming::from(listener), async {
