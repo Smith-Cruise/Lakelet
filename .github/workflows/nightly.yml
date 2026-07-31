@@ -85,6 +85,15 @@ jobs:
       - name: Install NASM (aws-lc-sys)
         if: runner.os == 'Windows'
         uses: ilammy/setup-nasm@v1
+      - name: Set up MSVC environment (aws-lc-sys)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Force Ninja cmake generator (aws-lc-sys)
+        # The cmake crate cannot map the Visual Studio version on the runner
+        # image to a generator; Ninja sidesteps the VS generator entirely.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "CMAKE_GENERATOR=Ninja" >> $env:GITHUB_ENV
       - name: Build release binary
         run: cargo build --release -p lakelet-app --bin lakelet --target ${{ matrix.target }}
       - name: Package (unix)
