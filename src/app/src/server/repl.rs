@@ -1,4 +1,5 @@
 use super::cli_helper::LakeletCliHelper;
+use super::print;
 use crate::parser::ExtendedParser;
 use crate::sql::session::ExtendedSessionContext;
 use crate::statements::ExtendedStatement;
@@ -62,7 +63,7 @@ pub async fn exec_from_repl(ctx: &ExtendedSessionContext, print_options: &PrintO
                     }
 
                     tokio::select! {
-                        res = exec_sql(ctx, print_options, sql) => match res {
+                        res = exec_sql(ctx, print_options, sql, true) => match res {
                             Ok(_) => {}
                             Err(err) => eprintln!("{err}"),
                         },
@@ -97,7 +98,7 @@ pub async fn exec_from_commands(
     command: &str,
     print_options: &PrintOptions,
 ) -> Result<()> {
-    exec_sql(ctx, print_options, command).await
+    exec_sql(ctx, print_options, command, false).await
 }
 
 pub async fn exec_from_file(
@@ -106,17 +107,18 @@ pub async fn exec_from_file(
     print_options: &PrintOptions,
 ) -> Result<()> {
     let sql = fs::read_to_string(file_path)?;
-    exec_sql(ctx, print_options, &sql).await
+    exec_sql(ctx, print_options, &sql, false).await
 }
 
 async fn exec_sql(
     ctx: &ExtendedSessionContext,
     print_options: &PrintOptions,
     sql: &str,
+    interactive: bool,
 ) -> Result<()> {
     let statements = ExtendedParser::parse_sql(sql)?;
     for statement in &statements {
-        exec_statement(ctx, print_options, statement).await?;
+        exec_statement(ctx, print_options, statement, interactive).await?;
     }
     Ok(())
 }
@@ -125,6 +127,7 @@ async fn exec_statement(
     ctx: &ExtendedSessionContext,
     print_options: &PrintOptions,
     statement: &ExtendedStatement,
+    interactive: bool,
 ) -> Result<()> {
     let now = Instant::now();
     let df = ctx.create_dataframe(statement).await?;
@@ -139,7 +142,21 @@ async fn exec_statement(
             row_count += batch.num_rows();
             batches.push(batch);
         }
-        print_options.print_batches(schema, &batches, now, row_count, &format_options)?;
+        if interactive {
+            // The REPL renders with comfy-table so wide tables adapt to the
+            // terminal width; --command/--file keep datafusion-cli's plain
+            // ASCII output for scripting.
+            print::print_results(
+                print_options,
+                schema,
+                &batches,
+                row_count,
+                now,
+                &format_options,
+            )?;
+        } else {
+            print_options.print_batches(schema, &batches, now, row_count, &format_options)?;
+        }
     } else {
         print_options
             .print_stream(stream, now, &format_options)

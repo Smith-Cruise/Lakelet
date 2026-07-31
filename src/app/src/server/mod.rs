@@ -1,5 +1,6 @@
 pub mod cli_helper;
 pub mod flight;
+pub mod print;
 pub mod repl;
 pub mod web;
 
