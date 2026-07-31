@@ -94,6 +94,18 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: echo "CMAKE_GENERATOR=Ninja" >> $env:GITHUB_ENV
+      - name: Add swap space (fat LTO link exceeds runner memory)
+        if: runner.os == 'Linux'
+        run: |
+          swapfile=/swapfile
+          if [ -d /mnt ] && [ "$(df -BG --output=avail /mnt | tail -1 | tr -dc '0-9')" -ge 20 ]; then
+            swapfile=/mnt/swapfile
+          fi
+          sudo fallocate -l 16G "$swapfile" || sudo fallocate -l 8G "$swapfile"
+          sudo chmod 600 "$swapfile"
+          sudo mkswap "$swapfile"
+          sudo swapon "$swapfile"
+          free -h
       - name: Build release binary
         run: cargo build --release -p lakelet-app --bin lakelet --target ${{ matrix.target }}
       - name: Package (unix)
