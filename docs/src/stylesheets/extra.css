@@ -8,7 +8,6 @@
 
 :root {
   --ll-bg: #10141a;
-  --ll-bg-raised: #131923;
   --ll-bg-code: #0b0f14;
   --ll-grid-line: #1c232d;
   --ll-border: #2a323e;
@@ -53,7 +52,7 @@ body:has(.ll-page) .md-content__inner::before {
 .ll-page {
   min-height: 100vh;
   min-height: 100dvh;
-  padding: 1.6rem clamp(1.2rem, 5vw, 4rem) 4rem;
+  padding: 1.6rem clamp(1.2rem, 5vw, 4rem) 2rem;
   color: var(--ll-text-dim);
   background-color: var(--ll-bg);
   background-image:
@@ -100,14 +99,6 @@ body:has(.ll-page) .md-content__inner::before {
   color: var(--ll-text);
 }
 
-.ll-rev {
-  margin-left: 0.4rem;
-  font-family: var(--md-code-font-family, monospace);
-  font-size: 0.62rem;
-  font-weight: 400;
-  color: var(--ll-amber);
-}
-
 .ll-nav-links {
   font-family: var(--md-code-font-family, monospace);
   font-size: 0.7rem;
@@ -123,15 +114,14 @@ body:has(.ll-page) .md-content__inner::before {
   color: var(--ll-amber);
 }
 
-/* Hero. */
+/* Hero — the page is a single screen, so let it fill the viewport. */
 .ll-hero {
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: flex-start;
-  min-height: 78vh;
-  min-height: 78dvh;
-  padding-top: clamp(2rem, 6vh, 4rem);
+  min-height: calc(100vh - 12rem);
+  min-height: calc(100dvh - 12rem);
 }
 
 .md-typeset .ll-hero h1 {
@@ -215,106 +205,14 @@ body:has(.ll-page) .md-content__inner::before {
   border-color: var(--ll-amber-bright);
 }
 
-/* Spec grid: shared-frame cells with lettered monospace headers. */
-.ll-specs {
-  padding: 2.5rem 0 1rem;
-}
-
-.ll-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  background-color: var(--ll-border);
-  border: 1px solid var(--ll-border);
-  border-radius: 0.5rem;
-}
-
-.ll-cell {
-  padding: 1rem 1.2rem 1.1rem;
-  font-size: 0.74rem;
-  line-height: 1.65;
-  color: #c6cdd6;
-  background-color: var(--ll-bg-raised);
-}
-
-.md-typeset .ll-cell-head {
-  margin: 0 0 0.45rem;
-  font-family: var(--md-code-font-family, monospace);
-  font-size: 0.58rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--ll-amber);
-}
-
-/* Usage demo: prose on the left, a console example on the right. */
-.ll-demo {
-  padding: 3rem 0 1rem;
-}
-
-.ll-demo-cols {
-  display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  gap: 2rem;
-  align-items: center;
-}
-
-.md-typeset .ll-demo-text h3 {
-  margin-top: 0;
-  color: var(--ll-text);
-}
-
-.md-typeset .ll-demo-text p {
-  font-size: 0.78rem;
-  line-height: 1.75;
-}
-
-.md-typeset .ll-demo-code .highlight {
-  margin: 0;
-}
-
-.md-typeset .ll-demo-code pre > code {
-  padding: 1rem 1.1rem;
-  font-size: 0.72rem;
-  border: 1px solid var(--ll-border);
-  border-radius: 0.5rem;
-}
-
-/* Closing call to action. */
-.ll-cta {
-  padding: 3rem 0 1rem;
-  text-align: center;
-}
-
-.ll-cta .ll-fig {
-  margin-bottom: 1rem;
-}
-
 /* Responsive. */
-@media screen and (max-width: 59.9375em) {
-  .ll-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .ll-demo-cols {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1rem;
-  }
-}
-
 @media screen and (max-width: 44.984375em) {
   .ll-page {
     background-size: 22px 22px;
   }
 
   .ll-hero {
-    min-height: auto;
-    padding-top: 3rem;
-    padding-bottom: 1rem;
-  }
-
-  .ll-grid {
-    grid-template-columns: minmax(0, 1fr);
+    padding-top: 1rem;
   }
 }
 
