@@ -113,7 +113,7 @@ jobs:
           pkg="lakelet-nightly-${{ matrix.target }}"
           mkdir -p "dist/$pkg"
           cp "target/${{ matrix.target }}/release/lakelet" "dist/$pkg/"
-          cp README.md LICENSE config_demo.toml "dist/$pkg/"
+          cp LICENSE config_demo.toml "dist/$pkg/"
           tar -czf "dist/$pkg.tar.gz" -C dist "$pkg"
       - name: Package (windows)
         if: runner.os == 'Windows'
@@ -122,7 +122,7 @@ jobs:
           $pkg = "lakelet-nightly-${{ matrix.target }}"
           New-Item -ItemType Directory -Path "dist/$pkg" | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/lakelet.exe" "dist/$pkg/"
-          Copy-Item README.md, LICENSE, config_demo.toml "dist/$pkg/"
+          Copy-Item LICENSE, config_demo.toml "dist/$pkg/"
           Compress-Archive -Path "dist/$pkg" -DestinationPath "dist/$pkg.zip"
       - uses: actions/upload-artifact@v4
         with:
@@ -143,6 +143,29 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      # Runs before the release is replaced: the check job keys "is there a
+      # new nightly to build" off the nightly tag, so the tag must only move
+      # once the mirror upload has succeeded — a failed upload then leaves
+      # the old tag in place and the next scheduled run retries everything.
+      - name: Mirror assets to Cloudflare R2 (cdn.lakelet.dev)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_DEFAULT_REGION: auto
+          # aws-cli v2.23+ enables new default integrity checksums that R2
+          # rejects; Cloudflare's documented fix is to only send them when
+          # the operation requires it.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+        run: |
+          # The nightly tag is overwritten in place each day, so keep the
+          # edge-cache TTL short enough that a replaced build propagates
+          # without a manual purge.
+          for f in dist/*; do
+            aws s3 cp "$f" "s3://lakelet/${RELEASE_TAG}/$(basename "$f")" \
+              --cache-control "public, max-age=300"
+          done
       - name: Replace nightly release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -164,6 +187,9 @@ jobs:
           | \`lakelet-nightly-aarch64-apple-darwin.tar.gz\` | macOS Apple Silicon | |
           | \`lakelet-nightly-x86_64-apple-darwin.tar.gz\` | macOS Intel | requires x86-64-v3 (AVX2) |
           | \`lakelet-nightly-x86_64-pc-windows-msvc.zip\` | Windows x86_64 | requires x86-64-v3 (AVX2) |
+
+          Assets are also mirrored on a CDN for faster downloads:
+          \`https://cdn.lakelet.dev/${RELEASE_TAG}/<asset>\`
           EOF
           gh release create "$RELEASE_TAG" \
             --target "$SHA" \

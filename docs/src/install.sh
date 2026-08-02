@@ -1,8 +1,8 @@
 #!/bin/sh
 # Lakelet installer.
 #
-# Downloads the prebuilt `lakelet` binary from GitHub Releases into the
-# current directory:
+# Downloads the prebuilt `lakelet` binary from cdn.lakelet.dev (a CDN
+# mirror of the GitHub release assets) into the current directory:
 #
 #   curl -fsSL https://lakelet.dev/install.sh | sh
 #
@@ -62,12 +62,14 @@ if [ "$arch" = "x86_64" ]; then
 fi
 
 asset="lakelet-${VERSION}-${target}.tar.gz"
-url="https://github.com/$REPO/releases/download/$VERSION/$asset"
+# Release assets are mirrored from GitHub Releases to a Cloudflare R2 CDN,
+# which is much faster in some regions.
+url="https://cdn.lakelet.dev/$VERSION/$asset"
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
-info "Downloading $asset ($VERSION)"
+info "Downloading $asset ($VERSION) from cdn.lakelet.dev"
 if command -v curl >/dev/null 2>&1; then
     curl -fSL --progress-bar "$url" -o "$tmpdir/$asset"
 elif command -v wget >/dev/null 2>&1; then
