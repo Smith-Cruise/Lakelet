@@ -659,30 +659,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aws-sdk-dynamodb"
-version = "1.111.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc418346e3cb248c7d59e642acbcb06488b7c7cd2ba6ebc79e8003f618c60099"
-dependencies = [
- "aws-credential-types",
- "aws-runtime",
- "aws-smithy-async",
- "aws-smithy-http 0.63.6",
- "aws-smithy-json 0.62.5",
- "aws-smithy-observability",
- "aws-smithy-runtime",
- "aws-smithy-runtime-api",
- "aws-smithy-types",
- "aws-types",
- "bytes",
- "fastrand",
- "http 0.2.12",
- "http 1.3.1",
- "regex-lite",
- "tracing",
-]
-
-[[package]]
 name = "aws-sdk-glue"
 version = "1.128.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2732,35 +2708,7 @@ checksum = "2b7c2431da87e49b679a9ae8f72251e22ff7eb0e2c57c9631842b1c3ec16aaa9"
 dependencies = [
  "buoyant_kernel",
  "ctor 0.10.1",
- "deltalake-aws",
  "deltalake-core",
-]
-
-[[package]]
-name = "deltalake-aws"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3ef837d5d58bb0cd62dc9ee3bc201805751090f4bab2ca0ff09669661814fd4"
-dependencies = [
- "async-trait",
- "aws-config",
- "aws-credential-types",
- "aws-sdk-dynamodb",
- "aws-sdk-sts",
- "aws-smithy-runtime-api",
- "backon",
- "bytes",
- "chrono",
- "deltalake-core",
- "futures",
- "object_store",
- "regex",
- "thiserror 2.0.17",
- "tokio",
- "tracing",
- "typed-builder 0.23.2",
- "url",
- "uuid",
 ]
 
 [[package]]
@@ -2794,7 +2742,6 @@ dependencies = [
  "dirs",
  "either",
  "futures",
- "humantime",
  "indexmap 2.13.0",
  "itertools 0.14.0",
  "num_cpus",
@@ -4321,7 +4268,6 @@ dependencies = [
  "datafusion",
  "datafusion-cli",
  "deltalake",
- "deltalake-aws",
  "futures",
  "hdfs-native-object-store",
  "hive_metastore",
@@ -4361,7 +4307,6 @@ name = "lakelet-storage"
 version = "0.1.0"
 dependencies = [
  "datafusion",
- "deltalake",
  "iceberg",
  "object_store_opendal",
  "opendal 0.57.0",
@@ -7588,15 +7533,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "typed-builder"
-version = "0.23.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31aa81521b70f94402501d848ccc0ecaa8f93c8eb6999eb9747e72287757ffda"
-dependencies = [
- "typed-builder-macro 0.23.2",
-]
-
-[[package]]
 name = "typed-builder-macro"
 version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7612,17 +7548,6 @@ name = "typed-builder-macro"
 version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c36781cc0e46a83726d9879608e4cf6c2505237e263a8eb8c24502989cfdb28"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "typed-builder-macro"
-version = "0.23.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "076a02dc54dd46795c2e9c8282ed40bcfb1e22747e955de9389a1de28190fb26"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -31,8 +31,7 @@ iceberg-datafusion = "0.10.0"
 iceberg-storage-opendal = { version = "0.10.0", default-features = false, features = ["opendal-s3", "opendal-oss"] }
 opendal = { version = "0.57", features = ["services-s3", "services-oss", "services-hdfs-native"] }
 object_store_opendal = "0.57"
-deltalake = { version = "0.32.2", features = ["datafusion", "s3"] }
-deltalake-aws = "0.15.0"
+deltalake = { version = "0.32.2", features = ["datafusion"] }
 hdfs-native-object-store = "0.16"
 paimon = { version = "0.2.0", features = ["storage-s3", "storage-oss", "storage-hdfs"] }
 paimon-datafusion = "0.2.0"
