@@ -113,7 +113,7 @@ jobs:
           pkg="lakelet-nightly-${{ matrix.target }}"
           mkdir -p "dist/$pkg"
           cp "target/${{ matrix.target }}/release/lakelet" "dist/$pkg/"
-          cp README.md LICENSE config_demo.toml "dist/$pkg/"
+          cp config_demo.toml "dist/$pkg/"
           tar -czf "dist/$pkg.tar.gz" -C dist "$pkg"
       - name: Package (windows)
         if: runner.os == 'Windows'
@@ -122,7 +122,7 @@ jobs:
           $pkg = "lakelet-nightly-${{ matrix.target }}"
           New-Item -ItemType Directory -Path "dist/$pkg" | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/lakelet.exe" "dist/$pkg/"
-          Copy-Item README.md, LICENSE, config_demo.toml "dist/$pkg/"
+          Copy-Item config_demo.toml "dist/$pkg/"
           Compress-Archive -Path "dist/$pkg" -DestinationPath "dist/$pkg.zip"
       - uses: actions/upload-artifact@v4
         with:
