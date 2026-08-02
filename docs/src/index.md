@@ -18,7 +18,7 @@ hide:
 
 <p class="ll-fig">fig. 01 — query engine, single unit</p>
 
-# Focused on data lake queries,<br>powered by DataFusion
+# Focused on data lake queries
 
 One binary that speaks Iceberg, Delta Lake, Paimon, and Hive.
 Point it at your catalog and start writing SQL — no Spark, no JVM, no cluster.
