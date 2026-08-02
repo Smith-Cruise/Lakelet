@@ -2,7 +2,34 @@
 
 Lakelet's philosophy is to be simple, run on a single machine, and be easy to use.
 
-## Build Lakelet
+## Install Lakelet
+
+The quickest way is the install script, which downloads the latest nightly
+binary into the current directory as `./lakelet`, along with the example
+configuration `config_demo.toml`:
+
+```bash
+curl -fsSL https://lakelet.dev/install.sh | sh
+```
+
+The script supports Linux and macOS (x86_64 and aarch64). Two environment
+variables tweak its behavior:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `LAKELET_INSTALL_DIR` | `.` | Directory to place the binary in. |
+| `LAKELET_VERSION` | `nightly` | Release tag to install. |
+
+Note that the x86_64 binaries target x86-64-v3 and require a CPU with AVX2
+(Intel Haswell 2013+ / AMD Excavator+), and the Linux binaries require
+glibc 2.35 or newer.
+
+Alternatively, download an archive directly from
+[GitHub Releases](https://github.com/Smith-Cruise/Lakelet/releases) — this is
+also the way to get the Windows build
+(`lakelet-nightly-x86_64-pc-windows-msvc.zip`).
+
+### Build from source
 
 Lakelet requires a Rust toolchain. Build the release binary from the repository
 root:
@@ -11,9 +38,8 @@ root:
 git clone https://github.com/Smith-Cruise/Lakelet.git
 cd Lakelet
 cargo build --release
+cp target/release/lakelet .
 ```
-
-The binary is written to `target/release/lakelet`.
 
 ## Create a Configuration File
 
@@ -60,9 +86,9 @@ the complete configuration reference.
 Pass the configuration file with `--config`:
 
 ```bash
-target/release/lakelet --config config.toml
+./lakelet --config config.toml
 ```
 
 The configuration file is required for normal execution.
 
-You can get more help by `target/release/lakelet --help`.
+You can get more help by `./lakelet --help`.

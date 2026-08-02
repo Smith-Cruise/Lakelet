@@ -5,14 +5,38 @@ hide:
   - footer
 ---
 
-<section class="ddb-hero" markdown>
+<div class="ll-page" markdown>
 
-# Focused on Data Lake queries, powered by DataFusion
+<header class="ll-nav" markdown>
+<span class="ll-brand">LAKELET</span>
+<nav class="ll-nav-links" markdown>
+[Docs](getting-started.md) · [GitHub](https://github.com/Smith-Cruise/Lakelet)
+</nav>
+</header>
 
-Lakelet is a query engine focused on data lake workloads. Query Iceberg,
-Delta Lake, and Hive tables through a unified SQL engine.
+<section class="ll-hero" markdown>
+
+<p class="ll-fig">fig. 01 — query engine, single unit</p>
+
+# Focused on Data Lake Queries
+
+One binary that speaks Iceberg, Delta Lake, Paimon, and Hive.
+Point it at your catalog and start writing SQL — no Spark, no JVM, no cluster.
+
+<div class="ll-install" markdown>
+<p class="ll-install-head">install — 1 command, 30 seconds</p>
+
+```sh
+curl -fsSL https://lakelet.dev/install.sh | sh
+```
+
+</div>
+
+<p class="ll-note" markdown>linux · macos&nbsp;&nbsp;//&nbsp;&nbsp;windows → [releases/nightly](https://github.com/Smith-Cruise/Lakelet/releases/tag/nightly)</p>
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
 [View on GitHub](https://github.com/Smith-Cruise/Lakelet){ .md-button }
 
 </section>
+
+</div>

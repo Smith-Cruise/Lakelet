@@ -25,8 +25,18 @@ Delta Lake support is still incomplete. See the docs for detailed limitations.
 
 ## Quick Start
 
+Install the latest nightly binary into the current directory (Linux and macOS;
+Windows builds are on the [releases page](https://github.com/Smith-Cruise/Lakelet/releases)):
+
+```bash
+curl -fsSL https://lakelet.dev/install.sh | sh
+```
+
+Or build from source:
+
 ```bash
 cargo build --release
+cp target/release/lakelet .
 cp config_demo.toml config.toml
 ```
 
@@ -42,19 +52,19 @@ s3-storage = { region = "us-east-1", endpoint = "http://127.0.0.1:9000", access-
 Start the SQL shell:
 
 ```bash
-target/release/lakelet --config config.toml
+./lakelet --config config.toml
 ```
 
 Run one SQL command and exit:
 
 ```bash
-target/release/lakelet --config config.toml --command "show catalogs;"
+./lakelet --config config.toml --command "show catalogs;"
 ```
 
 Run SQL from a file:
 
 ```bash
-target/release/lakelet --config config.toml --file query.sql
+./lakelet --config config.toml --file query.sql
 ```
 
 ## Basic SQL
