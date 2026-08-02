@@ -1,8 +1,8 @@
 #!/bin/sh
 # Lakelet installer.
 #
-# Downloads the prebuilt `lakelet` binary from GitHub Releases into the
-# current directory:
+# Downloads the prebuilt `lakelet` binary from cdn.lakelet.dev (a CDN
+# mirror of the GitHub release assets) into the current directory:
 #
 #   curl -fsSL https://lakelet.dev/install.sh | sh
 #
@@ -62,29 +62,20 @@ if [ "$arch" = "x86_64" ]; then
 fi
 
 asset="lakelet-${VERSION}-${target}.tar.gz"
-# Release assets are mirrored to a Cloudflare R2 CDN, which is much faster
-# than GitHub Releases in some regions. Try it first and fall back to GitHub
-# (e.g. for tags that are not mirrored).
-mirror_url="https://cdn.lakelet.dev/$VERSION/$asset"
-github_url="https://github.com/$REPO/releases/download/$VERSION/$asset"
+# Release assets are mirrored from GitHub Releases to a Cloudflare R2 CDN,
+# which is much faster in some regions.
+url="https://cdn.lakelet.dev/$VERSION/$asset"
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
-download() {
-    if command -v curl >/dev/null 2>&1; then
-        curl -fSL --progress-bar "$1" -o "$tmpdir/$asset"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q "$1" -O "$tmpdir/$asset"
-    else
-        error "neither curl nor wget is available"
-    fi
-}
-
 info "Downloading $asset ($VERSION) from cdn.lakelet.dev"
-if ! download "$mirror_url"; then
-    info "CDN download failed; falling back to GitHub Releases"
-    download "$github_url" || error "failed to download $github_url"
+if command -v curl >/dev/null 2>&1; then
+    curl -fSL --progress-bar "$url" -o "$tmpdir/$asset"
+elif command -v wget >/dev/null 2>&1; then
+    wget -q "$url" -O "$tmpdir/$asset"
+else
+    error "neither curl nor wget is available"
 fi
 
 tar -xzf "$tmpdir/$asset" -C "$tmpdir" --strip-components=1
