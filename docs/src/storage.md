@@ -1,7 +1,9 @@
 # Storage
 
 Storage configuration is attached to an HMS or Glue catalog and supplies the
-properties needed to access table data.
+properties needed to access table data. All storage access goes through
+[Apache OpenDAL](https://opendal.apache.org/), so every table format (Hive,
+Delta Lake, Iceberg, Paimon) supports the same set of location schemes.
 
 | Location scheme | Configuration |
 | --- | --- |
@@ -9,8 +11,9 @@ properties needed to access table data.
 | `oss://` | `oss-storage` |
 | `hdfs://` | No storage block; the NameNode authority comes from the location. |
 
-Storage configuration is optional at the TOML level. Whether it can be omitted
-in practice depends on the storage backend's authentication environment.
+A location whose scheme has no matching storage block fails with a clear
+error. In particular, Delta tables on S3 no longer fall back to environment
+credentials: configure `s3-storage` explicitly.
 
 ## AWS S3
 
@@ -18,10 +21,10 @@ Configure S3-compatible storage with the `s3-storage` inline table.
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `region` | String | No | SDK default | AWS region used for requests. |
-| `endpoint` | String | No | SDK default | Custom endpoint for S3-compatible services such as MinIO. |
-| `access-key` | String | No | SDK default | Access key. |
-| `secret-key` | String | No | SDK default | Secret key. |
+| `region` | String | No | `us-east-1` | AWS region used for requests. |
+| `endpoint` | String | No | AWS default | Custom endpoint for S3-compatible services such as MinIO. Must not include the bucket name. |
+| `access-key` | String | No | Credential chain | Access key. When both keys are set, the env/profile/IMDS credential chain is skipped. |
+| `secret-key` | String | No | Credential chain | Secret key. |
 | `path-style-access` | Boolean | No | `false` | Uses path-style requests when `true`; otherwise uses virtual-hosted-style requests. |
 
 ```toml
@@ -37,16 +40,26 @@ Configure Aliyun OSS with the `oss-storage` inline table.
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `endpoint` | String | No | SDK default | OSS endpoint. Must include the bucket name, for example `https://bucket_name.oss-cn-hangzhou.aliyuncs.com`. |
-| `access-key` | String | No | SDK default | Static access key ID. |
-| `secret-key` | String | No | SDK default | Static access key secret. |
+| `endpoint` | String | Yes | None | Bare regional OSS endpoint, for example `https://oss-cn-hangzhou.aliyuncs.com`. Must not include the bucket name; the bucket prefix is added automatically for virtual-hosted-style requests. |
+| `access-key` | String | No | None | Static access key ID. |
+| `secret-key` | String | No | None | Static access key secret. |
 | `path-style-access` | Boolean | No | `false` | Uses path-style requests when `true`; otherwise uses virtual-hosted-style requests. |
 
-The OSS `endpoint` must be prefixed with the bucket name (`https://<bucket>.oss-<region>.aliyuncs.com`), not the bare regional endpoint.
+> Breaking change: earlier releases required the bucket name inside the OSS
+> `endpoint` (`https://<bucket>.oss-<region>.aliyuncs.com`). Remove the bucket
+> prefix when upgrading.
 
 ```toml
 [[catalog.hms]]
 name = "hms"
 metastore-uri = "127.0.0.1:9083"
-oss-storage = { endpoint = "https://bucket_name.oss-cn-hangzhou.aliyuncs.com", access-key = "access-key", secret-key = "secret-key", path-style-access = false }
+oss-storage = { endpoint = "https://oss-cn-hangzhou.aliyuncs.com", access-key = "access-key", secret-key = "secret-key", path-style-access = false }
 ```
+
+## HDFS
+
+HDFS locations need no storage block: the NameNode authority (`host:port` or
+an HA nameservice resolvable through `HADOOP_CONF_DIR`) is taken from the
+table location itself, for example `hdfs://namenode:8020/warehouse/db/table`.
+All four table formats (Hive, Delta Lake, Iceberg, Paimon) support `hdfs://`
+locations. Kerberos is not supported yet.

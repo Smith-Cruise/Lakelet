@@ -42,7 +42,8 @@ s3-storage = { region = "us-west-2", access-key = "ak", secret-key = "sk" }
 name = "hms_1"
 # Required. Thrift metastore address as host:port.
 metastore-uri = "127.0.0.1:9087"
-# Optional storage credentials, matched by the table location scheme:
+# Optional storage credentials, matched by the table location scheme.
+# All table formats (Hive, Delta Lake, Iceberg, Paimon) share these blocks:
 #   s3:// or s3a://  -> s3-storage
 #   oss://           -> oss-storage
 #   hdfs://          -> no storage config needed (the NameNode host:port is
@@ -52,6 +53,7 @@ metastore-uri = "127.0.0.1:9087"
 #   region, endpoint, access-key, secret-key, path-style-access (bool, default false)
 # s3-storage = { endpoint = "http://127.0.0.1:9000", region = "us-east-1", access-key = "admin", secret-key = "password", path-style-access = true }
 #
-# oss-storage keys (all optional):
+# oss-storage keys (endpoint required, the rest optional):
 #   endpoint, access-key, secret-key, path-style-access (bool, default false)
+# The endpoint must be the bare regional endpoint WITHOUT the bucket name.
 # oss-storage = { endpoint = "https://oss-cn-hangzhou.aliyuncs.com", access-key = "ak", secret-key = "sk", path-style-access = false }
