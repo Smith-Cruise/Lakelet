@@ -18,6 +18,8 @@ env:
 jobs:
   check:
     name: Check for new commits
+    # Guard manual dispatches: only main may replace the public nightly.
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.compare.outputs.should_run }}
