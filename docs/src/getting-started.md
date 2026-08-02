@@ -5,7 +5,8 @@ Lakelet's philosophy is to be simple, run on a single machine, and be easy to us
 ## Install Lakelet
 
 The quickest way is the install script, which downloads the latest nightly
-binary into the current directory as `./lakelet`:
+binary into the current directory as `./lakelet`, along with the example
+configuration `config_demo.toml`:
 
 ```bash
 curl -fsSL https://lakelet.dev/install.sh | sh
@@ -37,9 +38,8 @@ root:
 git clone https://github.com/Smith-Cruise/Lakelet.git
 cd Lakelet
 cargo build --release
+cp target/release/lakelet .
 ```
-
-The binary is written to `target/release/lakelet`.
 
 ## Create a Configuration File
 

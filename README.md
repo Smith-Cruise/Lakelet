@@ -32,10 +32,11 @@ Windows builds are on the [releases page](https://github.com/Smith-Cruise/Lakele
 curl -fsSL https://lakelet.dev/install.sh | sh
 ```
 
-Or build from source (the binary lands at `target/release/lakelet`):
+Or build from source:
 
 ```bash
 cargo build --release
+cp target/release/lakelet .
 cp config_demo.toml config.toml
 ```
 
