@@ -3506,22 +3506,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hdfs-native-object-store"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2a8fd74d01f5831e0a81581e252831c70572b7a9145b813fad99323460f2f69"
-dependencies = [
- "async-trait",
- "bytes",
- "chrono",
- "futures",
- "hdfs-native",
- "object_store",
- "thiserror 2.0.17",
- "tokio",
-]
-
-[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4269,7 +4253,6 @@ dependencies = [
  "datafusion-cli",
  "deltalake",
  "futures",
- "hdfs-native-object-store",
  "hive_metastore",
  "iceberg",
  "iceberg-datafusion",
@@ -4277,8 +4260,10 @@ dependencies = [
  "lakelet-common",
  "lakelet-storage",
  "mimalloc",
+ "opendal 0.57.0",
  "paimon",
  "paimon-datafusion",
+ "percent-encoding",
  "prost 0.14.3",
  "reqwest 0.12.24",
  "rustyline",

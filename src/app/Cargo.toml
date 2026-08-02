@@ -29,7 +29,8 @@ bytes = { workspace = true }
 iceberg = { workspace = true }
 iceberg-datafusion = { workspace = true }
 iceberg-storage-opendal = { workspace = true }
-hdfs-native-object-store = { workspace = true }
+opendal = { workspace = true }
+percent-encoding = { workspace = true }
 paimon = { workspace = true }
 paimon-datafusion = { workspace = true }
 deltalake = { workspace = true }

@@ -1,20 +1,20 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use datafusion::object_store::path::Path;
-use datafusion::object_store::{Error as ObjectStoreError, ObjectStore, ObjectStoreExt};
+use futures::StreamExt;
 use futures::stream::BoxStream;
-use hdfs_native_object_store::{HdfsObjectStore, HdfsObjectStoreBuilder};
 use iceberg::io::{
     FileMetadata, FileRead, FileWrite, InputFile, OutputFile, Storage, StorageConfig,
     StorageFactory,
 };
 use iceberg::{Error, ErrorKind, Result};
+use lakelet_storage::operator::build_operator;
+use lakelet_storage::storage::HDFS_SCHEMA;
+use opendal::Operator;
+use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 use std::sync::{Arc, OnceLock};
 use url::Url;
-
-const HDFS_SCHEME: &str = "hdfs";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct HdfsStorageFactory {
@@ -41,36 +41,40 @@ impl StorageFactory for HdfsStorageFactory {
 struct HdfsStorage {
     authority: String,
     #[serde(skip)]
-    store: Arc<OnceLock<Arc<HdfsObjectStore>>>,
+    operator: Arc<OnceLock<Operator>>,
 }
 
 impl HdfsStorage {
     fn new(authority: String) -> Self {
         Self {
             authority,
-            store: Arc::new(OnceLock::new()),
+            operator: Arc::new(OnceLock::new()),
         }
     }
 
-    fn store(&self) -> Result<Arc<HdfsObjectStore>> {
-        if let Some(store) = self.store.get() {
-            return Ok(Arc::clone(store));
+    fn operator(&self) -> Result<Operator> {
+        if let Some(op) = self.operator.get() {
+            return Ok(op.clone());
         }
 
-        let store = Arc::new(
-            HdfsObjectStoreBuilder::new()
-                .with_url(format!("{HDFS_SCHEME}://{}", self.authority))
-                .build()
-                .map_err(|error| {
-                    Error::new(ErrorKind::Unexpected, "Failed to build HDFS object store")
-                        .with_source(error)
-                })?,
-        );
-        let _ = self.store.set(Arc::clone(&store));
-        Ok(Arc::clone(self.store.get().unwrap()))
+        // Reuse the central OpenDAL builder so HDFS access shares one
+        // configuration (and retry/timeout layers) across all table formats.
+        let op = build_operator(HDFS_SCHEMA, &self.authority, None)
+            .map_err(|error| {
+                Error::new(ErrorKind::Unexpected, "Failed to build HDFS operator")
+                    .with_source(error)
+            })?
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::Unexpected,
+                    "HDFS operator unexpectedly unavailable",
+                )
+            })?;
+        let _ = self.operator.set(op.clone());
+        Ok(op)
     }
 
-    fn get_relative_path(&self, location: &str) -> Result<Path> {
+    fn get_relative_path(&self, location: &str) -> Result<String> {
         let parsed = parse_hdfs_url(location)?;
         if parsed.authority() != self.authority {
             return Err(Error::new(
@@ -83,13 +87,16 @@ impl HdfsStorage {
             ));
         }
 
-        Path::from_url_path(parsed.path().trim_start_matches('/')).map_err(|error| {
-            Error::new(
-                ErrorKind::DataInvalid,
-                format!("Invalid HDFS path: {location}"),
-            )
-            .with_source(error)
-        })
+        percent_decode_str(parsed.path().trim_start_matches('/'))
+            .decode_utf8()
+            .map(|path| path.into_owned())
+            .map_err(|error| {
+                Error::new(
+                    ErrorKind::DataInvalid,
+                    format!("Invalid HDFS path: {location}"),
+                )
+                .with_source(error)
+            })
     }
 }
 
@@ -98,61 +105,103 @@ impl HdfsStorage {
 impl Storage for HdfsStorage {
     async fn exists(&self, path: &str) -> Result<bool> {
         let path = self.get_relative_path(path)?;
-        match self.store()?.head(&path).await {
-            Ok(_) => Ok(true),
-            Err(ObjectStoreError::NotFound { .. }) => Ok(false),
-            Err(error) => Err(from_object_store_error("check HDFS file existence", error)),
-        }
+        self.operator()?
+            .exists(&path)
+            .await
+            .map_err(|error| from_opendal_error("check HDFS file existence", error))
     }
 
     async fn metadata(&self, path: &str) -> Result<FileMetadata> {
         let path = self.get_relative_path(path)?;
-        let metadata = self
-            .store()?
-            .head(&path)
+        let meta = self
+            .operator()?
+            .stat(&path)
             .await
-            .map_err(|error| from_object_store_error("read HDFS file metadata", error))?;
+            .map_err(|error| from_opendal_error("read HDFS file metadata", error))?;
         Ok(FileMetadata {
-            size: metadata.size,
+            size: meta.content_length(),
         })
     }
 
     async fn read(&self, path: &str) -> Result<Bytes> {
         let path = self.get_relative_path(path)?;
-        self.store()?
-            .get(&path)
+        Ok(self
+            .operator()?
+            .read(&path)
             .await
-            .map_err(|error| from_object_store_error("open HDFS file", error))?
-            .bytes()
-            .await
-            .map_err(|error| from_object_store_error("read HDFS file", error))
+            .map_err(|error| from_opendal_error("read HDFS file", error))?
+            .to_bytes())
     }
 
     async fn reader(&self, path: &str) -> Result<Box<dyn FileRead>> {
-        Ok(Box::new(HdfsFileReader {
-            store: self.store()?,
-            path: self.get_relative_path(path)?,
-        }))
+        let path = self.get_relative_path(path)?;
+        Ok(Box::new(HdfsFileReader(
+            self.operator()?
+                .reader(&path)
+                .await
+                .map_err(|error| from_opendal_error("open HDFS file", error))?,
+        )))
     }
 
-    async fn write(&self, _path: &str, _bs: Bytes) -> Result<()> {
-        Err(read_only_error())
+    async fn write(&self, path: &str, bs: Bytes) -> Result<()> {
+        let path = self.get_relative_path(path)?;
+        self.operator()?
+            .write(&path, bs)
+            .await
+            .map_err(|error| from_opendal_error("write HDFS file", error))?;
+        Ok(())
     }
 
-    async fn writer(&self, _path: &str) -> Result<Box<dyn FileWrite>> {
-        Err(read_only_error())
+    async fn writer(&self, path: &str) -> Result<Box<dyn FileWrite>> {
+        let path = self.get_relative_path(path)?;
+        Ok(Box::new(HdfsFileWriter(
+            self.operator()?
+                .writer(&path)
+                .await
+                .map_err(|error| from_opendal_error("open HDFS file for write", error))?,
+        )))
     }
 
-    async fn delete(&self, _path: &str) -> Result<()> {
-        Err(read_only_error())
+    async fn delete(&self, path: &str) -> Result<()> {
+        let path = self.get_relative_path(path)?;
+        self.operator()?
+            .delete(&path)
+            .await
+            .map_err(|error| from_opendal_error("delete HDFS file", error))
     }
 
-    async fn delete_prefix(&self, _path: &str) -> Result<()> {
-        Err(read_only_error())
+    async fn delete_prefix(&self, path: &str) -> Result<()> {
+        let path = self.get_relative_path(path)?;
+        let path = if path.ends_with('/') {
+            path
+        } else {
+            format!("{path}/")
+        };
+        self.operator()?
+            .delete_with(&path)
+            .recursive(true)
+            .await
+            .map_err(|error| from_opendal_error("delete HDFS prefix", error))
     }
 
-    async fn delete_stream(&self, _paths: BoxStream<'static, String>) -> Result<()> {
-        Err(read_only_error())
+    async fn delete_stream(&self, mut paths: BoxStream<'static, String>) -> Result<()> {
+        let mut deleter = self
+            .operator()?
+            .deleter()
+            .await
+            .map_err(|error| from_opendal_error("create HDFS deleter", error))?;
+        while let Some(path) = paths.next().await {
+            let path = self.get_relative_path(&path)?;
+            deleter
+                .delete(path)
+                .await
+                .map_err(|error| from_opendal_error("delete HDFS file", error))?;
+        }
+        deleter
+            .close()
+            .await
+            .map_err(|error| from_opendal_error("close HDFS deleter", error))?;
+        Ok(())
     }
 
     fn new_input(&self, path: &str) -> Result<InputFile> {
@@ -160,24 +209,46 @@ impl Storage for HdfsStorage {
         Ok(InputFile::new(Arc::new(self.clone()), path.to_string()))
     }
 
-    fn new_output(&self, _path: &str) -> Result<OutputFile> {
-        Err(read_only_error())
+    fn new_output(&self, path: &str) -> Result<OutputFile> {
+        self.get_relative_path(path)?;
+        Ok(OutputFile::new(Arc::new(self.clone()), path.to_string()))
     }
 }
 
-#[derive(Debug)]
-struct HdfsFileReader {
-    store: Arc<dyn ObjectStore>,
-    path: Path,
-}
+// Newtype wrappers: iceberg's FileRead/FileWrite cannot be implemented
+// directly on opendal's Reader/Writer due to orphan rules.
+struct HdfsFileReader(opendal::Reader);
 
 #[async_trait]
 impl FileRead for HdfsFileReader {
     async fn read(&self, range: Range<u64>) -> Result<Bytes> {
-        self.store
-            .get_range(&self.path, range)
+        Ok(self
+            .0
+            .read(range)
             .await
-            .map_err(|error| from_object_store_error("read HDFS file range", error))
+            .map_err(|error| from_opendal_error("read HDFS file range", error))?
+            .to_bytes())
+    }
+}
+
+struct HdfsFileWriter(opendal::Writer);
+
+#[async_trait]
+impl FileWrite for HdfsFileWriter {
+    async fn write(&mut self, bs: Bytes) -> Result<()> {
+        self.0
+            .write(bs)
+            .await
+            .map_err(|error| from_opendal_error("write HDFS file", error))
+    }
+
+    async fn close(&mut self) -> Result<()> {
+        let _ = self
+            .0
+            .close()
+            .await
+            .map_err(|error| from_opendal_error("close HDFS file", error))?;
+        Ok(())
     }
 }
 
@@ -190,7 +261,7 @@ fn parse_hdfs_url(location: &str) -> Result<Url> {
         .with_source(error)
     })?;
 
-    if parsed.scheme() != HDFS_SCHEME {
+    if parsed.scheme() != HDFS_SCHEMA {
         return Err(Error::new(
             ErrorKind::DataInvalid,
             format!("Invalid HDFS scheme: {}", parsed.scheme()),
@@ -206,15 +277,8 @@ fn parse_hdfs_url(location: &str) -> Result<Url> {
     Ok(parsed)
 }
 
-fn from_object_store_error(operation: &str, error: ObjectStoreError) -> Error {
+fn from_opendal_error(operation: &str, error: opendal::Error) -> Error {
     Error::new(ErrorKind::Unexpected, format!("Failed to {operation}")).with_source(error)
-}
-
-fn read_only_error() -> Error {
-    Error::new(
-        ErrorKind::FeatureUnsupported,
-        "HDFS Iceberg FileIO is read-only",
-    )
 }
 
 #[cfg(test)]
@@ -236,8 +300,7 @@ mod tests {
         assert_eq!(
             storage
                 .get_relative_path("hdfs://namenode:8020/warehouse/db/table/metadata.json")
-                .unwrap()
-                .as_ref(),
+                .unwrap(),
             "warehouse/db/table/metadata.json"
         );
     }
@@ -249,8 +312,7 @@ mod tests {
         assert_eq!(
             storage
                 .get_relative_path("hdfs://namenode:8020/warehouse/table%20name/metadata.json")
-                .unwrap()
-                .as_ref(),
+                .unwrap(),
             "warehouse/table name/metadata.json"
         );
     }
@@ -271,21 +333,13 @@ mod tests {
         assert_eq!(error.kind(), ErrorKind::DataInvalid);
     }
 
-    #[tokio::test]
-    async fn test_write_operations_are_unsupported() {
+    #[test]
+    fn test_new_output_is_supported() {
         let storage = HdfsStorage::new("namenode:8020".to_string());
-
-        let error = storage
-            .write("hdfs://namenode:8020/warehouse/metadata.json", Bytes::new())
-            .await
-            .unwrap_err();
-        assert_eq!(error.kind(), ErrorKind::FeatureUnsupported);
-        assert_eq!(
+        assert!(
             storage
                 .new_output("hdfs://namenode:8020/warehouse/metadata.json")
-                .unwrap_err()
-                .kind(),
-            ErrorKind::FeatureUnsupported
+                .is_ok()
         );
     }
 }
