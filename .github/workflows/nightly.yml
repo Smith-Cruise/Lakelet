@@ -143,6 +143,29 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      # Runs before the release is replaced: the check job keys "is there a
+      # new nightly to build" off the nightly tag, so the tag must only move
+      # once the mirror upload has succeeded — a failed upload then leaves
+      # the old tag in place and the next scheduled run retries everything.
+      - name: Mirror assets to Cloudflare R2 (cdn.lakelet.dev)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_DEFAULT_REGION: auto
+          # aws-cli v2.23+ enables new default integrity checksums that R2
+          # rejects; Cloudflare's documented fix is to only send them when
+          # the operation requires it.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+        run: |
+          # The nightly tag is overwritten in place each day, so keep the
+          # edge-cache TTL short enough that a replaced build propagates
+          # without a manual purge.
+          for f in dist/*; do
+            aws s3 cp "$f" "s3://lakelet/${RELEASE_TAG}/$(basename "$f")" \
+              --cache-control "public, max-age=300"
+          done
       - name: Replace nightly release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -174,22 +197,3 @@ jobs:
             --title "Nightly $DATE ($SHORT_SHA)" \
             --notes-file notes.md \
             dist/*
-      - name: Mirror assets to Cloudflare R2 (cdn.lakelet.dev)
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_ENDPOINT_URL: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          AWS_DEFAULT_REGION: auto
-          # aws-cli v2.23+ enables new default integrity checksums that R2
-          # rejects; Cloudflare's documented fix is to only send them when
-          # the operation requires it.
-          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
-          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
-        run: |
-          # The nightly tag is overwritten in place each day, so keep the
-          # edge-cache TTL short enough that a replaced build propagates
-          # without a manual purge.
-          for f in dist/*; do
-            aws s3 cp "$f" "s3://lakelet/${RELEASE_TAG}/$(basename "$f")" \
-              --cache-control "public, max-age=300"
-          done
