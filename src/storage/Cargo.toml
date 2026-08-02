@@ -10,4 +10,5 @@ url = { workspace = true }
 iceberg = { workspace = true }
 deltalake = { workspace = true }
 toml = { workspace = true }
-hdfs-native-object-store = { workspace = true }
+opendal = { workspace = true }
+object_store_opendal = { workspace = true }

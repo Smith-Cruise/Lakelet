@@ -1,20 +1,18 @@
+use crate::operator::build_root_object_store;
 use crate::oss_storage::OSSStorage;
 use crate::s3_storage::S3Storage;
 use datafusion::catalog::Session;
 use datafusion::common::DataFusionError;
 use datafusion::common::Result;
-use datafusion::object_store::ObjectStore;
 use deltalake::aws::constants::{
     AWS_ACCESS_KEY_ID, AWS_ENDPOINT_URL, AWS_REGION, AWS_S3_ADDRESSING_STYLE, AWS_SECRET_ACCESS_KEY,
 };
-use hdfs_native_object_store::HdfsObjectStoreBuilder;
 use iceberg::io::{
     OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET, OSS_ENDPOINT, S3_ACCESS_KEY_ID, S3_ENDPOINT,
     S3_PATH_STYLE_ACCESS, S3_REGION, S3_SECRET_ACCESS_KEY,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
 use url::Url;
 
 pub const S3_SCHEMA: &str = "s3";
@@ -22,13 +20,6 @@ pub const S3A_SCHEMA: &str = "s3a";
 pub const OSS_SCHEMA: &str = "oss";
 pub const HDFS_SCHEMA: &str = "hdfs";
 const AWS_VIRTUAL_HOSTED_STYLE_REQUEST: &str = "aws_virtual_hosted_style_request";
-
-pub trait StorageTrait {
-    fn build_object_store(
-        &self,
-        bucket_name: &str,
-    ) -> datafusion::common::Result<Arc<dyn ObjectStore>>;
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Storage {
@@ -39,6 +30,14 @@ pub struct Storage {
 }
 
 impl Storage {
+    pub fn s3_storage(&self) -> Option<&S3Storage> {
+        self.s3_storage.as_ref()
+    }
+
+    pub fn oss_storage(&self) -> Option<&OSSStorage> {
+        self.oss_storage.as_ref()
+    }
+
     pub fn build_paimon_file_io_properties(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         if let Some(s3_storage) = &self.s3_storage {
@@ -189,33 +188,8 @@ pub fn try_register_storage_info_session(
         return Ok(());
     }
 
-    match path_schema.as_str() {
-        S3_SCHEMA | S3A_SCHEMA => {
-            if let Some(s3_storage) = storage.and_then(|storage| storage.s3_storage.as_ref()) {
-                registry.register_store(
-                    &object_store_path,
-                    s3_storage.build_object_store(&path_bucket)?,
-                );
-            }
-        }
-        OSS_SCHEMA => {
-            if let Some(oss_storage) = storage.and_then(|storage| storage.oss_storage.as_ref()) {
-                registry.register_store(
-                    &object_store_path,
-                    oss_storage.build_object_store(&path_bucket)?,
-                );
-            }
-        }
-        HDFS_SCHEMA => {
-            // HDFS has no configuration, so register the store directly
-            // from the NameNode authority (host:port) in the location.
-            let store = HdfsObjectStoreBuilder::new()
-                .with_url(format!("{}://{}", HDFS_SCHEMA, path_bucket))
-                .build()
-                .map_err(|e| DataFusionError::External(Box::new(e)))?;
-            registry.register_store(&object_store_path, Arc::new(store));
-        }
-        _ => {}
+    if let Some(store) = build_root_object_store(&path_schema, &path_bucket, storage)? {
+        registry.register_store(&object_store_path, store);
     }
     Ok(())
 }
