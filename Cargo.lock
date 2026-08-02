@@ -4330,6 +4330,7 @@ dependencies = [
  "iceberg-storage-opendal",
  "lakelet-common",
  "lakelet-storage",
+ "mimalloc",
  "paimon",
  "paimon-datafusion",
  "prost 0.14.3",
