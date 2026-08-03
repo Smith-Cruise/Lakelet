@@ -16,8 +16,7 @@ use deltalake::logstore::{
     logstore_factories,
 };
 use deltalake::{DeltaResult, DeltaTableBuilder};
-use lakelet_storage::operator::build_root_object_store;
-use lakelet_storage::storage::{Storage, parse_location_schema_authority};
+use lakelet_storage::storage::{Storage, build_root_object_store, parse_location_schema_authority};
 use std::any::Any;
 use std::sync::{Arc, OnceLock};
 use url::Url;

@@ -1,15 +1,20 @@
-use crate::operator::build_root_object_store;
+use crate::hdfs_storage;
 use crate::oss_storage::OSSStorage;
 use crate::s3_storage::S3Storage;
 use datafusion::catalog::Session;
 use datafusion::common::DataFusionError;
 use datafusion::common::Result;
+use datafusion::object_store::ObjectStore;
 use iceberg::io::{
     OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET, OSS_ENDPOINT, S3_ACCESS_KEY_ID, S3_ENDPOINT,
     S3_PATH_STYLE_ACCESS, S3_REGION, S3_SECRET_ACCESS_KEY,
 };
+use object_store_opendal::OpendalStore;
+use opendal::Operator;
+use opendal::layers::{RetryLayer, TimeoutLayer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use url::Url;
 
 pub const S3_SCHEMA: &str = "s3";
@@ -109,6 +114,61 @@ impl Storage {
     }
 }
 
+/// Build an OpenDAL operator rooted at the storage's top level (bucket root
+/// for s3/oss, `/` for hdfs). This is the single place where a location
+/// scheme + authority is mapped onto a storage backend and credentials.
+///
+/// Returns `Ok(None)` when the catalog has no storage configuration for the
+/// scheme; callers decide whether that is an error. Unsupported schemes fail
+/// right away.
+pub fn build_operator(
+    scheme: &str,
+    authority: &str,
+    storage: Option<&Storage>,
+) -> Result<Option<Operator>> {
+    let operator = match scheme {
+        S3_SCHEMA | S3A_SCHEMA => storage
+            .and_then(|storage| storage.s3_storage())
+            .map(|s3_storage| s3_storage.build_operator(authority))
+            .transpose()?,
+        OSS_SCHEMA => storage
+            .and_then(|storage| storage.oss_storage())
+            .map(|oss_storage| oss_storage.build_operator(authority))
+            .transpose()?,
+        HDFS_SCHEMA => Some(hdfs_storage::build_operator(authority)?),
+        _ => {
+            return Err(DataFusionError::NotImplemented(format!(
+                "unsupported storage scheme: {scheme}"
+            )));
+        }
+    };
+    Ok(operator)
+}
+
+/// Build a root-level `ObjectStore` for DataFusion's registry (and Delta's
+/// storage backend) on top of the unified OpenDAL operator.
+pub fn build_root_object_store(
+    scheme: &str,
+    authority: &str,
+    storage: Option<&Storage>,
+) -> Result<Option<Arc<dyn ObjectStore>>> {
+    Ok(build_operator(scheme, authority, storage)?
+        .map(|op| Arc::new(OpendalStore::new(op)) as Arc<dyn ObjectStore>))
+}
+
+pub(crate) fn build_layered_operator<C: opendal::Configurator>(cfg: C) -> Result<Operator> {
+    // TimeoutLayer must sit inside RetryLayer so each retry attempt gets an
+    // independent timeout; a hung request would otherwise never be retried.
+    // RetryLayer is what turns transient HTTP failures (e.g. a stale pooled
+    // connection closed by the server) into silent retries instead of query
+    // errors.
+    Ok(Operator::from_config(cfg)
+        .map_err(|err| DataFusionError::External(Box::new(err)))?
+        .layer(TimeoutLayer::new())
+        .layer(RetryLayer::new())
+        .finish())
+}
+
 pub fn try_register_storage_info_session(
     storage: Option<&Storage>,
     table_location: impl Into<String>,
@@ -147,12 +207,81 @@ pub fn parse_location_schema_authority(path: &str) -> Result<(String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use crate::storage::{
-        Storage, parse_location_schema_authority, try_register_storage_info_session,
-    };
+    use crate::storage::*;
     use datafusion::execution::object_store::ObjectStoreUrl;
     use datafusion::prelude::SessionContext;
     use iceberg::io::{S3_PATH_STYLE_ACCESS, S3_REGION};
+
+    const S3_TOML: &str = r#"
+        s3-storage = { endpoint = "http://127.0.0.1:9000", region = "cn-north-1", access-key = "ak", secret-key = "sk", path-style-access = true }
+    "#;
+
+    const OSS_TOML: &str = r#"
+        oss-storage = { endpoint = "https://oss-cn-hangzhou.aliyuncs.com", access-key = "ak", secret-key = "sk" }
+    "#;
+
+    fn parse_toml(text: &str) -> Storage {
+        toml::from_str(text).unwrap()
+    }
+
+    #[test]
+    fn test_build_operator_s3() {
+        let storage = parse_toml(S3_TOML);
+        for scheme in [S3_SCHEMA, S3A_SCHEMA] {
+            let op = build_operator(scheme, "bucket", Some(&storage))
+                .unwrap()
+                .expect("s3 operator should be built");
+            assert_eq!(op.info().name(), "bucket");
+            assert_eq!(op.info().scheme(), "s3");
+        }
+    }
+
+    #[test]
+    fn test_build_operator_oss() {
+        let storage = parse_toml(OSS_TOML);
+        let op = build_operator(OSS_SCHEMA, "bucket", Some(&storage))
+            .unwrap()
+            .expect("oss operator should be built");
+        assert_eq!(op.info().name(), "bucket");
+        assert_eq!(op.info().scheme(), "oss");
+    }
+
+    #[test]
+    fn test_build_operator_hdfs_needs_no_config() {
+        let op = build_operator(HDFS_SCHEMA, "namenode:8020", None)
+            .unwrap()
+            .expect("hdfs operator should be built without storage config");
+        assert_eq!(op.info().scheme(), "hdfs-native");
+    }
+
+    #[test]
+    fn test_build_operator_missing_storage_config() {
+        assert!(build_operator(S3_SCHEMA, "bucket", None).unwrap().is_none());
+        let storage = parse_toml(S3_TOML);
+        assert!(
+            build_operator(OSS_SCHEMA, "bucket", Some(&storage))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_build_operator_unsupported_scheme_errors() {
+        let storage = parse_toml(S3_TOML);
+        let err = build_operator("gcs", "bucket", Some(&storage)).unwrap_err();
+        assert!(err.to_string().contains("unsupported storage scheme: gcs"));
+    }
+
+    #[test]
+    fn test_build_root_object_store() {
+        let storage = parse_toml(S3_TOML);
+        assert!(
+            build_root_object_store(S3_SCHEMA, "bucket", Some(&storage))
+                .unwrap()
+                .is_some()
+        );
+        assert!(build_root_object_store("gcs", "bucket", Some(&storage)).is_err());
+    }
 
     #[test]
     fn test_parse_storage() {

@@ -7,7 +7,7 @@ use iceberg::io::{
     StorageFactory,
 };
 use iceberg::{Error, ErrorKind, Result};
-use lakelet_storage::operator::build_operator;
+use lakelet_storage::hdfs_storage;
 use lakelet_storage::storage::HDFS_SCHEMA;
 use opendal::Operator;
 use percent_encoding::percent_decode_str;
@@ -57,19 +57,11 @@ impl HdfsStorage {
             return Ok(op.clone());
         }
 
-        // Reuse the central OpenDAL builder so HDFS access shares one
+        // Reuse the shared OpenDAL builder so HDFS access shares one
         // configuration (and retry/timeout layers) across all table formats.
-        let op = build_operator(HDFS_SCHEMA, &self.authority, None)
-            .map_err(|error| {
-                Error::new(ErrorKind::Unexpected, "Failed to build HDFS operator")
-                    .with_source(error)
-            })?
-            .ok_or_else(|| {
-                Error::new(
-                    ErrorKind::Unexpected,
-                    "HDFS operator unexpectedly unavailable",
-                )
-            })?;
+        let op = hdfs_storage::build_operator(&self.authority).map_err(|error| {
+            Error::new(ErrorKind::Unexpected, "Failed to build HDFS operator").with_source(error)
+        })?;
         let _ = self.operator.set(op.clone());
         Ok(op)
     }
