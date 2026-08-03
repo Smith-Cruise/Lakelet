@@ -20,7 +20,7 @@ Configure S3-compatible storage with the `s3-storage` inline table.
 | --- | --- | --- | --- | --- |
 | `region` | String | No | `AWS_REGION` env | AWS region used for requests. Falls back to the `AWS_REGION` / `AWS_DEFAULT_REGION` environment variables; errors if none is available. |
 | `endpoint` | String | No | AWS default | Custom endpoint for S3-compatible services such as MinIO. Must not include the bucket name. |
-| `access-key` | String | No | Credential chain | Access key. When both keys are set, the env/profile/IMDS credential chain is skipped. |
+| `access-key` | String | No | Credential chain | Access key. When unset, the env/profile/IMDS credential chain is used. |
 | `secret-key` | String | No | Credential chain | Secret key. |
 | `path-style-access` | Boolean | No | `false` | Uses path-style requests when `true`; otherwise uses virtual-hosted-style requests. |
 
