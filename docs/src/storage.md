@@ -37,14 +37,10 @@ Configure Aliyun OSS with the `oss-storage` inline table.
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `endpoint` | String | Yes | None | Bare regional OSS endpoint, for example `https://oss-cn-hangzhou.aliyuncs.com`. Must not include the bucket name; the bucket prefix is added automatically for virtual-hosted-style requests. |
+| `endpoint` | String | Yes | None | OSS endpoint, for example `https://oss-cn-hangzhou.aliyuncs.com`. Must not include the bucket name. |
 | `access-key` | String | No | None | Static access key ID. |
 | `secret-key` | String | No | None | Static access key secret. |
 | `path-style-access` | Boolean | No | `false` | Uses path-style requests when `true`; otherwise uses virtual-hosted-style requests. |
-
-> Breaking change: earlier releases required the bucket name inside the OSS
-> `endpoint` (`https://<bucket>.oss-<region>.aliyuncs.com`). Remove the bucket
-> prefix when upgrading.
 
 ```toml
 [[catalog.hms]]
