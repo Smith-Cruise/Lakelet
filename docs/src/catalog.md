@@ -41,9 +41,9 @@ s3-storage = { region = "us-east-1", access-key = "access-key", secret-key = "se
 The metastore URI is resolved as a socket address when the catalog is accessed.
 It must not include a URI scheme such as `thrift://`.
 
-Tables stored at `hdfs://` locations (all formats: Hive, Delta Lake, Iceberg,
-Paimon) do not need a storage configuration block. Lakelet reads the NameNode
-host and port from the table location. Kerberos is not support yet.
+Hive tables stored at `hdfs://` locations do not need a storage configuration
+block. Lakelet reads the NameNode host and port from the table location. Kerberos
+is not support yet.
 
 ## Glue
 

@@ -1,9 +1,7 @@
 # Storage
 
 Storage configuration is attached to an HMS or Glue catalog and supplies the
-properties needed to access table data. All storage access goes through
-[Apache OpenDAL](https://opendal.apache.org/), so every table format (Hive,
-Delta Lake, Iceberg, Paimon) supports the same set of location schemes.
+properties needed to access table data.
 
 | Location scheme | Configuration |
 | --- | --- |
@@ -61,5 +59,4 @@ oss-storage = { endpoint = "https://oss-cn-hangzhou.aliyuncs.com", access-key = 
 HDFS locations need no storage block: the NameNode authority (`host:port` or
 an HA nameservice resolvable through `HADOOP_CONF_DIR`) is taken from the
 table location itself, for example `hdfs://namenode:8020/warehouse/db/table`.
-All four table formats (Hive, Delta Lake, Iceberg, Paimon) support `hdfs://`
-locations. Kerberos is not supported yet.
+Kerberos is not supported yet.

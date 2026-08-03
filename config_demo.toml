@@ -42,8 +42,7 @@ s3-storage = { region = "us-west-2", access-key = "ak", secret-key = "sk" }
 name = "hms_1"
 # Required. Thrift metastore address as host:port.
 metastore-uri = "127.0.0.1:9087"
-# Optional storage credentials, matched by the table location scheme.
-# All table formats (Hive, Delta Lake, Iceberg, Paimon) share these blocks:
+# Optional storage credentials, matched by the table location scheme:
 #   s3:// or s3a://  -> s3-storage
 #   oss://           -> oss-storage
 #   hdfs://          -> no storage config needed (the NameNode host:port is
