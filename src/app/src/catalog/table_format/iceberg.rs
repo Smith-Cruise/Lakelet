@@ -9,7 +9,7 @@ use datafusion::sql::TableReference;
 use iceberg::io::{FileIO, FileIOBuilder};
 use iceberg::table::StaticTable;
 use iceberg::{NamespaceIdent, TableIdent};
-use lakelet_storage::storage::{Storage, build_operator, parse_location_schema_authority};
+use lakelet_storage::storage::{Storage, parse_location_schema_authority};
 use std::sync::Arc;
 
 mod iceberg_file_io;
@@ -25,7 +25,7 @@ impl IcebergTableProviderFactory {
         table_location: String,
         metadata_location: String,
         metadata_table_type: Option<MetadataTableType>,
-        storage: Option<Storage>,
+        storage: Storage,
     ) -> Result<Arc<dyn TableProvider>> {
         let (schema_name, table_name) = match &table_reference {
             TableReference::Full {
@@ -37,7 +37,7 @@ impl IcebergTableProviderFactory {
                 return Err(DataFusionError::Plan("invalid table reference".to_string()));
             }
         };
-        let file_io = build_file_io(&metadata_location, storage.as_ref())?;
+        let file_io = build_file_io(&metadata_location, &storage)?;
 
         let iceberg_identifier: TableIdent = TableIdent {
             namespace: NamespaceIdent::new(schema_name),
@@ -66,15 +66,15 @@ impl IcebergTableProviderFactory {
     }
 }
 
-fn build_file_io(metadata_location: &str, storage: Option<&Storage>) -> Result<FileIO> {
+fn build_file_io(metadata_location: &str, storage: &Storage) -> Result<FileIO> {
     // Validate scheme support and storage configuration up front so table
     // loading fails with a clear error instead of the first lazy file access.
     let (scheme, authority) = parse_location_schema_authority(metadata_location)?;
-    if build_operator(&scheme, &authority, storage)?.is_none() {
+    if storage.build_operator(&scheme, &authority)?.is_none() {
         return Err(DataFusionError::Plan(format!(
             "no storage configured for scheme '{scheme}' of iceberg metadata location {metadata_location}"
         )));
     }
 
-    Ok(FileIOBuilder::new(Arc::new(LakeletStorageFactory::new(storage.cloned()))).build())
+    Ok(FileIOBuilder::new(Arc::new(LakeletStorageFactory::new(storage.clone()))).build())
 }

@@ -18,7 +18,10 @@ pub const S3A_SCHEMA: &str = "s3a";
 pub const OSS_SCHEMA: &str = "oss";
 pub const HDFS_SCHEMA: &str = "hdfs";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Per-catalog storage configuration. A catalog without any storage block
+/// deserializes to the default value (all backends unset); HDFS needs no
+/// configuration at all.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Storage {
     #[serde(rename = "s3-storage")]
     s3_storage: Option<S3Storage>,
@@ -27,12 +30,46 @@ pub struct Storage {
 }
 
 impl Storage {
-    pub fn s3_storage(&self) -> Option<&S3Storage> {
-        self.s3_storage.as_ref()
+    /// Build an OpenDAL operator rooted at the storage's top level (bucket
+    /// root for s3/oss, `/` for hdfs). This is the single place where a
+    /// location scheme + authority is mapped onto a storage backend and
+    /// credentials.
+    ///
+    /// Returns `Ok(None)` when no storage backend is configured for the
+    /// scheme; callers decide whether that is an error. Unsupported schemes
+    /// fail right away.
+    pub fn build_operator(&self, scheme: &str, authority: &str) -> Result<Option<Operator>> {
+        let operator = match scheme {
+            S3_SCHEMA | S3A_SCHEMA => self
+                .s3_storage
+                .as_ref()
+                .map(|s3_storage| s3_storage.build_operator(authority))
+                .transpose()?,
+            OSS_SCHEMA => self
+                .oss_storage
+                .as_ref()
+                .map(|oss_storage| oss_storage.build_operator(authority))
+                .transpose()?,
+            HDFS_SCHEMA => Some(hdfs_storage::build_operator(authority)?),
+            _ => {
+                return Err(DataFusionError::NotImplemented(format!(
+                    "unsupported storage scheme: {scheme}"
+                )));
+            }
+        };
+        Ok(operator)
     }
 
-    pub fn oss_storage(&self) -> Option<&OSSStorage> {
-        self.oss_storage.as_ref()
+    /// Build a root-level `ObjectStore` for DataFusion's registry (and
+    /// Delta's storage backend) on top of the unified OpenDAL operator.
+    pub fn build_root_object_store(
+        &self,
+        scheme: &str,
+        authority: &str,
+    ) -> Result<Option<Arc<dyn ObjectStore>>> {
+        Ok(self
+            .build_operator(scheme, authority)?
+            .map(|op| Arc::new(OpendalStore::new(op)) as Arc<dyn ObjectStore>))
     }
 
     pub fn build_paimon_file_io_properties(&self) -> HashMap<String, String> {
@@ -73,48 +110,6 @@ impl Storage {
     }
 }
 
-/// Build an OpenDAL operator rooted at the storage's top level (bucket root
-/// for s3/oss, `/` for hdfs). This is the single place where a location
-/// scheme + authority is mapped onto a storage backend and credentials.
-///
-/// Returns `Ok(None)` when the catalog has no storage configuration for the
-/// scheme; callers decide whether that is an error. Unsupported schemes fail
-/// right away.
-pub fn build_operator(
-    scheme: &str,
-    authority: &str,
-    storage: Option<&Storage>,
-) -> Result<Option<Operator>> {
-    let operator = match scheme {
-        S3_SCHEMA | S3A_SCHEMA => storage
-            .and_then(|storage| storage.s3_storage())
-            .map(|s3_storage| s3_storage.build_operator(authority))
-            .transpose()?,
-        OSS_SCHEMA => storage
-            .and_then(|storage| storage.oss_storage())
-            .map(|oss_storage| oss_storage.build_operator(authority))
-            .transpose()?,
-        HDFS_SCHEMA => Some(hdfs_storage::build_operator(authority)?),
-        _ => {
-            return Err(DataFusionError::NotImplemented(format!(
-                "unsupported storage scheme: {scheme}"
-            )));
-        }
-    };
-    Ok(operator)
-}
-
-/// Build a root-level `ObjectStore` for DataFusion's registry (and Delta's
-/// storage backend) on top of the unified OpenDAL operator.
-pub fn build_root_object_store(
-    scheme: &str,
-    authority: &str,
-    storage: Option<&Storage>,
-) -> Result<Option<Arc<dyn ObjectStore>>> {
-    Ok(build_operator(scheme, authority, storage)?
-        .map(|op| Arc::new(OpendalStore::new(op)) as Arc<dyn ObjectStore>))
-}
-
 pub(crate) fn build_layered_operator<C: opendal::Configurator>(cfg: C) -> Result<Operator> {
     // TimeoutLayer must sit inside RetryLayer so each retry attempt gets an
     // independent timeout; a hung request would otherwise never be retried.
@@ -129,7 +124,7 @@ pub(crate) fn build_layered_operator<C: opendal::Configurator>(cfg: C) -> Result
 }
 
 pub fn try_register_storage_info_session(
-    storage: Option<&Storage>,
+    storage: &Storage,
     table_location: impl Into<String>,
     session: &dyn Session,
 ) -> Result<()> {
@@ -144,7 +139,7 @@ pub fn try_register_storage_info_session(
         return Ok(());
     }
 
-    if let Some(store) = build_root_object_store(&path_schema, &path_bucket, storage)? {
+    if let Some(store) = storage.build_root_object_store(&path_schema, &path_bucket)? {
         registry.register_store(&object_store_path, store);
     }
     Ok(())
@@ -186,7 +181,8 @@ mod tests {
     fn test_build_operator_s3() {
         let storage = parse_toml(S3_TOML);
         for scheme in [S3_SCHEMA, S3A_SCHEMA] {
-            let op = build_operator(scheme, "bucket", Some(&storage))
+            let op = storage
+                .build_operator(scheme, "bucket")
                 .unwrap()
                 .expect("s3 operator should be built");
             assert_eq!(op.info().name(), "bucket");
@@ -197,7 +193,8 @@ mod tests {
     #[test]
     fn test_build_operator_oss() {
         let storage = parse_toml(OSS_TOML);
-        let op = build_operator(OSS_SCHEMA, "bucket", Some(&storage))
+        let op = storage
+            .build_operator(OSS_SCHEMA, "bucket")
             .unwrap()
             .expect("oss operator should be built");
         assert_eq!(op.info().name(), "bucket");
@@ -206,7 +203,8 @@ mod tests {
 
     #[test]
     fn test_build_operator_hdfs_needs_no_config() {
-        let op = build_operator(HDFS_SCHEMA, "namenode:8020", None)
+        let op = Storage::default()
+            .build_operator(HDFS_SCHEMA, "namenode:8020")
             .unwrap()
             .expect("hdfs operator should be built without storage config");
         assert_eq!(op.info().scheme(), "hdfs-native");
@@ -214,10 +212,16 @@ mod tests {
 
     #[test]
     fn test_build_operator_missing_storage_config() {
-        assert!(build_operator(S3_SCHEMA, "bucket", None).unwrap().is_none());
+        assert!(
+            Storage::default()
+                .build_operator(S3_SCHEMA, "bucket")
+                .unwrap()
+                .is_none()
+        );
         let storage = parse_toml(S3_TOML);
         assert!(
-            build_operator(OSS_SCHEMA, "bucket", Some(&storage))
+            storage
+                .build_operator(OSS_SCHEMA, "bucket")
                 .unwrap()
                 .is_none()
         );
@@ -226,7 +230,7 @@ mod tests {
     #[test]
     fn test_build_operator_unsupported_scheme_errors() {
         let storage = parse_toml(S3_TOML);
-        let err = build_operator("gcs", "bucket", Some(&storage)).unwrap_err();
+        let err = storage.build_operator("gcs", "bucket").unwrap_err();
         assert!(err.to_string().contains("unsupported storage scheme: gcs"));
     }
 
@@ -234,11 +238,12 @@ mod tests {
     fn test_build_root_object_store() {
         let storage = parse_toml(S3_TOML);
         assert!(
-            build_root_object_store(S3_SCHEMA, "bucket", Some(&storage))
+            storage
+                .build_root_object_store(S3_SCHEMA, "bucket")
                 .unwrap()
                 .is_some()
         );
-        assert!(build_root_object_store("gcs", "bucket", Some(&storage)).is_err());
+        assert!(storage.build_root_object_store("gcs", "bucket").is_err());
     }
 
     #[test]
@@ -312,7 +317,7 @@ mod tests {
         let ctx = SessionContext::new();
 
         try_register_storage_info_session(
-            None,
+            &Storage::default(),
             "hdfs://namenode:8020/user/hive/warehouse/db/t",
             &ctx.state(),
         )

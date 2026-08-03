@@ -13,7 +13,7 @@ impl DeltaTableProviderFactory {
     pub async fn try_create_table_provider(
         table_reference: TableReference,
         table_location: String,
-        storage: Option<Storage>,
+        storage: Storage,
     ) -> Result<Arc<dyn TableProvider>> {
         let table_provider =
             DeltaTableProvider::try_new(table_reference, table_location, storage).await?;

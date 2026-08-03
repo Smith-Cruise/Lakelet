@@ -20,11 +20,11 @@ use std::sync::{Arc, Mutex};
 /// from the per-catalog `Storage` config captured at construction time.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct LakeletStorageFactory {
-    storage: Option<storage::Storage>,
+    storage: storage::Storage,
 }
 
 impl LakeletStorageFactory {
-    pub(crate) fn new(storage: Option<storage::Storage>) -> Self {
+    pub(crate) fn new(storage: storage::Storage) -> Self {
         Self { storage }
     }
 }
@@ -38,7 +38,7 @@ impl StorageFactory for LakeletStorageFactory {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct LakeletIcebergStorage {
-    storage: Option<storage::Storage>,
+    storage: storage::Storage,
     /// Operators cached per `scheme://authority`. Iceberg locations may span
     /// several buckets or NameNodes, so operators are created lazily per
     /// authority instead of being bound to a single one.
@@ -47,7 +47,7 @@ struct LakeletIcebergStorage {
 }
 
 impl LakeletIcebergStorage {
-    fn new(storage: Option<storage::Storage>) -> Self {
+    fn new(storage: storage::Storage) -> Self {
         Self {
             storage,
             operators: Arc::new(Mutex::new(HashMap::new())),
@@ -72,7 +72,9 @@ impl LakeletIcebergStorage {
             match operators.get(&key) {
                 Some(op) => op.clone(),
                 None => {
-                    let op = storage::build_operator(&scheme, &authority, self.storage.as_ref())
+                    let op = self
+                        .storage
+                        .build_operator(&scheme, &authority)
                         .map_err(|error| {
                             Error::new(
                                 ErrorKind::Unexpected,
@@ -331,7 +333,7 @@ mod tests {
 
     #[test]
     fn test_resolve_requires_storage_config() {
-        let storage = LakeletIcebergStorage::new(None);
+        let storage = LakeletIcebergStorage::new(storage::Storage::default());
         let error = storage
             .resolve("s3://bucket/warehouse/metadata.json")
             .unwrap_err();
@@ -341,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_resolve_hdfs_needs_no_config_and_caches_operator() {
-        let storage = LakeletIcebergStorage::new(None);
+        let storage = LakeletIcebergStorage::new(storage::Storage::default());
         let (op, path) = storage
             .resolve("hdfs://namenode:8020/warehouse/db/t/metadata.json")
             .unwrap();
@@ -358,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_resolve_unsupported_scheme_errors() {
-        let storage = LakeletIcebergStorage::new(None);
+        let storage = LakeletIcebergStorage::new(storage::Storage::default());
         let error = storage
             .resolve("gcs://bucket/warehouse/metadata.json")
             .unwrap_err();

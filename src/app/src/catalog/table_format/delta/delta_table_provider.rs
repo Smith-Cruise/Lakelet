@@ -16,7 +16,7 @@ use deltalake::logstore::{
     logstore_factories,
 };
 use deltalake::{DeltaResult, DeltaTableBuilder};
-use lakelet_storage::storage::{Storage, build_root_object_store, parse_location_schema_authority};
+use lakelet_storage::storage::{Storage, parse_location_schema_authority};
 use std::any::Any;
 use std::sync::{Arc, OnceLock};
 use url::Url;
@@ -67,11 +67,11 @@ impl DeltaTableProvider {
     pub async fn try_new(
         table_reference: TableReference,
         table_location: String,
-        storage: Option<Storage>,
+        storage: Storage,
     ) -> Result<Self> {
         register_delta_logstore_factories();
         let (scheme, authority) = parse_location_schema_authority(&table_location)?;
-        let store = build_root_object_store(&scheme, &authority, storage.as_ref())?
+        let store = storage.build_root_object_store(&scheme, &authority)?
             .ok_or_else(|| {
                 DataFusionError::Plan(format!(
                     "no storage configured for scheme '{scheme}' of delta table location {table_location}"

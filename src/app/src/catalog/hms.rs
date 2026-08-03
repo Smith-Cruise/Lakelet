@@ -29,8 +29,8 @@ pub struct HMSCatalogConfig {
     pub name: String,
     #[serde(rename = "metastore-uri")]
     pub metastore_uri: String,
-    #[serde(flatten)]
-    pub storage: Option<Storage>,
+    #[serde(flatten, default)]
+    pub storage: Storage,
 }
 
 fn build_hms_client(config: &Arc<HMSCatalogConfig>) -> Result<ThriftHiveMetastoreClient> {
@@ -255,5 +255,56 @@ impl AsyncSchemaProvider for HMSSchema {
             .with_hive_storage_info(hive_storage_info)
             .with_hive_partitions(hive_partitions);
         Ok(Some(table_provider_builder.build().await?))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_hms_config_without_storage_block() {
+        let config: HMSCatalogConfig = toml::from_str(
+            r#"
+            name = "hms_1"
+            metastore-uri = "127.0.0.1:9083"
+        "#,
+        )
+        .unwrap();
+        assert_eq!(config.name, "hms_1");
+        // No storage block: every scheme except hdfs resolves to None.
+        assert!(
+            config
+                .storage
+                .build_operator("s3", "bucket")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            config
+                .storage
+                .build_operator("hdfs", "nn:8020")
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn test_parse_hms_config_with_storage_block() {
+        let config: HMSCatalogConfig = toml::from_str(
+            r#"
+            name = "hms_1"
+            metastore-uri = "127.0.0.1:9083"
+            s3-storage = { endpoint = "http://127.0.0.1:9000", region = "us-east-1", access-key = "ak", secret-key = "sk" }
+        "#,
+        )
+        .unwrap();
+        assert!(
+            config
+                .storage
+                .build_operator("s3", "bucket")
+                .unwrap()
+                .is_some()
+        );
     }
 }

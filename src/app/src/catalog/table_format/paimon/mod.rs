@@ -17,12 +17,9 @@ impl PaimonTableProviderFactory {
     pub async fn try_create_table_provider(
         table_reference: TableReference,
         table_location: String,
-        storage: Option<Storage>,
+        storage: Storage,
     ) -> Result<Arc<dyn TableProvider>> {
-        let file_io_properties = storage
-            .as_ref()
-            .map(Storage::build_paimon_file_io_properties)
-            .unwrap_or_default();
+        let file_io_properties = storage.build_paimon_file_io_properties();
         let file_io = build_file_io(&table_location, file_io_properties)?;
         let schema = SchemaManager::new(file_io.clone(), table_location.clone())
             .latest()

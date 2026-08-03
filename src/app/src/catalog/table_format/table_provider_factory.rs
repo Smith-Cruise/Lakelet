@@ -25,7 +25,7 @@ pub struct TableProviderBuilder {
     metadata_table_type: Option<MetadataTableType>,
     hive_storage_info: Option<HiveStorageInfo>,
     hive_partitions: Option<Vec<HivePartition>>,
-    storage: Option<Storage>,
+    storage: Storage,
 }
 
 impl TableProviderBuilder {
@@ -277,7 +277,7 @@ mod tests {
             CatalogConfig::HMS(crate::hms_catalog::HMSCatalogConfig {
                 name: "catalog".to_string(),
                 metastore_uri: "localhost:9083".to_string(),
-                storage: None,
+                storage: Storage::default(),
             }),
         )
         .with_hive_storage_info(Some(test_hive_storage_info()))

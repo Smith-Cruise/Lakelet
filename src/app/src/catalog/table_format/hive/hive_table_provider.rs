@@ -44,7 +44,7 @@ pub struct HiveTableProvider {
     table_location: String,
     hive_storage_info: HiveStorageInfo,
     partitions: Vec<HivePartition>,
-    storage: Option<Storage>,
+    storage: Storage,
     io_handle: Handle,
     table_definition: String,
 }
@@ -54,7 +54,7 @@ impl HiveTableProvider {
         table_location: String,
         hive_storage_info: HiveStorageInfo,
         partitions: Vec<HivePartition>,
-        storage: Option<Storage>,
+        storage: Storage,
         io_handle: Handle,
         table_definition: String,
     ) -> Self {
@@ -94,7 +94,7 @@ impl TableProvider for HiveTableProvider {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        try_register_storage_info_session(self.storage.as_ref(), &self.table_location, state)?;
+        try_register_storage_info_session(&self.storage, &self.table_location, state)?;
 
         let (path_schema, path_bucket) = parse_location_schema_authority(&self.table_location)?;
         let store_url = ObjectStoreUrl::parse(format!("{}://{}", path_schema, path_bucket))?;
