@@ -9,9 +9,8 @@ properties needed to access table data.
 | `oss://` | `oss-storage` |
 | `hdfs://` | No storage block; the NameNode authority comes from the location. |
 
-A location whose scheme has no matching storage block fails with a clear
-error. In particular, Delta tables on S3 no longer fall back to environment
-credentials: configure `s3-storage` explicitly.
+Storage configuration is optional at the TOML level. Whether it can be omitted
+in practice depends on the storage backend's authentication environment.
 
 ## AWS S3
 
@@ -19,7 +18,7 @@ Configure S3-compatible storage with the `s3-storage` inline table.
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `region` | String | No | `us-east-1` | AWS region used for requests. |
+| `region` | String | No | `AWS_REGION` env | AWS region used for requests. Falls back to the `AWS_REGION` / `AWS_DEFAULT_REGION` environment variables; errors if none is available. |
 | `endpoint` | String | No | AWS default | Custom endpoint for S3-compatible services such as MinIO. Must not include the bucket name. |
 | `access-key` | String | No | Credential chain | Access key. When both keys are set, the env/profile/IMDS credential chain is skipped. |
 | `secret-key` | String | No | Credential chain | Secret key. |
@@ -56,7 +55,6 @@ oss-storage = { endpoint = "https://oss-cn-hangzhou.aliyuncs.com", access-key = 
 
 ## HDFS
 
-HDFS locations need no storage block: the NameNode authority (`host:port` or
-an HA nameservice resolvable through `HADOOP_CONF_DIR`) is taken from the
-table location itself, for example `hdfs://namenode:8020/warehouse/db/table`.
+Don't need to configure anything.
+
 Kerberos is not supported yet.

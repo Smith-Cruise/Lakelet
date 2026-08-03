@@ -7,8 +7,6 @@ use opendal::layers::{RetryLayer, TimeoutLayer};
 use opendal::services::{HdfsNativeConfig, OssConfig, S3Config};
 use std::sync::Arc;
 
-const DEFAULT_S3_REGION: &str = "us-east-1";
-
 /// Build an OpenDAL operator rooted at the storage's top level (bucket root
 /// for s3/oss, `/` for hdfs). This is the single place where a location
 /// scheme + authority is mapped onto a storage backend and credentials.
@@ -25,13 +23,9 @@ pub fn build_operator(
             Some(s3_storage) => {
                 let mut cfg = S3Config::default();
                 cfg.bucket = authority.to_string();
-                // OpenDAL errors at build time when the region is unset.
-                cfg.region = Some(
-                    s3_storage
-                        .region
-                        .clone()
-                        .unwrap_or_else(|| DEFAULT_S3_REGION.to_string()),
-                );
+                // When unset, OpenDAL falls back to AWS_REGION/AWS_DEFAULT_REGION
+                // and errors with a clear message if those are missing too.
+                cfg.region = s3_storage.region.clone();
                 cfg.endpoint = s3_storage.endpoint.clone();
                 cfg.access_key_id = s3_storage.access_key.clone();
                 cfg.secret_access_key = s3_storage.secret_key.clone();
@@ -130,21 +124,6 @@ mod tests {
             assert_eq!(op.info().name(), "bucket");
             assert_eq!(op.info().scheme(), "s3");
         }
-    }
-
-    #[test]
-    fn test_build_operator_s3_without_region_defaults() {
-        let storage = parse_storage(
-            r#"
-            s3-storage = { endpoint = "http://127.0.0.1:9000", access-key = "ak", secret-key = "sk" }
-        "#,
-        );
-        // Region defaults to us-east-1; build must not fail.
-        assert!(
-            build_operator(S3_SCHEMA, "bucket", Some(&storage))
-                .unwrap()
-                .is_some()
-        );
     }
 
     #[test]
