@@ -11,8 +11,9 @@ use std::sync::Arc;
 /// for s3/oss, `/` for hdfs). This is the single place where a location
 /// scheme + authority is mapped onto a storage backend and credentials.
 ///
-/// Returns `Ok(None)` when the scheme is unknown or the catalog has no
-/// storage configuration for it; callers decide whether that is an error.
+/// Returns `Ok(None)` when the catalog has no storage configuration for the
+/// scheme; callers decide whether that is an error. Unsupported schemes fail
+/// right away.
 pub fn build_operator(
     scheme: &str,
     authority: &str,
@@ -63,7 +64,11 @@ pub fn build_operator(
             cfg.name_node = Some(format!("{}://{}", HDFS_SCHEMA, authority));
             Some(build_from_config(cfg)?)
         }
-        _ => None,
+        _ => {
+            return Err(DataFusionError::NotImplemented(format!(
+                "unsupported storage scheme: {scheme}"
+            )));
+        }
     };
     Ok(operator)
 }
@@ -150,13 +155,10 @@ mod tests {
     }
 
     #[test]
-    fn test_build_operator_unknown_scheme() {
+    fn test_build_operator_unsupported_scheme_errors() {
         let storage = parse_storage(S3_TOML);
-        assert!(
-            build_operator("gcs", "bucket", Some(&storage))
-                .unwrap()
-                .is_none()
-        );
+        let err = build_operator("gcs", "bucket", Some(&storage)).unwrap_err();
+        assert!(err.to_string().contains("unsupported storage scheme: gcs"));
     }
 
     #[test]
@@ -167,10 +169,6 @@ mod tests {
                 .unwrap()
                 .is_some()
         );
-        assert!(
-            build_root_object_store("gcs", "bucket", Some(&storage))
-                .unwrap()
-                .is_none()
-        );
+        assert!(build_root_object_store("gcs", "bucket", Some(&storage)).is_err());
     }
 }
