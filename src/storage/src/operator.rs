@@ -31,11 +31,6 @@ pub fn build_operator(
                 cfg.secret_access_key = s3_storage.secret_key.clone();
                 // OpenDAL defaults to path-style, the inverse of our config default.
                 cfg.enable_virtual_host_style = !s3_storage.path_style_access;
-                // With explicit credentials, skip the env/profile/IMDS chain so
-                // behavior stays predictable per catalog.
-                if cfg.access_key_id.is_some() && cfg.secret_access_key.is_some() {
-                    cfg.disable_config_load = true;
-                }
                 Some(build_from_config(cfg)?)
             }
             None => None,
@@ -66,7 +61,6 @@ pub fn build_operator(
             // (host:port or HA nameservice) comes from the location itself.
             let mut cfg = HdfsNativeConfig::default();
             cfg.name_node = Some(format!("{}://{}", HDFS_SCHEMA, authority));
-            cfg.root = Some("/".to_string());
             Some(build_from_config(cfg)?)
         }
         _ => None,
