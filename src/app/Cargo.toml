@@ -28,7 +28,6 @@ async-trait = { workspace = true }
 bytes = { workspace = true }
 iceberg = { workspace = true }
 iceberg-datafusion = { workspace = true }
-iceberg-storage-opendal = { workspace = true }
 opendal = { workspace = true }
 percent-encoding = { workspace = true }
 paimon = { workspace = true }

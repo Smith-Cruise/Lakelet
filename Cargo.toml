@@ -29,7 +29,6 @@ url = "2.5.7"
 percent-encoding = "2.3"
 iceberg = "0.10.0"
 iceberg-datafusion = "0.10.0"
-iceberg-storage-opendal = { version = "0.10.0", default-features = false, features = ["opendal-s3", "opendal-oss"] }
 opendal = { version = "0.57", features = ["services-s3", "services-oss", "services-hdfs-native"] }
 object_store_opendal = "0.57"
 deltalake = { version = "0.32.2", features = ["datafusion"] }

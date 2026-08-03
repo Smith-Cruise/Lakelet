@@ -3879,26 +3879,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "iceberg-storage-opendal"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbf3a44173031681bbb0775299bb487b0c3aa937cb55959325ea980757acb1e1"
-dependencies = [
- "anyhow",
- "async-trait",
- "bytes",
- "cfg-if",
- "futures",
- "iceberg",
- "opendal 0.57.0",
- "reqsign-aws-v4",
- "reqsign-core",
- "serde",
- "typetag",
- "url",
-]
-
-[[package]]
 name = "icu_collections"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4256,7 +4236,6 @@ dependencies = [
  "hive_metastore",
  "iceberg",
  "iceberg-datafusion",
- "iceberg-storage-opendal",
  "lakelet-common",
  "lakelet-storage",
  "mimalloc",
@@ -4292,7 +4271,6 @@ name = "lakelet-storage"
 version = "0.1.0"
 dependencies = [
  "datafusion",
- "iceberg",
  "object_store_opendal",
  "opendal 0.57.0",
  "serde",

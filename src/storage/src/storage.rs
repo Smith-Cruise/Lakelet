@@ -5,10 +5,6 @@ use datafusion::catalog::Session;
 use datafusion::common::DataFusionError;
 use datafusion::common::Result;
 use datafusion::object_store::ObjectStore;
-use iceberg::io::{
-    OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET, OSS_ENDPOINT, S3_ACCESS_KEY_ID, S3_ENDPOINT,
-    S3_PATH_STYLE_ACCESS, S3_REGION, S3_SECRET_ACCESS_KEY,
-};
 use object_store_opendal::OpendalStore;
 use opendal::Operator;
 use opendal::layers::{RetryLayer, TimeoutLayer};
@@ -71,43 +67,6 @@ impl Storage {
             }
             if let Some(secret_key) = &oss_storage.secret_key {
                 map.insert("fs.oss.accessKeySecret".to_string(), secret_key.clone());
-            }
-        }
-        map
-    }
-
-    pub fn build_iceberg_file_io_properties(&self) -> HashMap<String, String> {
-        let mut map: HashMap<String, String> = HashMap::new();
-        if let Some(s3_storage) = &self.s3_storage {
-            if let Some(region) = &s3_storage.region {
-                map.insert(S3_REGION.into(), region.clone());
-            } else {
-                map.insert(S3_REGION.into(), "us-east-1".to_string());
-            }
-            if let Some(endpoint) = &s3_storage.endpoint {
-                map.insert(S3_ENDPOINT.into(), endpoint.clone());
-            }
-            if let Some(access_key) = &s3_storage.access_key {
-                map.insert(S3_ACCESS_KEY_ID.into(), access_key.clone());
-            }
-            if let Some(secret_key) = &s3_storage.secret_key {
-                map.insert(S3_SECRET_ACCESS_KEY.into(), secret_key.clone());
-            }
-            map.insert(
-                S3_PATH_STYLE_ACCESS.into(),
-                s3_storage.path_style_access.to_string(),
-            );
-        }
-
-        if let Some(oss_storage) = &self.oss_storage {
-            if let Some(endpoint) = &oss_storage.endpoint {
-                map.insert(OSS_ENDPOINT.into(), endpoint.clone());
-            }
-            if let Some(access_key) = &oss_storage.access_key {
-                map.insert(OSS_ACCESS_KEY_ID.into(), access_key.clone());
-            }
-            if let Some(secret_key) = &oss_storage.secret_key {
-                map.insert(OSS_ACCESS_KEY_SECRET.into(), secret_key.clone());
             }
         }
         map
@@ -210,7 +169,6 @@ mod tests {
     use crate::storage::*;
     use datafusion::execution::object_store::ObjectStoreUrl;
     use datafusion::prelude::SessionContext;
-    use iceberg::io::{S3_PATH_STYLE_ACCESS, S3_REGION};
 
     const S3_TOML: &str = r#"
         s3-storage = { endpoint = "http://127.0.0.1:9000", region = "cn-north-1", access-key = "ak", secret-key = "sk", path-style-access = true }
@@ -313,48 +271,6 @@ mod tests {
         assert_eq!("admin", &oss_storage.access_key.unwrap());
         assert_eq!("password", &oss_storage.secret_key.unwrap());
         assert!(!oss_storage.path_style_access);
-    }
-
-    #[test]
-    fn test_build_iceberg_file_io_properties_includes_s3_path_style_access() {
-        let text = r#"
-            s3-storage = { endpoint = "http://127.0.0.1:9000", region = "us-east-1", access-key = "admin", secret-key = "password", path-style-access = true }
-        "#;
-
-        let storage: Storage = toml::from_str(text).unwrap();
-        let properties = storage.build_iceberg_file_io_properties();
-
-        assert_eq!(
-            properties.get(S3_PATH_STYLE_ACCESS).map(String::as_str),
-            Some("true")
-        );
-
-        let text = r#"
-            s3-storage = { endpoint = "http://127.0.0.1:9000", region = "us-east-1", access-key = "admin", secret-key = "password" }
-        "#;
-
-        let storage: Storage = toml::from_str(text).unwrap();
-        let properties = storage.build_iceberg_file_io_properties();
-
-        assert_eq!(
-            properties.get(S3_PATH_STYLE_ACCESS).map(String::as_str),
-            Some("false")
-        );
-    }
-
-    #[test]
-    fn test_build_iceberg_file_io_properties_defaults_s3_region() {
-        let text = r#"
-            s3-storage = { endpoint = "http://127.0.0.1:9000", access-key = "admin", secret-key = "password" }
-        "#;
-
-        let storage: Storage = toml::from_str(text).unwrap();
-        let properties = storage.build_iceberg_file_io_properties();
-
-        assert_eq!(
-            properties.get(S3_REGION).map(String::as_str),
-            Some("us-east-1")
-        );
     }
 
     #[test]

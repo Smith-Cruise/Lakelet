@@ -1,4 +1,4 @@
-use crate::catalog::table_format::iceberg::iceberg_hdfs_file_io::HdfsStorageFactory;
+use crate::catalog::table_format::iceberg::iceberg_file_io::LakeletStorageFactory;
 use crate::table_format::iceberg::iceberg_metadata_table_provider::IcebergMetadataTableProvider;
 use crate::table_format::iceberg::iceberg_table_provider::IcebergTableProvider;
 use crate::table_format::metadata_table::MetadataTableType;
@@ -6,15 +6,13 @@ use datafusion::catalog::TableProvider;
 use datafusion::common::Result;
 use datafusion::error::DataFusionError;
 use datafusion::sql::TableReference;
-use iceberg::io::{FileIO, FileIOBuilder, LocalFsStorageFactory};
+use iceberg::io::{FileIO, FileIOBuilder};
 use iceberg::table::StaticTable;
 use iceberg::{NamespaceIdent, TableIdent};
-use iceberg_storage_opendal::OpenDalStorageFactory;
-use lakelet_storage::storage::{HDFS_SCHEMA, OSS_SCHEMA, S3_SCHEMA, S3A_SCHEMA, Storage};
+use lakelet_storage::storage::{Storage, build_operator, parse_location_schema_authority};
 use std::sync::Arc;
-use url::Url;
 
-mod iceberg_hdfs_file_io;
+mod iceberg_file_io;
 mod iceberg_metadata_scan;
 pub mod iceberg_metadata_table_provider;
 mod iceberg_table_provider;
@@ -69,39 +67,14 @@ impl IcebergTableProviderFactory {
 }
 
 fn build_file_io(metadata_location: &str, storage: Option<&Storage>) -> Result<FileIO> {
-    let parsed =
-        Url::parse(metadata_location).map_err(|e| DataFusionError::External(Box::new(e)))?;
+    // Validate scheme support and storage configuration up front so table
+    // loading fails with a clear error instead of the first lazy file access.
+    let (scheme, authority) = parse_location_schema_authority(metadata_location)?;
+    if build_operator(&scheme, &authority, storage)?.is_none() {
+        return Err(DataFusionError::Plan(format!(
+            "no storage configured for scheme '{scheme}' of iceberg metadata location {metadata_location}"
+        )));
+    }
 
-    // Only the OpenDAL S3/OSS factories consume properties (they parse the
-    // map back into their service config); file and hdfs need none.
-    let file_io_properties = || {
-        storage
-            .map(Storage::build_iceberg_file_io_properties)
-            .unwrap_or_default()
-    };
-
-    let scheme = parsed.scheme();
-    let file_io = match scheme {
-        "file" => FileIOBuilder::new(Arc::new(LocalFsStorageFactory)).build(),
-        S3_SCHEMA | S3A_SCHEMA => FileIOBuilder::new(Arc::new(OpenDalStorageFactory::S3 {
-            customized_credential_load: None,
-        }))
-        .with_props(file_io_properties())
-        .build(),
-        OSS_SCHEMA => FileIOBuilder::new(Arc::new(OpenDalStorageFactory::Oss))
-            .with_props(file_io_properties())
-            .build(),
-        HDFS_SCHEMA => FileIOBuilder::new(Arc::new(
-            HdfsStorageFactory::try_new(metadata_location)
-                .map_err(|error| DataFusionError::External(Box::new(error)))?,
-        ))
-        .build(),
-        _ => {
-            return Err(DataFusionError::NotImplemented(format!(
-                "unsupported iceberg storage scheme: {scheme}"
-            )));
-        }
-    };
-
-    Ok(file_io)
+    Ok(FileIOBuilder::new(Arc::new(LakeletStorageFactory::new(storage.cloned()))).build())
 }
