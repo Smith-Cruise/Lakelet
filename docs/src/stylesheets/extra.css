@@ -1,233 +1,211 @@
 /* ---------------------------------------------------------------------------
- * Landing page (index.md) — "engineering blueprint" theme.
+ * Home page (index.md) enhancements.
  *
- * The homepage is a fixed dark design that does not follow the Material
- * light/dark palette toggle. Doc pages below only pick up the shared
- * .md-content__inner width tweaks at the end of this file.
+ * Everything here is scoped to the `.ll-home` wrapper (or gated behind
+ * `body:has(.ll-home)`), so doc pages are untouched. Colors come from the
+ * theme's own palette variables and adapt to light/dark automatically.
  * ------------------------------------------------------------------------- */
 
-:root {
-  --ll-bg: #10141a;
-  --ll-bg-code: #0b0f14;
-  --ll-grid-line: #1c232d;
-  --ll-border: #2a323e;
-  --ll-border-soft: #3a4250;
-  --ll-text: #e8ecf1;
-  --ll-text-dim: #9aa4b2;
-  --ll-text-faint: #7d8590;
-  --ll-amber: #ef9f27;
-  --ll-amber-bright: #fac775;
+/* Site-wide: copy button turns into a green check after a click (the
+ * `ll-copied` class is added briefly by javascripts/extra.js). */
+.md-code__button.ll-copied[data-md-type="copy"] {
+  color: #2fa36b !important;
 }
 
-/* Hide the Material chrome on the landing page and let it own the canvas. */
-body:has(.ll-page) .md-header,
-body:has(.ll-page) .md-tabs {
-  display: none;
+.md-code__button.ll-copied[data-md-type="copy"]::after {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
 }
 
-body:has(.ll-page),
-body:has(.ll-page) .md-container,
-body:has(.ll-page) .md-main {
-  background-color: var(--ll-bg);
+/* Soft brand-colored glow behind the hero. */
+body:has(.ll-home) .md-main {
+  background:
+    radial-gradient(
+      70rem 30rem at 80% -8%,
+      color-mix(in srgb, var(--md-primary-fg-color) 9%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      50rem 26rem at 8% -12%,
+      color-mix(in srgb, var(--md-accent-fg-color) 7%, transparent),
+      transparent 70%
+    );
 }
 
-body:has(.ll-page) .md-main__inner {
-  width: 100%;
-  max-width: none;
-  margin: 0;
-  padding: 0;
+body[data-md-color-scheme="slate"]:has(.ll-home) .md-main {
+  background:
+    radial-gradient(
+      70rem 30rem at 80% -8%,
+      color-mix(in srgb, var(--md-primary-fg-color) 16%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      50rem 26rem at 8% -12%,
+      color-mix(in srgb, var(--md-accent-fg-color) 10%, transparent),
+      transparent 70%
+    );
 }
 
-body:has(.ll-page) .md-content__inner {
-  max-width: none;
-  margin: 0;
-  padding: 0;
+/* Hero ------------------------------------------------------------------- */
+
+.md-typeset .ll-home {
+  padding-top: 1.6rem;
 }
 
-body:has(.ll-page) .md-content__inner::before {
-  display: none;
-}
-
-/* Page canvas: dark slate with a drafting grid. */
-.ll-page {
-  min-height: 100vh;
-  min-height: 100dvh;
-  padding: 1.6rem clamp(1.2rem, 5vw, 4rem) 2rem;
-  color: var(--ll-text-dim);
-  background-color: var(--ll-bg);
-  background-image:
-    linear-gradient(var(--ll-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--ll-grid-line) 1px, transparent 1px);
-  background-size: 28px 28px;
-
-  /* Restyle the Material pieces used inside (code blocks, links). */
-  --md-code-bg-color: var(--ll-bg-code);
-  --md-code-fg-color: var(--ll-text);
-  --md-code-hl-string-color: #9fe1cb;
-  --md-typeset-color: var(--ll-text-dim);
-  --md-typeset-a-color: var(--ll-amber);
-  --md-default-fg-color--lighter: var(--ll-text-faint);
-  --md-default-fg-color--lightest: var(--ll-text-faint);
-  --md-accent-fg-color: var(--ll-amber-bright);
-}
-
-.ll-page > * {
-  max-width: 66rem;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.md-typeset .ll-page a:not(.md-button) {
-  color: var(--ll-amber);
-}
-
-.md-typeset .ll-page a:not(.md-button):hover {
-  color: var(--ll-amber-bright);
-}
-
-/* Top navigation: brand left, Docs / GitHub right. */
-.ll-nav {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.ll-brand {
+.md-typeset .ll-home h1 {
+  margin-bottom: 1rem;
+  font-size: clamp(2.2rem, 1.4rem + 3vw, 3.2rem);
   font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--ll-text);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  max-width: 24em;
+  background: linear-gradient(
+    92deg,
+    var(--md-default-fg-color) 30%,
+    var(--md-primary-fg-color)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--md-default-fg-color); /* fallback if clip unsupported */
 }
 
-.ll-nav-links {
-  font-family: var(--md-code-font-family, monospace);
-  font-size: 0.7rem;
-  color: var(--ll-text-faint);
-}
-
-/* Monospace figure labels: "fig. 01 — ...". */
-.md-typeset .ll-fig {
-  margin-bottom: 0.6rem;
-  font-family: var(--md-code-font-family, monospace);
-  font-size: 0.62rem;
-  letter-spacing: 0.14em;
-  color: var(--ll-amber);
-}
-
-/* Hero — the page is a single screen, so let it fill the viewport. */
-.ll-hero {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  min-height: calc(100vh - 12rem);
-  min-height: calc(100dvh - 12rem);
-}
-
-.md-typeset .ll-hero h1 {
-  margin: 0 0 0.8rem;
-  font-size: clamp(1.9rem, 4.6vw, 3.1rem);
-  font-weight: 600;
-  line-height: 1.18;
-  letter-spacing: -0.02em;
-  color: var(--ll-text);
-}
-
-.md-typeset .ll-hero > p:not(.ll-fig, .ll-note) {
-  max-width: 34rem;
-  margin-bottom: 1.6rem;
-  font-size: 0.86rem;
+/* Lead paragraph (the one right after the h1). */
+.md-typeset .ll-home h1 + p {
+  max-width: 36rem;
+  font-size: 0.9rem;
   line-height: 1.7;
+  color: var(--md-default-fg-color--light);
 }
 
-/* Install panel: dashed border with a small header strip. */
-.ll-install {
-  width: min(100%, 34rem);
-  margin: 0 0 0.5rem;
-  background-color: var(--ll-bg-code);
-  border: 1px dashed var(--ll-border-soft);
+/* Install command: terminal-style card. */
+.md-typeset .ll-home > .highlight {
+  width: min(100%, 36rem);
+  margin: 1.4rem 0 1rem;
+  border: 0.05rem solid var(--md-default-fg-color--lightest);
   border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: var(--md-shadow-z1);
+  background-color: var(--md-code-bg-color);
 }
 
-.md-typeset .ll-install .ll-install-head {
+/* Title bar with three window dots. */
+.md-typeset .ll-home > .highlight::before {
+  content: "";
+  display: block;
+  height: 1.5rem;
+  border-bottom: 0.05rem solid var(--md-default-fg-color--lightest);
+  background:
+    radial-gradient(0.24rem 0.24rem at 0.8rem 50%, #ff5f57 48%, transparent 52%),
+    radial-gradient(0.24rem 0.24rem at 1.5rem 50%, #febc2e 48%, transparent 52%),
+    radial-gradient(0.24rem 0.24rem at 2.2rem 50%, #28c840 48%, transparent 52%);
+}
+
+.md-typeset .ll-home > .highlight pre {
   margin: 0;
-  padding: 0.4rem 0.9rem;
-  font-family: var(--md-code-font-family, monospace);
-  font-size: 0.58rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--ll-text-faint);
-  border-bottom: 1px dashed var(--ll-border-soft);
 }
 
-.md-typeset .ll-install .highlight {
-  margin: 0;
+.md-typeset .ll-home > .highlight pre > code {
+  padding: 0.9rem 3rem 0.9rem 1rem; /* right padding keeps text clear of the copy button */
 }
 
-.md-typeset .ll-install pre {
-  margin: 0;
-}
-
-.md-typeset .ll-install pre > code {
-  padding: 0.85rem 0.9rem;
-  font-size: 0.78rem;
+/* Copy button: vertically centered in the code row, with visible feedback. */
+.md-typeset .ll-home > .highlight .md-code__nav {
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
   background-color: transparent;
 }
 
-.md-typeset .ll-note {
-  margin: 0 0 1.6rem;
-  font-family: var(--md-code-font-family, monospace);
-  font-size: 0.64rem;
-  color: var(--ll-text-faint);
+.md-typeset .ll-home > .highlight .md-code__button {
+  color: var(--md-default-fg-color--light);
+  border-radius: 0.2rem;
+  transition: color 0.25s, background-color 0.25s, transform 0.15s;
 }
 
-/* Buttons (hero + CTA). */
-.md-typeset .ll-page .md-button {
-  margin: 0.2rem 0.5rem 0.2rem 0;
-  color: var(--ll-text);
-  border-color: var(--ll-border-soft);
+.md-typeset .ll-home > .highlight .md-code__button:hover,
+.md-typeset .ll-home > .highlight .md-code__button.focus-visible {
+  color: var(--md-accent-fg-color);
+  background-color: color-mix(in srgb, var(--md-accent-fg-color) 12%, transparent);
 }
 
-.md-typeset .ll-page .md-button:hover {
-  color: var(--ll-bg);
-  background-color: var(--ll-text);
-  border-color: var(--ll-text);
+.md-typeset .ll-home > .highlight .md-code__button:active {
+  transform: scale(0.82);
 }
 
-.md-typeset .ll-page .md-button--primary {
-  color: var(--ll-bg);
-  background-color: var(--ll-amber);
-  border-color: var(--ll-amber);
+.md-typeset .ll-home > .highlight .md-code__button--active {
+  color: var(--md-accent-fg-color) !important;
 }
 
-.md-typeset .ll-page .md-button--primary:hover {
-  background-color: var(--ll-amber-bright);
-  border-color: var(--ll-amber-bright);
+/* Platform note under the install card. */
+.md-typeset .ll-home > .highlight + p {
+  font-size: 0.68rem;
+  color: var(--md-default-fg-color--light);
 }
 
-/* Responsive. */
-@media screen and (max-width: 44.984375em) {
-  .ll-page {
-    background-size: 22px 22px;
-  }
-
-  .ll-hero {
-    padding-top: 1rem;
-  }
+/* CTA buttons. */
+.md-typeset .ll-home .md-button {
+  margin-right: 0.4rem;
 }
 
-/* ---------------------------------------------------------------------------
- * Doc pages.
- * ------------------------------------------------------------------------- */
-
-.md-content__inner {
-  margin-bottom: 3rem;
+.md-typeset .ll-home .md-button--primary {
+  background: linear-gradient(
+    35deg,
+    var(--md-primary-fg-color),
+    color-mix(in srgb, var(--md-primary-fg-color) 55%, var(--md-accent-fg-color))
+  );
+  transition: filter 0.25s, box-shadow 0.25s;
 }
 
-@media screen and (min-width: 76.25em) {
-  .md-content__inner {
-    max-width: 72rem;
-    margin-right: auto;
-    margin-left: auto;
-  }
+.md-typeset .ll-home .md-button--primary:hover,
+.md-typeset .ll-home .md-button--primary:focus {
+  filter: brightness(1.12);
+  box-shadow: 0 0.2rem 0.8rem
+    color-mix(in srgb, var(--md-primary-fg-color) 35%, transparent);
+  opacity: 1;
+}
+
+/* Sections ----------------------------------------------------------------- */
+
+/* Section headings get an eyebrow-style overline and more breathing room. */
+.md-typeset .ll-home h2 {
+  margin-top: 3.6rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.md-typeset .ll-home h2::before {
+  content: "";
+  display: block;
+  width: 1.8rem;
+  height: 0.15rem;
+  margin-bottom: 0.7rem;
+  border-radius: 0.1rem;
+  background: linear-gradient(
+    90deg,
+    var(--md-primary-fg-color),
+    var(--md-accent-fg-color)
+  );
+}
+
+/* Section intro line. */
+.md-typeset .ll-home h2 + p {
+  max-width: 36rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* Cards -------------------------------------------------------------------- */
+
+/* Tint the leading icon of each card with the accent color. */
+.md-typeset .ll-home .grid.cards .lg.middle {
+  color: var(--md-accent-fg-color);
+}
+
+/* Slightly lift cards off the page in dark mode, where borders alone sink. */
+body[data-md-color-scheme="slate"] .md-typeset .ll-home .grid.cards > ul > li {
+  background-color: color-mix(
+    in srgb,
+    var(--md-default-fg-color) 3%,
+    transparent
+  );
 }

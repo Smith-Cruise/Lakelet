@@ -1,7 +1,11 @@
+---
+icon: lucide/hard-drive
+---
+
 # Storage
 
 Storage configuration is attached to an HMS or Glue catalog and supplies the
-properties needed to access table data.
+credentials needed to access table data.
 
 | Location scheme | Configuration |
 | --- | --- |

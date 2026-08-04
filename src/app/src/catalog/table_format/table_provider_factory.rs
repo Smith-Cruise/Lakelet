@@ -40,7 +40,7 @@ impl TableProviderBuilder {
         let storage = match catalog_config {
             CatalogConfig::GLUE(glue_config) => glue_config.storage.clone(),
             CatalogConfig::HMS(hms_config) => hms_config.storage.clone(),
-            CatalogConfig::Internal => {
+            _ => {
                 panic!("unreachable")
             }
         };
@@ -73,11 +73,6 @@ impl TableProviderBuilder {
     pub fn with_hive_partitions(mut self, hive_partitions: Option<Vec<HivePartition>>) -> Self {
         self.hive_partitions = hive_partitions;
         self
-    }
-
-    #[allow(dead_code)]
-    pub fn table_format(&self) -> &TableFormat {
-        &self.table_format
     }
 
     pub async fn build(self) -> Result<Arc<dyn TableProvider>> {

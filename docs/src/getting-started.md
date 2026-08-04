@@ -1,10 +1,14 @@
+---
+icon: lucide/rocket
+---
+
 # Getting Started
 
-Lakelet's philosophy is to be simple, run on a single machine, and be easy to use.
+Lakelet's philosophy is to be simple, fast, and be easy to use.
 
 ## Install Lakelet
 
-The quickest way is the install script, which downloads the latest nightly
+The quickest way is the installation script, which downloads the latest nightly
 binary into the current directory as `./lakelet`, along with the example
 configuration `config_demo.toml`:
 
@@ -12,13 +16,7 @@ configuration `config_demo.toml`:
 curl -fsSL https://lakelet.dev/install.sh | sh
 ```
 
-The script supports Linux and macOS (x86_64 and aarch64). Two environment
-variables tweak its behavior:
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `LAKELET_INSTALL_DIR` | `.` | Directory to place the binary in. |
-| `LAKELET_VERSION` | `nightly` | Release tag to install. |
+The script supports Linux and macOS (x86_64 and aarch64).
 
 Note that the x86_64 binaries target x86-64-v3 and require a CPU with AVX2
 (Intel Haswell 2013+ / AMD Excavator+), and the Linux binaries require

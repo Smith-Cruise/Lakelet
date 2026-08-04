@@ -1,42 +1,89 @@
 ---
+icon: lucide/house
 hide:
   - navigation
   - toc
-  - footer
 ---
 
-<div class="ll-page" markdown>
-
-<header class="ll-nav" markdown>
-<span class="ll-brand">LAKELET</span>
-<nav class="ll-nav-links" markdown>
-[Docs](getting-started.md) · [GitHub](https://github.com/Smith-Cruise/Lakelet)
-</nav>
-</header>
-
-<section class="ll-hero" markdown>
-
-<p class="ll-fig">fig. 01 — query engine, single unit</p>
+<div class="ll-home" markdown>
 
 # Focused on Data Lake Queries
 
 One binary that speaks Iceberg, Delta Lake, Paimon, and Hive.
 Point it at your catalog and start writing SQL — no Spark, no JVM, no cluster.
 
-<div class="ll-install" markdown>
-<p class="ll-install-head">install — 1 command, 30 seconds</p>
-
 ```sh
 curl -fsSL https://lakelet.dev/install.sh | sh
 ```
 
-</div>
-
-<p class="ll-note" markdown>linux · macos&nbsp;&nbsp;//&nbsp;&nbsp;windows → [releases/nightly](https://github.com/Smith-Cruise/Lakelet/releases/tag/nightly)</p>
+Linux and macOS. For Windows, grab a build from
+[releases/nightly](https://github.com/Smith-Cruise/Lakelet/releases/tag/nightly).
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
 [View on GitHub](https://github.com/Smith-Cruise/Lakelet){ .md-button }
 
-</section>
+## Catalogs
+
+Bring the catalog you already run.
+
+<div class="grid cards" markdown>
+
+-   :lucide-database:{ .lg .middle } __Hive Metastore__
+
+    ---
+
+    The classic metadata service of the big data ecosystem.
+
+    [:lucide-arrow-right: HMS](catalog.md#hms)
+
+-   :lucide-cloud:{ .lg .middle } __AWS Glue__
+
+    ---
+
+    Amazon's fully managed data catalog.
+
+    [:lucide-arrow-right: Glue](catalog.md#glue)
+
+</div>
+
+## Table formats
+
+One engine, four open table formats.
+
+<div class="grid cards" markdown>
+
+-   :lucide-mountain-snow:{ .lg .middle } __Iceberg__
+
+    ---
+
+    An open table format for large-scale analytics.
+
+    [:lucide-arrow-right: Iceberg](table-format/iceberg.md)
+
+-   :lucide-triangle:{ .lg .middle } __Delta Lake__
+
+    ---
+
+    An open table format from the Databricks ecosystem.
+
+    [:lucide-arrow-right: Delta Lake](table-format/delta-lake.md)
+
+-   :lucide-layers:{ .lg .middle } __Paimon__
+
+    ---
+
+    A lake format built for streaming and batch alike.
+
+    [:lucide-arrow-right: Paimon](table-format/paimon.md)
+
+-   :lucide-hexagon:{ .lg .middle } __Hive__
+
+    ---
+
+    The classic table layout of the Hadoop era.
+
+    [:lucide-arrow-right: Hive](table-format/hive.md)
+
+</div>
 
 </div>
