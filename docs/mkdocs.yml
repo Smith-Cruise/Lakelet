@@ -36,7 +36,12 @@ nav:
       - Server: server.md
       - Catalog: catalog.md
       - Storage: storage.md
-      - Table formats: table-format.md
+      - Table formats:
+          - Overview: table-format/index.md
+          - Hive: table-format/hive.md
+          - Iceberg: table-format/iceberg.md
+          - Delta Lake: table-format/delta-lake.md
+          - Paimon: table-format/paimon.md
 
 markdown_extensions:
   - attr_list
