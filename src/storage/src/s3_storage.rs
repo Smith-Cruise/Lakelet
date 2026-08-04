@@ -1,10 +1,8 @@
-use crate::storage::StorageTrait;
+use crate::storage::build_layered_operator;
 use datafusion::common::Result;
-use datafusion::error::DataFusionError;
-use datafusion::object_store::ObjectStore;
-use datafusion::object_store::aws::AmazonS3Builder;
+use opendal::Operator;
+use opendal::services::S3Config;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct S3Storage {
@@ -20,28 +18,18 @@ pub struct S3Storage {
     pub path_style_access: bool,
 }
 
-impl StorageTrait for S3Storage {
-    fn build_object_store(&self, bucket_name: &str) -> Result<Arc<dyn ObjectStore>> {
-        let mut builder = AmazonS3Builder::new().with_bucket_name(bucket_name);
-        if let Some(endpoint) = &self.endpoint {
-            builder = builder.with_endpoint(endpoint);
-            if endpoint.starts_with("http://") {
-                builder = builder.with_allow_http(true);
-            }
-        }
-        if let Some(region) = &self.region {
-            builder = builder.with_region(region);
-        }
-        if let Some(access_key) = &self.access_key {
-            builder = builder.with_access_key_id(access_key);
-        }
-        if let Some(secret_key) = &self.secret_key {
-            builder = builder.with_secret_access_key(secret_key);
-        }
-        builder = builder.with_virtual_hosted_style_request(!self.path_style_access);
-        builder
-            .build()
-            .map(|store| Arc::new(store) as Arc<dyn ObjectStore>)
-            .map_err(|err| DataFusionError::External(Box::new(err)))
+impl S3Storage {
+    pub fn build_operator(&self, bucket: &str) -> Result<Operator> {
+        let mut cfg = S3Config::default();
+        cfg.bucket = bucket.to_string();
+        // When unset, OpenDAL falls back to AWS_REGION/AWS_DEFAULT_REGION
+        // and errors with a clear message if those are missing too.
+        cfg.region = self.region.clone();
+        cfg.endpoint = self.endpoint.clone();
+        cfg.access_key_id = self.access_key.clone();
+        cfg.secret_access_key = self.secret_key.clone();
+        // OpenDAL defaults to path-style, the inverse of our config default.
+        cfg.enable_virtual_host_style = !self.path_style_access;
+        build_layered_operator(cfg)
     }
 }

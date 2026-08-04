@@ -9,29 +9,51 @@ use datafusion::error::DataFusionError;
 use datafusion::logical_expr::dml::InsertOp;
 use datafusion::logical_expr::{Expr, TableProviderFilterPushDown};
 use datafusion::physical_plan::ExecutionPlan;
-use deltalake::DeltaTableBuilder;
 use deltalake::delta_datafusion::DeltaScanNext;
 use deltalake::delta_datafusion::engine::AsObjectStoreUrl;
-use deltalake::logstore::{LogStore, LogStoreRef, logstore_factories, object_store_factories};
-use deltalake_aws::S3LogStoreFactory;
-use deltalake_aws::storage::S3ObjectStoreFactory;
-use lakelet_storage::storage::Storage;
+use deltalake::logstore::{
+    LogStore, LogStoreFactory, LogStoreRef, ObjectStoreRef, StorageConfig, default_logstore,
+    logstore_factories,
+};
+use deltalake::{DeltaResult, DeltaTableBuilder};
+use lakelet_storage::storage::{Storage, parse_location_schema_authority};
 use std::any::Any;
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use url::Url;
 
-pub fn register_object_store() {
-    {
-        // register delta
-        let object_stores = Arc::new(S3ObjectStoreFactory::default());
-        let log_stores = Arc::new(S3LogStoreFactory::default());
-        for scheme in ["s3", "s3a", "oss"].iter() {
-            let url = Url::parse(&format!("{scheme}://")).unwrap();
-            object_store_factories().insert(url.clone(), object_stores.clone());
-            logstore_factories().insert(url.clone(), log_stores.clone());
-        }
+/// Credential-free log-store factory. The object store passed to
+/// `DeltaTableBuilder::with_storage_backend` carries per-catalog credentials;
+/// this factory only satisfies delta-rs' requirement that every scheme has a
+/// registered `LogStoreFactory` (the default registry covers memory/file only).
+#[derive(Debug, Default)]
+struct DefaultDeltaLogStoreFactory {}
+
+impl LogStoreFactory for DefaultDeltaLogStoreFactory {
+    fn with_options(
+        &self,
+        prefixed_store: ObjectStoreRef,
+        root_store: ObjectStoreRef,
+        location: &Url,
+        options: &StorageConfig,
+    ) -> DeltaResult<Arc<dyn LogStore>> {
+        Ok(default_logstore(
+            prefixed_store,
+            root_store,
+            location,
+            options,
+        ))
     }
+}
+
+fn register_delta_logstore_factories() {
+    static ONCE: OnceLock<()> = OnceLock::new();
+    ONCE.get_or_init(|| {
+        let factory = Arc::new(DefaultDeltaLogStoreFactory::default());
+        for scheme in ["s3", "s3a", "oss", "hdfs"] {
+            let url = Url::parse(&format!("{scheme}://")).unwrap();
+            logstore_factories().insert(url, factory.clone());
+        }
+    });
 }
 
 #[derive(Debug)]
@@ -45,20 +67,21 @@ impl DeltaTableProvider {
     pub async fn try_new(
         table_reference: TableReference,
         table_location: String,
-        storage: Option<Storage>,
+        storage: Storage,
     ) -> Result<Self> {
-        register_object_store();
-        let storage_options = if let Some(storage) = &storage {
-            storage.build_delta_storage_options()
-        } else {
-            HashMap::new()
-        };
+        register_delta_logstore_factories();
+        let (scheme, authority) = parse_location_schema_authority(&table_location)?;
+        let store = storage.build_root_object_store(&scheme, &authority)?
+            .ok_or_else(|| {
+                DataFusionError::Plan(format!(
+                    "no storage configured for scheme '{scheme}' of delta table location {table_location}"
+                ))
+            })?;
         let table_url =
             Url::parse(&table_location).map_err(|e| DataFusionError::External(Box::new(e)))?;
-        let builder = DeltaTableBuilder::from_url(table_url)
+        let builder = DeltaTableBuilder::from_url(table_url.clone())
             .map_err(|e| DataFusionError::External(Box::new(e)))?
-            .with_allow_http(true)
-            .with_storage_options(storage_options);
+            .with_storage_backend(store, table_url);
         let delta_table = builder
             .load()
             .await

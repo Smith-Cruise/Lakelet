@@ -1,4 +1,4 @@
-use crate::catalog::table_format::iceberg::iceberg_hdfs_file_io::HdfsStorageFactory;
+use crate::catalog::table_format::iceberg::iceberg_file_io::LakeletStorageFactory;
 use crate::table_format::iceberg::iceberg_metadata_table_provider::IcebergMetadataTableProvider;
 use crate::table_format::iceberg::iceberg_table_provider::IcebergTableProvider;
 use crate::table_format::metadata_table::MetadataTableType;
@@ -6,16 +6,13 @@ use datafusion::catalog::TableProvider;
 use datafusion::common::Result;
 use datafusion::error::DataFusionError;
 use datafusion::sql::TableReference;
-use iceberg::io::{FileIO, FileIOBuilder, LocalFsStorageFactory};
+use iceberg::io::{FileIO, FileIOBuilder};
 use iceberg::table::StaticTable;
 use iceberg::{NamespaceIdent, TableIdent};
-use iceberg_storage_opendal::OpenDalStorageFactory;
-use lakelet_storage::storage::{HDFS_SCHEMA, OSS_SCHEMA, S3_SCHEMA, S3A_SCHEMA, Storage};
-use std::collections::HashMap;
+use lakelet_storage::storage::{Storage, parse_location_schema_authority};
 use std::sync::Arc;
-use url::Url;
 
-mod iceberg_hdfs_file_io;
+mod iceberg_file_io;
 mod iceberg_metadata_scan;
 pub mod iceberg_metadata_table_provider;
 mod iceberg_table_provider;
@@ -28,7 +25,7 @@ impl IcebergTableProviderFactory {
         table_location: String,
         metadata_location: String,
         metadata_table_type: Option<MetadataTableType>,
-        storage: Option<Storage>,
+        storage: Storage,
     ) -> Result<Arc<dyn TableProvider>> {
         let (schema_name, table_name) = match &table_reference {
             TableReference::Full {
@@ -40,12 +37,7 @@ impl IcebergTableProviderFactory {
                 return Err(DataFusionError::Plan("invalid table reference".to_string()));
             }
         };
-        let file_io_properties = if let Some(storage) = &storage {
-            storage.build_iceberg_file_io_properties()
-        } else {
-            HashMap::new()
-        };
-        let file_io = build_file_io(&metadata_location, file_io_properties)?;
+        let file_io = build_file_io(&metadata_location, &storage)?;
 
         let iceberg_identifier: TableIdent = TableIdent {
             namespace: NamespaceIdent::new(schema_name),
@@ -74,34 +66,15 @@ impl IcebergTableProviderFactory {
     }
 }
 
-fn build_file_io(
-    metadata_location: &str,
-    file_io_properties: HashMap<String, String>,
-) -> Result<FileIO> {
-    let parsed =
-        Url::parse(metadata_location).map_err(|e| DataFusionError::External(Box::new(e)))?;
+fn build_file_io(metadata_location: &str, storage: &Storage) -> Result<FileIO> {
+    // Validate scheme support and storage configuration up front so table
+    // loading fails with a clear error instead of the first lazy file access.
+    let (scheme, authority) = parse_location_schema_authority(metadata_location)?;
+    if storage.build_operator(&scheme, &authority)?.is_none() {
+        return Err(DataFusionError::Plan(format!(
+            "no storage configured for scheme '{scheme}' of iceberg metadata location {metadata_location}"
+        )));
+    }
 
-    let scheme = parsed.scheme();
-    let builder = match scheme {
-        "file" => {
-            return Ok(FileIOBuilder::new(Arc::new(LocalFsStorageFactory))
-                .with_props(file_io_properties)
-                .build());
-        }
-        S3_SCHEMA | S3A_SCHEMA => FileIOBuilder::new(Arc::new(OpenDalStorageFactory::S3 {
-            customized_credential_load: None,
-        })),
-        OSS_SCHEMA => FileIOBuilder::new(Arc::new(OpenDalStorageFactory::Oss)),
-        HDFS_SCHEMA => FileIOBuilder::new(Arc::new(
-            HdfsStorageFactory::try_new(metadata_location)
-                .map_err(|error| DataFusionError::External(Box::new(error)))?,
-        )),
-        _ => {
-            return Err(DataFusionError::NotImplemented(format!(
-                "unsupported iceberg storage scheme: {scheme}"
-            )));
-        }
-    };
-
-    Ok(builder.with_props(file_io_properties).build())
+    Ok(FileIOBuilder::new(Arc::new(LakeletStorageFactory::new(storage.clone()))).build())
 }

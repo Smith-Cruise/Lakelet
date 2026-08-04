@@ -26,16 +26,12 @@ use url::Url;
 pub struct HiveDataFilesMetadataTableProvider {
     table_location: String,
     partitions: Vec<HivePartition>,
-    storage: Option<Storage>,
+    storage: Storage,
     schema: SchemaRef,
 }
 
 impl HiveDataFilesMetadataTableProvider {
-    pub fn new(
-        table_location: String,
-        partitions: Vec<HivePartition>,
-        storage: Option<Storage>,
-    ) -> Self {
+    pub fn new(table_location: String, partitions: Vec<HivePartition>, storage: Storage) -> Self {
         Self {
             table_location,
             partitions,
@@ -69,7 +65,7 @@ impl HiveDataFilesMetadataTableProvider {
     }
 
     async fn retrieve_table_data_files(&self, state: &dyn Session) -> Result<Vec<ObjectMeta>> {
-        let object_store = get_object_store(state, self.storage.as_ref(), &self.table_location)?;
+        let object_store = get_object_store(state, &self.storage, &self.table_location)?;
 
         let dir_locations = if self.partitions.is_empty() {
             vec![self.table_location.clone()]
@@ -125,7 +121,7 @@ pub struct HivePartitionsMetadataTableProvider {
     table_location: String,
     partition_fields: Vec<Arc<Field>>,
     partitions: Vec<HivePartition>,
-    storage: Option<Storage>,
+    storage: Storage,
     schema: SchemaRef,
 }
 
@@ -134,7 +130,7 @@ impl HivePartitionsMetadataTableProvider {
         table_location: String,
         partition_fields: Vec<Arc<Field>>,
         partitions: Vec<HivePartition>,
-        storage: Option<Storage>,
+        storage: Storage,
     ) -> Self {
         Self {
             table_location,
@@ -216,7 +212,7 @@ impl HivePartitionsMetadataTableProvider {
         state: &dyn Session,
         partitions: &[HivePartition],
     ) -> Result<Vec<Vec<ObjectMeta>>> {
-        let object_store = get_object_store(state, self.storage.as_ref(), &self.table_location)?;
+        let object_store = get_object_store(state, &self.storage, &self.table_location)?;
         let dir_locations = partitions
             .iter()
             .map(|partition| partition.location.clone())
@@ -268,7 +264,7 @@ impl TableProvider for HivePartitionsMetadataTableProvider {
 
 fn get_object_store(
     state: &dyn Session,
-    storage: Option<&Storage>,
+    storage: &Storage,
     table_location: &str,
 ) -> Result<Arc<dyn ObjectStore>> {
     try_register_storage_info_session(storage, table_location, state)?;
@@ -552,7 +548,11 @@ mod tests {
         table_location: &str,
         partitions: Vec<HivePartition>,
     ) -> HiveDataFilesMetadataTableProvider {
-        HiveDataFilesMetadataTableProvider::new(table_location.to_string(), partitions, None)
+        HiveDataFilesMetadataTableProvider::new(
+            table_location.to_string(),
+            partitions,
+            Storage::default(),
+        )
     }
 
     fn build_test_hive_partitions_metadata_provider(
@@ -563,7 +563,7 @@ mod tests {
             "s3://warehouse/hive/table".to_string(),
             partition_fields,
             partitions,
-            None,
+            Storage::default(),
         )
     }
 

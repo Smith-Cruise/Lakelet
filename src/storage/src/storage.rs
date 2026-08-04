@@ -1,17 +1,13 @@
+use crate::hdfs_storage;
 use crate::oss_storage::OSSStorage;
 use crate::s3_storage::S3Storage;
 use datafusion::catalog::Session;
 use datafusion::common::DataFusionError;
 use datafusion::common::Result;
 use datafusion::object_store::ObjectStore;
-use deltalake::aws::constants::{
-    AWS_ACCESS_KEY_ID, AWS_ENDPOINT_URL, AWS_REGION, AWS_S3_ADDRESSING_STYLE, AWS_SECRET_ACCESS_KEY,
-};
-use hdfs_native_object_store::HdfsObjectStoreBuilder;
-use iceberg::io::{
-    OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET, OSS_ENDPOINT, S3_ACCESS_KEY_ID, S3_ENDPOINT,
-    S3_PATH_STYLE_ACCESS, S3_REGION, S3_SECRET_ACCESS_KEY,
-};
+use object_store_opendal::OpendalStore;
+use opendal::Operator;
+use opendal::layers::{RetryLayer, TimeoutLayer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -21,16 +17,11 @@ pub const S3_SCHEMA: &str = "s3";
 pub const S3A_SCHEMA: &str = "s3a";
 pub const OSS_SCHEMA: &str = "oss";
 pub const HDFS_SCHEMA: &str = "hdfs";
-const AWS_VIRTUAL_HOSTED_STYLE_REQUEST: &str = "aws_virtual_hosted_style_request";
 
-pub trait StorageTrait {
-    fn build_object_store(
-        &self,
-        bucket_name: &str,
-    ) -> datafusion::common::Result<Arc<dyn ObjectStore>>;
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Per-catalog storage configuration. A catalog without any storage block
+/// deserializes to the default value (all backends unset); HDFS needs no
+/// configuration at all.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Storage {
     #[serde(rename = "s3-storage")]
     s3_storage: Option<S3Storage>,
@@ -39,6 +30,48 @@ pub struct Storage {
 }
 
 impl Storage {
+    /// Build an OpenDAL operator rooted at the storage's top level (bucket
+    /// root for s3/oss, `/` for hdfs). This is the single place where a
+    /// location scheme + authority is mapped onto a storage backend and
+    /// credentials.
+    ///
+    /// Returns `Ok(None)` when no storage backend is configured for the
+    /// scheme; callers decide whether that is an error. Unsupported schemes
+    /// fail right away.
+    pub fn build_operator(&self, scheme: &str, authority: &str) -> Result<Option<Operator>> {
+        let operator = match scheme {
+            S3_SCHEMA | S3A_SCHEMA => self
+                .s3_storage
+                .as_ref()
+                .map(|s3_storage| s3_storage.build_operator(authority))
+                .transpose()?,
+            OSS_SCHEMA => self
+                .oss_storage
+                .as_ref()
+                .map(|oss_storage| oss_storage.build_operator(authority))
+                .transpose()?,
+            HDFS_SCHEMA => Some(hdfs_storage::build_operator(authority)?),
+            _ => {
+                return Err(DataFusionError::NotImplemented(format!(
+                    "unsupported storage scheme: {scheme}"
+                )));
+            }
+        };
+        Ok(operator)
+    }
+
+    /// Build a root-level `ObjectStore` for DataFusion's registry (and
+    /// Delta's storage backend) on top of the unified OpenDAL operator.
+    pub fn build_root_object_store(
+        &self,
+        scheme: &str,
+        authority: &str,
+    ) -> Result<Option<Arc<dyn ObjectStore>>> {
+        Ok(self
+            .build_operator(scheme, authority)?
+            .map(|op| Arc::new(OpendalStore::new(op)) as Arc<dyn ObjectStore>))
+    }
+
     pub fn build_paimon_file_io_properties(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         if let Some(s3_storage) = &self.s3_storage {
@@ -75,106 +108,23 @@ impl Storage {
         }
         map
     }
+}
 
-    pub fn build_iceberg_file_io_properties(&self) -> HashMap<String, String> {
-        let mut map: HashMap<String, String> = HashMap::new();
-        if let Some(s3_storage) = &self.s3_storage {
-            if let Some(region) = &s3_storage.region {
-                map.insert(S3_REGION.into(), region.clone());
-            } else {
-                map.insert(S3_REGION.into(), "us-east-1".to_string());
-            }
-            if let Some(endpoint) = &s3_storage.endpoint {
-                map.insert(S3_ENDPOINT.into(), endpoint.clone());
-            }
-            if let Some(access_key) = &s3_storage.access_key {
-                map.insert(S3_ACCESS_KEY_ID.into(), access_key.clone());
-            }
-            if let Some(secret_key) = &s3_storage.secret_key {
-                map.insert(S3_SECRET_ACCESS_KEY.into(), secret_key.clone());
-            }
-            map.insert(
-                S3_PATH_STYLE_ACCESS.into(),
-                s3_storage.path_style_access.to_string(),
-            );
-        }
-
-        if let Some(oss_storage) = &self.oss_storage {
-            if let Some(endpoint) = &oss_storage.endpoint {
-                map.insert(OSS_ENDPOINT.into(), endpoint.clone());
-            }
-            if let Some(access_key) = &oss_storage.access_key {
-                map.insert(OSS_ACCESS_KEY_ID.into(), access_key.clone());
-            }
-            if let Some(secret_key) = &oss_storage.secret_key {
-                map.insert(OSS_ACCESS_KEY_SECRET.into(), secret_key.clone());
-            }
-        }
-        map
-    }
-
-    pub fn build_delta_storage_options(&self) -> HashMap<String, String> {
-        let mut map: HashMap<String, String> = HashMap::new();
-        if let Some(s3_storage) = &self.s3_storage {
-            if let Some(region) = &s3_storage.region {
-                map.insert(AWS_REGION.to_string(), region.clone());
-            } else {
-                map.insert(AWS_REGION.to_string(), "us-east-1".to_string());
-            }
-            if let Some(endpoint) = &s3_storage.endpoint {
-                map.insert(AWS_ENDPOINT_URL.to_string(), endpoint.clone());
-            }
-            if let Some(access_key) = &s3_storage.access_key {
-                map.insert(AWS_ACCESS_KEY_ID.to_string(), access_key.clone());
-            }
-            if let Some(secret_key) = &s3_storage.secret_key {
-                map.insert(AWS_SECRET_ACCESS_KEY.to_string(), secret_key.clone());
-            }
-            map.insert(
-                AWS_S3_ADDRESSING_STYLE.to_string(),
-                if s3_storage.path_style_access {
-                    "path"
-                } else {
-                    "virtual"
-                }
-                .to_string(),
-            );
-            map.insert(
-                AWS_VIRTUAL_HOSTED_STYLE_REQUEST.to_string(),
-                (!s3_storage.path_style_access).to_string(),
-            );
-        }
-
-        if let Some(oss_storage) = &self.oss_storage {
-            if let Some(endpoint) = &oss_storage.endpoint {
-                map.insert(AWS_ENDPOINT_URL.to_string(), endpoint.clone());
-            }
-            if let Some(access_key) = &oss_storage.access_key {
-                map.insert(AWS_ACCESS_KEY_ID.to_string(), access_key.clone());
-            }
-            if let Some(secret_key) = &oss_storage.secret_key {
-                map.insert(AWS_SECRET_ACCESS_KEY.to_string(), secret_key.clone());
-            }
-            map.insert(
-                AWS_S3_ADDRESSING_STYLE.to_string(),
-                if oss_storage.path_style_access {
-                    "path"
-                } else {
-                    "virtual"
-                }
-                .to_string(),
-            );
-            map.insert(
-                AWS_VIRTUAL_HOSTED_STYLE_REQUEST.to_string(),
-                (!oss_storage.path_style_access).to_string(),
-            );
-        }
-        map
-    }
+pub(crate) fn build_layered_operator<C: opendal::Configurator>(cfg: C) -> Result<Operator> {
+    // TimeoutLayer must sit inside RetryLayer so each retry attempt gets an
+    // independent timeout; a hung request would otherwise never be retried.
+    // RetryLayer is what turns transient HTTP failures (e.g. a stale pooled
+    // connection closed by the server) into silent retries instead of query
+    // errors.
+    Ok(Operator::from_config(cfg)
+        .map_err(|err| DataFusionError::External(Box::new(err)))?
+        .layer(TimeoutLayer::new())
+        .layer(RetryLayer::new())
+        .finish())
 }
 
 pub fn try_register_storage_info_session(
-    storage: Option<&Storage>,
+    storage: &Storage,
     table_location: impl Into<String>,
     session: &dyn Session,
 ) -> Result<()> {
@@ -189,33 +139,8 @@ pub fn try_register_storage_info_session(
         return Ok(());
     }
 
-    match path_schema.as_str() {
-        S3_SCHEMA | S3A_SCHEMA => {
-            if let Some(s3_storage) = storage.and_then(|storage| storage.s3_storage.as_ref()) {
-                registry.register_store(
-                    &object_store_path,
-                    s3_storage.build_object_store(&path_bucket)?,
-                );
-            }
-        }
-        OSS_SCHEMA => {
-            if let Some(oss_storage) = storage.and_then(|storage| storage.oss_storage.as_ref()) {
-                registry.register_store(
-                    &object_store_path,
-                    oss_storage.build_object_store(&path_bucket)?,
-                );
-            }
-        }
-        HDFS_SCHEMA => {
-            // HDFS has no configuration, so register the store directly
-            // from the NameNode authority (host:port) in the location.
-            let store = HdfsObjectStoreBuilder::new()
-                .with_url(format!("{}://{}", HDFS_SCHEMA, path_bucket))
-                .build()
-                .map_err(|e| DataFusionError::External(Box::new(e)))?;
-            registry.register_store(&object_store_path, Arc::new(store));
-        }
-        _ => {}
+    if let Some(store) = storage.build_root_object_store(&path_schema, &path_bucket)? {
+        registry.register_store(&object_store_path, store);
     }
     Ok(())
 }
@@ -236,14 +161,90 @@ pub fn parse_location_schema_authority(path: &str) -> Result<(String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use crate::storage::{
-        AWS_VIRTUAL_HOSTED_STYLE_REQUEST, Storage, parse_location_schema_authority,
-        try_register_storage_info_session,
-    };
+    use crate::storage::*;
     use datafusion::execution::object_store::ObjectStoreUrl;
     use datafusion::prelude::SessionContext;
-    use deltalake::aws::constants::{AWS_REGION, AWS_S3_ADDRESSING_STYLE};
-    use iceberg::io::{S3_PATH_STYLE_ACCESS, S3_REGION};
+
+    const S3_TOML: &str = r#"
+        s3-storage = { endpoint = "http://127.0.0.1:9000", region = "cn-north-1", access-key = "ak", secret-key = "sk", path-style-access = true }
+    "#;
+
+    const OSS_TOML: &str = r#"
+        oss-storage = { endpoint = "https://oss-cn-hangzhou.aliyuncs.com", access-key = "ak", secret-key = "sk" }
+    "#;
+
+    fn parse_toml(text: &str) -> Storage {
+        toml::from_str(text).unwrap()
+    }
+
+    #[test]
+    fn test_build_operator_s3() {
+        let storage = parse_toml(S3_TOML);
+        for scheme in [S3_SCHEMA, S3A_SCHEMA] {
+            let op = storage
+                .build_operator(scheme, "bucket")
+                .unwrap()
+                .expect("s3 operator should be built");
+            assert_eq!(op.info().name(), "bucket");
+            assert_eq!(op.info().scheme(), "s3");
+        }
+    }
+
+    #[test]
+    fn test_build_operator_oss() {
+        let storage = parse_toml(OSS_TOML);
+        let op = storage
+            .build_operator(OSS_SCHEMA, "bucket")
+            .unwrap()
+            .expect("oss operator should be built");
+        assert_eq!(op.info().name(), "bucket");
+        assert_eq!(op.info().scheme(), "oss");
+    }
+
+    #[test]
+    fn test_build_operator_hdfs_needs_no_config() {
+        let op = Storage::default()
+            .build_operator(HDFS_SCHEMA, "namenode:8020")
+            .unwrap()
+            .expect("hdfs operator should be built without storage config");
+        assert_eq!(op.info().scheme(), "hdfs-native");
+    }
+
+    #[test]
+    fn test_build_operator_missing_storage_config() {
+        assert!(
+            Storage::default()
+                .build_operator(S3_SCHEMA, "bucket")
+                .unwrap()
+                .is_none()
+        );
+        let storage = parse_toml(S3_TOML);
+        assert!(
+            storage
+                .build_operator(OSS_SCHEMA, "bucket")
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_build_operator_unsupported_scheme_errors() {
+        let storage = parse_toml(S3_TOML);
+        let err = storage.build_operator("gcs", "bucket").unwrap_err();
+        assert!(err.to_string().contains("unsupported storage scheme: gcs"));
+    }
+
+    #[test]
+    fn test_build_root_object_store() {
+        let storage = parse_toml(S3_TOML);
+        assert!(
+            storage
+                .build_root_object_store(S3_SCHEMA, "bucket")
+                .unwrap()
+                .is_some()
+        );
+        assert!(storage.build_root_object_store("gcs", "bucket").is_err());
+    }
 
     #[test]
     fn test_parse_storage() {
@@ -275,85 +276,6 @@ mod tests {
         assert_eq!("admin", &oss_storage.access_key.unwrap());
         assert_eq!("password", &oss_storage.secret_key.unwrap());
         assert!(!oss_storage.path_style_access);
-    }
-
-    #[test]
-    fn test_build_iceberg_file_io_properties_includes_s3_path_style_access() {
-        let text = r#"
-            s3-storage = { endpoint = "http://127.0.0.1:9000", region = "us-east-1", access-key = "admin", secret-key = "password", path-style-access = true }
-        "#;
-
-        let storage: Storage = toml::from_str(text).unwrap();
-        let properties = storage.build_iceberg_file_io_properties();
-
-        assert_eq!(
-            properties.get(S3_PATH_STYLE_ACCESS).map(String::as_str),
-            Some("true")
-        );
-
-        let text = r#"
-            s3-storage = { endpoint = "http://127.0.0.1:9000", region = "us-east-1", access-key = "admin", secret-key = "password" }
-        "#;
-
-        let storage: Storage = toml::from_str(text).unwrap();
-        let properties = storage.build_iceberg_file_io_properties();
-
-        assert_eq!(
-            properties.get(S3_PATH_STYLE_ACCESS).map(String::as_str),
-            Some("false")
-        );
-    }
-
-    #[test]
-    fn test_build_iceberg_file_io_properties_defaults_s3_region() {
-        let text = r#"
-            s3-storage = { endpoint = "http://127.0.0.1:9000", access-key = "admin", secret-key = "password" }
-        "#;
-
-        let storage: Storage = toml::from_str(text).unwrap();
-        let properties = storage.build_iceberg_file_io_properties();
-
-        assert_eq!(
-            properties.get(S3_REGION).map(String::as_str),
-            Some("us-east-1")
-        );
-    }
-
-    #[test]
-    fn test_build_delta_storage_options_defaults_s3_region() {
-        let text = r#"
-            s3-storage = { endpoint = "http://127.0.0.1:9000", access-key = "admin", secret-key = "password" }
-        "#;
-
-        let storage: Storage = toml::from_str(text).unwrap();
-        let properties = storage.build_delta_storage_options();
-
-        assert_eq!(
-            properties.get(AWS_REGION).map(String::as_str),
-            Some("us-east-1")
-        );
-    }
-
-    #[test]
-    fn test_build_delta_storage_options_includes_addressing_style() {
-        let text = r#"
-            s3-storage = { endpoint = "http://127.0.0.1:9000", access-key = "admin", secret-key = "password", path-style-access = true }
-            oss-storage = { endpoint = "https://bucket.oss-cn-hangzhou.aliyuncs.com", access-key = "oss-ak", secret-key = "oss-sk", path-style-access = false }
-        "#;
-
-        let storage: Storage = toml::from_str(text).unwrap();
-        let properties = storage.build_delta_storage_options();
-
-        assert_eq!(
-            properties.get(AWS_S3_ADDRESSING_STYLE).map(String::as_str),
-            Some("virtual")
-        );
-        assert_eq!(
-            properties
-                .get(AWS_VIRTUAL_HOSTED_STYLE_REQUEST)
-                .map(String::as_str),
-            Some("true")
-        );
     }
 
     #[test]
@@ -395,7 +317,7 @@ mod tests {
         let ctx = SessionContext::new();
 
         try_register_storage_info_session(
-            None,
+            &Storage::default(),
             "hdfs://namenode:8020/user/hive/warehouse/db/t",
             &ctx.state(),
         )

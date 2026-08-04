@@ -30,8 +30,8 @@ pub struct GlueCatalogConfig {
     pub aws_glue_secret_key: Option<String>,
     #[serde(rename = "aws-glue-endpoint")]
     pub aws_glue_endpoint: Option<String>,
-    #[serde(flatten)]
-    pub storage: Option<Storage>,
+    #[serde(flatten, default)]
+    pub storage: Storage,
 }
 
 async fn build_glue_client(config: &GlueCatalogConfig) -> Client {

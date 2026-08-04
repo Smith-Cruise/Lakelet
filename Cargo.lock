@@ -659,30 +659,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aws-sdk-dynamodb"
-version = "1.111.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc418346e3cb248c7d59e642acbcb06488b7c7cd2ba6ebc79e8003f618c60099"
-dependencies = [
- "aws-credential-types",
- "aws-runtime",
- "aws-smithy-async",
- "aws-smithy-http 0.63.6",
- "aws-smithy-json 0.62.5",
- "aws-smithy-observability",
- "aws-smithy-runtime",
- "aws-smithy-runtime-api",
- "aws-smithy-types",
- "aws-types",
- "bytes",
- "fastrand",
- "http 0.2.12",
- "http 1.3.1",
- "regex-lite",
- "tracing",
-]
-
-[[package]]
 name = "aws-sdk-glue"
 version = "1.128.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2732,35 +2708,7 @@ checksum = "2b7c2431da87e49b679a9ae8f72251e22ff7eb0e2c57c9631842b1c3ec16aaa9"
 dependencies = [
  "buoyant_kernel",
  "ctor 0.10.1",
- "deltalake-aws",
  "deltalake-core",
-]
-
-[[package]]
-name = "deltalake-aws"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3ef837d5d58bb0cd62dc9ee3bc201805751090f4bab2ca0ff09669661814fd4"
-dependencies = [
- "async-trait",
- "aws-config",
- "aws-credential-types",
- "aws-sdk-dynamodb",
- "aws-sdk-sts",
- "aws-smithy-runtime-api",
- "backon",
- "bytes",
- "chrono",
- "deltalake-core",
- "futures",
- "object_store",
- "regex",
- "thiserror 2.0.17",
- "tokio",
- "tracing",
- "typed-builder 0.23.2",
- "url",
- "uuid",
 ]
 
 [[package]]
@@ -2794,7 +2742,6 @@ dependencies = [
  "dirs",
  "either",
  "futures",
- "humantime",
  "indexmap 2.13.0",
  "itertools 0.14.0",
  "num_cpus",
@@ -3559,22 +3506,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hdfs-native-object-store"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2a8fd74d01f5831e0a81581e252831c70572b7a9145b813fad99323460f2f69"
-dependencies = [
- "async-trait",
- "bytes",
- "chrono",
- "futures",
- "hdfs-native",
- "object_store",
- "thiserror 2.0.17",
- "tokio",
-]
-
-[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3948,26 +3879,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "iceberg-storage-opendal"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbf3a44173031681bbb0775299bb487b0c3aa937cb55959325ea980757acb1e1"
-dependencies = [
- "anyhow",
- "async-trait",
- "bytes",
- "cfg-if",
- "futures",
- "iceberg",
- "opendal 0.57.0",
- "reqsign-aws-v4",
- "reqsign-core",
- "serde",
- "typetag",
- "url",
-]
-
-[[package]]
 name = "icu_collections"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4321,18 +4232,17 @@ dependencies = [
  "datafusion",
  "datafusion-cli",
  "deltalake",
- "deltalake-aws",
  "futures",
- "hdfs-native-object-store",
  "hive_metastore",
  "iceberg",
  "iceberg-datafusion",
- "iceberg-storage-opendal",
  "lakelet-common",
  "lakelet-storage",
  "mimalloc",
+ "opendal 0.57.0",
  "paimon",
  "paimon-datafusion",
+ "percent-encoding",
  "prost 0.14.3",
  "reqwest 0.12.24",
  "rustyline",
@@ -4361,9 +4271,8 @@ name = "lakelet-storage"
 version = "0.1.0"
 dependencies = [
  "datafusion",
- "deltalake",
- "hdfs-native-object-store",
- "iceberg",
+ "object_store_opendal",
+ "opendal 0.57.0",
  "serde",
  "toml",
  "url",
@@ -5033,6 +4942,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "object_store_opendal"
+version = "0.57.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0eb12a624a41fce745838d0ef3701ff6c47797c13cd18ad3612fd2a3134fdbd8"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "chrono",
+ "futures",
+ "mea",
+ "object_store",
+ "opendal 0.57.0",
+ "pin-project",
+ "tokio",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5092,6 +5018,7 @@ dependencies = [
  "opendal-layer-logging",
  "opendal-layer-retry",
  "opendal-layer-timeout",
+ "opendal-service-hdfs-native",
  "opendal-service-oss",
  "opendal-service-s3",
 ]
@@ -5165,6 +5092,20 @@ checksum = "1e91f731724c213af81e9d03517859c8fc47b4578e64ad61ae4f099f10fe36e3"
 dependencies = [
  "opendal-core",
  "tokio",
+]
+
+[[package]]
+name = "opendal-service-hdfs-native"
+version = "0.57.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d967da0d0c6996d570feabaa9198303d78600feca98853eb7bf50e136f1f128b"
+dependencies = [
+ "bytes",
+ "futures",
+ "hdfs-native",
+ "log",
+ "opendal-core",
+ "serde",
 ]
 
 [[package]]
@@ -6371,7 +6312,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7555,15 +7496,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "typed-builder"
-version = "0.23.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31aa81521b70f94402501d848ccc0ecaa8f93c8eb6999eb9747e72287757ffda"
-dependencies = [
- "typed-builder-macro 0.23.2",
-]
-
-[[package]]
 name = "typed-builder-macro"
 version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7579,17 +7511,6 @@ name = "typed-builder-macro"
 version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c36781cc0e46a83726d9879608e4cf6c2505237e263a8eb8c24502989cfdb28"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "typed-builder-macro"
-version = "0.23.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "076a02dc54dd46795c2e9c8282ed40bcfb1e22747e955de9389a1de28190fb26"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -18,10 +18,10 @@ Configure S3-compatible storage with the `s3-storage` inline table.
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `region` | String | No | SDK default | AWS region used for requests. |
-| `endpoint` | String | No | SDK default | Custom endpoint for S3-compatible services such as MinIO. |
-| `access-key` | String | No | SDK default | Access key. |
-| `secret-key` | String | No | SDK default | Secret key. |
+| `region` | String | No | `AWS_REGION` env | AWS region used for requests. Falls back to the `AWS_REGION` / `AWS_DEFAULT_REGION` environment variables; errors if none is available. |
+| `endpoint` | String | No | AWS default | Custom endpoint for S3-compatible services such as MinIO. Must not include the bucket name. |
+| `access-key` | String | No | Credential chain | Access key. When unset, the env/profile/IMDS credential chain is used. |
+| `secret-key` | String | No | Credential chain | Secret key. |
 | `path-style-access` | Boolean | No | `false` | Uses path-style requests when `true`; otherwise uses virtual-hosted-style requests. |
 
 ```toml
@@ -37,16 +37,20 @@ Configure Aliyun OSS with the `oss-storage` inline table.
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `endpoint` | String | No | SDK default | OSS endpoint. Must include the bucket name, for example `https://bucket_name.oss-cn-hangzhou.aliyuncs.com`. |
-| `access-key` | String | No | SDK default | Static access key ID. |
-| `secret-key` | String | No | SDK default | Static access key secret. |
+| `endpoint` | String | Yes | None | OSS endpoint, for example `https://oss-cn-hangzhou.aliyuncs.com`. Must not include the bucket name. |
+| `access-key` | String | No | None | Static access key ID. |
+| `secret-key` | String | No | None | Static access key secret. |
 | `path-style-access` | Boolean | No | `false` | Uses path-style requests when `true`; otherwise uses virtual-hosted-style requests. |
-
-The OSS `endpoint` must be prefixed with the bucket name (`https://<bucket>.oss-<region>.aliyuncs.com`), not the bare regional endpoint.
 
 ```toml
 [[catalog.hms]]
 name = "hms"
 metastore-uri = "127.0.0.1:9083"
-oss-storage = { endpoint = "https://bucket_name.oss-cn-hangzhou.aliyuncs.com", access-key = "access-key", secret-key = "secret-key", path-style-access = false }
+oss-storage = { endpoint = "https://oss-cn-hangzhou.aliyuncs.com", access-key = "access-key", secret-key = "secret-key", path-style-access = false }
 ```
+
+## HDFS
+
+Don't need to configure anything.
+
+Kerberos is not supported yet.

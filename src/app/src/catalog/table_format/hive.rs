@@ -26,7 +26,7 @@ impl HiveTableProviderFactory {
         info: HiveStorageInfo,
         partitions: Vec<HivePartition>,
         metadata_table_type: Option<MetadataTableType>,
-        storage: Option<Storage>,
+        storage: Storage,
         io_handle: Handle,
         table_definition: String,
     ) -> Result<Arc<dyn TableProvider>> {

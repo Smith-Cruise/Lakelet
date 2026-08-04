@@ -1,10 +1,8 @@
-use crate::storage::StorageTrait;
-use datafusion::common::DataFusionError;
+use crate::storage::build_layered_operator;
 use datafusion::common::Result;
-use datafusion::object_store::ObjectStore;
-use datafusion::object_store::aws::AmazonS3Builder;
+use opendal::Operator;
+use opendal::services::OssConfig;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OSSStorage {
@@ -18,25 +16,23 @@ pub struct OSSStorage {
     pub path_style_access: bool,
 }
 
-impl StorageTrait for OSSStorage {
-    fn build_object_store(&self, bucket_name: &str) -> Result<Arc<dyn ObjectStore>> {
-        let mut builder = AmazonS3Builder::new().with_bucket_name(bucket_name);
-        if let Some(endpoint) = &self.endpoint {
-            builder = builder.with_endpoint(endpoint);
-            if endpoint.starts_with("http://") {
-                builder = builder.with_allow_http(true);
+impl OSSStorage {
+    pub fn build_operator(&self, bucket: &str) -> Result<Operator> {
+        let mut cfg = OssConfig::default();
+        cfg.bucket = bucket.to_string();
+        // The endpoint must not contain the bucket name; OpenDAL
+        // prepends `{bucket}.` itself in virtual-hosted style.
+        cfg.endpoint = self.endpoint.clone();
+        cfg.access_key_id = self.access_key.clone();
+        cfg.access_key_secret = self.secret_key.clone();
+        cfg.addressing_style = Some(
+            if self.path_style_access {
+                "path"
+            } else {
+                "virtual"
             }
-        }
-        if let Some(access_key) = &self.access_key {
-            builder = builder.with_access_key_id(access_key);
-        }
-        if let Some(secret_key) = &self.secret_key {
-            builder = builder.with_secret_access_key(secret_key);
-        }
-        builder = builder.with_virtual_hosted_style_request(!self.path_style_access);
-        builder
-            .build()
-            .map(|store| Arc::new(store) as Arc<dyn ObjectStore>)
-            .map_err(|err| DataFusionError::External(Box::new(err)))
+            .to_string(),
+        );
+        build_layered_operator(cfg)
     }
 }
