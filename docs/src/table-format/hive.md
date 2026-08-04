@@ -40,8 +40,12 @@ The `data_files` metadata table lists visible, non-empty data files:
 SELECT * FROM `table_name$data_files`;
 ```
 
-It returns `file_path` and `file_size`. Files whose names start with `_` or `.`
-and zero-byte files are excluded.
+Files whose names start with `_` or `.` and zero-byte files are excluded.
+
+| Column | Description |
+| --- | --- |
+| `file_path` | Full path of the data file, including the storage scheme |
+| `file_size` | Size of the data file in bytes |
 
 **partitions**
 
@@ -51,6 +55,10 @@ The `partitions` metadata table returns one row for each metastore partition:
 SELECT * FROM `table_name$partitions`;
 ```
 
-It returns `partition`, `data_file_count`, and `total_data_file_size`.
-`partition` is a string such as `dt=2026-01-01/country=CN`.
 An unpartitioned table returns no rows.
+
+| Column | Description |
+| --- | --- |
+| `partition` | Partition values as a string, such as `dt=2026-01-01/country=CN` |
+| `data_file_count` | Number of data files in the partition, counted the same way as `data_files` |
+| `total_data_file_size` | Combined size in bytes of those data files |
