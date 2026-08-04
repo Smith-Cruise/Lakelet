@@ -4,6 +4,11 @@ icon: lucide/hexagon
 
 # Hive
 
+An HMS or Glue table is treated as Hive when its properties match none of the
+markers used by the other table formats — Hive is the fallback format. Lakelet
+reads the schema from the metastore and lists data files from the table and
+partition locations.
+
 ## Supported Data File Formats
 
 | Input format | Status
