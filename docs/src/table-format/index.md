@@ -1,3 +1,7 @@
+---
+icon: lucide/table-2
+---
+
 # Table Format
 
 Lakelet determines a table format from metastore table properties. Table

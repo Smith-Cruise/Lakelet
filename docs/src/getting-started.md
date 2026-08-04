@@ -1,3 +1,7 @@
+---
+icon: lucide/rocket
+---
+
 # Getting Started
 
 Lakelet's philosophy is to be simple, fast, and be easy to use.

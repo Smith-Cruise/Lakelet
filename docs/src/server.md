@@ -1,3 +1,7 @@
+---
+icon: lucide/server
+---
+
 # Server
 
 The optional `[server]` table configures the DataFusion query engine runtime.

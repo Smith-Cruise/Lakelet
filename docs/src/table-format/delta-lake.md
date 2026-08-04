@@ -1,3 +1,7 @@
+---
+icon: lucide/triangle
+---
+
 # Delta Lake
 
 An HMS or Glue table is treated as Delta Lake when its properties contain

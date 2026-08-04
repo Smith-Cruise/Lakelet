@@ -1,3 +1,7 @@
+---
+icon: lucide/database
+---
+
 # Catalog
 
 Lakelet support to connect HMS and Glue catalog.

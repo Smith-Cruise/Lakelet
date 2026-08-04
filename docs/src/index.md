@@ -1,8 +1,11 @@
 ---
+icon: lucide/house
 hide:
   - navigation
   - toc
 ---
+
+<div class="ll-home" markdown>
 
 # Focused on Data Lake Queries
 
@@ -19,6 +22,33 @@ Linux and macOS. For Windows, grab a build from
 [Get started](getting-started.md){ .md-button .md-button--primary }
 [View on GitHub](https://github.com/Smith-Cruise/Lakelet){ .md-button }
 
+## Catalogs
+
+Connect Lakelet to the metastore you already run — tables are discovered
+through Hive Metastore or AWS Glue.
+
+<div class="grid cards" markdown>
+
+-   :lucide-database:{ .lg .middle } __Hive Metastore__
+
+    ---
+
+    Connect to any Hive Metastore over Thrift with a single `metastore-uri`.
+    Repeat the block to add as many catalogs as you need.
+
+    [:lucide-arrow-right: HMS](catalog.md#hms)
+
+-   :lucide-cloud:{ .lg .middle } __AWS Glue__
+
+    ---
+
+    Point Lakelet at the AWS Glue Data Catalog. Static keys or the default
+    AWS credential chain — both just work.
+
+    [:lucide-arrow-right: Glue](catalog.md#glue)
+
+</div>
+
 ## Table formats
 
 Lakelet determines a table format from metastore table properties, discovered
@@ -26,39 +56,41 @@ through HMS or Glue.
 
 <div class="grid cards" markdown>
 
--   :material-table:{ .lg .middle } __Iceberg__
+-   :lucide-mountain-snow:{ .lg .middle } __Iceberg__
 
     ---
 
     Loaded directly from the `metadata_location` property. Metadata tables are
     served by `iceberg-rust`.
 
-    [:octicons-arrow-right-24: Iceberg](table-format/iceberg.md)
+    [:lucide-arrow-right: Iceberg](table-format/iceberg.md)
 
--   :material-delta:{ .lg .middle } __Delta Lake__
+-   :lucide-triangle:{ .lg .middle } __Delta Lake__
 
     ---
 
     Read from the table location through `delta-rs`. Experimental — support is
     not yet complete.
 
-    [:octicons-arrow-right-24: Delta Lake](table-format/delta-lake.md)
+    [:lucide-arrow-right: Delta Lake](table-format/delta-lake.md)
 
--   :material-layers-triple:{ .lg .middle } __Paimon__
+-   :lucide-layers:{ .lg .middle } __Paimon__
 
     ---
 
     The latest Paimon schema is loaded from the table location and read through
     `paimon-datafusion`.
 
-    [:octicons-arrow-right-24: Paimon](table-format/paimon.md)
+    [:lucide-arrow-right: Paimon](table-format/paimon.md)
 
--   :material-elephant:{ .lg .middle } __Hive__
+-   :lucide-hexagon:{ .lg .middle } __Hive__
 
     ---
 
     TextFile and Parquet data files are supported. ORC is not supported yet.
 
-    [:octicons-arrow-right-24: Hive](table-format/hive.md)
+    [:lucide-arrow-right: Hive](table-format/hive.md)
+
+</div>
 
 </div>

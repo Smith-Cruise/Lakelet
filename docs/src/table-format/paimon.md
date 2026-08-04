@@ -1,3 +1,7 @@
+---
+icon: lucide/layers
+---
+
 # Paimon
 
 An HMS or Glue table is treated as Paimon when its properties contain

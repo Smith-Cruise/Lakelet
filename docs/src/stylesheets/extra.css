@@ -1,0 +1,172 @@
+/* ---------------------------------------------------------------------------
+ * Home page (index.md) enhancements.
+ *
+ * Everything here is scoped to the `.ll-home` wrapper (or gated behind
+ * `body:has(.ll-home)`), so doc pages are untouched. Colors come from the
+ * theme's own palette variables and adapt to light/dark automatically.
+ * ------------------------------------------------------------------------- */
+
+/* Soft brand-colored glow behind the hero. */
+body:has(.ll-home) .md-main {
+  background:
+    radial-gradient(
+      70rem 30rem at 80% -8%,
+      color-mix(in srgb, var(--md-primary-fg-color) 9%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      50rem 26rem at 8% -12%,
+      color-mix(in srgb, var(--md-accent-fg-color) 7%, transparent),
+      transparent 70%
+    );
+}
+
+body[data-md-color-scheme="slate"]:has(.ll-home) .md-main {
+  background:
+    radial-gradient(
+      70rem 30rem at 80% -8%,
+      color-mix(in srgb, var(--md-primary-fg-color) 16%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      50rem 26rem at 8% -12%,
+      color-mix(in srgb, var(--md-accent-fg-color) 10%, transparent),
+      transparent 70%
+    );
+}
+
+/* Hero ------------------------------------------------------------------- */
+
+.md-typeset .ll-home {
+  padding-top: 1.6rem;
+}
+
+.md-typeset .ll-home h1 {
+  margin-bottom: 1rem;
+  font-size: clamp(2.2rem, 1.4rem + 3vw, 3.2rem);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  max-width: 24em;
+  background: linear-gradient(
+    92deg,
+    var(--md-default-fg-color) 30%,
+    var(--md-primary-fg-color)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--md-default-fg-color); /* fallback if clip unsupported */
+}
+
+/* Lead paragraph (the one right after the h1). */
+.md-typeset .ll-home h1 + p {
+  max-width: 36rem;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--md-default-fg-color--light);
+}
+
+/* Install command: terminal-style card. */
+.md-typeset .ll-home > .highlight {
+  width: min(100%, 36rem);
+  margin: 1.4rem 0 1rem;
+  border: 0.05rem solid var(--md-default-fg-color--lightest);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: var(--md-shadow-z1);
+  background-color: var(--md-code-bg-color);
+}
+
+/* Title bar with three window dots. */
+.md-typeset .ll-home > .highlight::before {
+  content: "";
+  display: block;
+  height: 1.5rem;
+  border-bottom: 0.05rem solid var(--md-default-fg-color--lightest);
+  background:
+    radial-gradient(0.24rem 0.24rem at 0.8rem 50%, #ff5f57 48%, transparent 52%),
+    radial-gradient(0.24rem 0.24rem at 1.5rem 50%, #febc2e 48%, transparent 52%),
+    radial-gradient(0.24rem 0.24rem at 2.2rem 50%, #28c840 48%, transparent 52%);
+}
+
+.md-typeset .ll-home > .highlight pre {
+  margin: 0;
+}
+
+.md-typeset .ll-home > .highlight pre > code {
+  padding: 0.9rem 1rem;
+}
+
+/* Platform note under the install card. */
+.md-typeset .ll-home > .highlight + p {
+  font-size: 0.68rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* CTA buttons. */
+.md-typeset .ll-home .md-button {
+  margin-right: 0.4rem;
+}
+
+.md-typeset .ll-home .md-button--primary {
+  background: linear-gradient(
+    35deg,
+    var(--md-primary-fg-color),
+    color-mix(in srgb, var(--md-primary-fg-color) 55%, var(--md-accent-fg-color))
+  );
+  transition: filter 0.25s, box-shadow 0.25s;
+}
+
+.md-typeset .ll-home .md-button--primary:hover,
+.md-typeset .ll-home .md-button--primary:focus {
+  filter: brightness(1.12);
+  box-shadow: 0 0.2rem 0.8rem
+    color-mix(in srgb, var(--md-primary-fg-color) 35%, transparent);
+  opacity: 1;
+}
+
+/* Sections ----------------------------------------------------------------- */
+
+/* Section headings get an eyebrow-style overline and more breathing room. */
+.md-typeset .ll-home h2 {
+  margin-top: 3.6rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.md-typeset .ll-home h2::before {
+  content: "";
+  display: block;
+  width: 1.8rem;
+  height: 0.15rem;
+  margin-bottom: 0.7rem;
+  border-radius: 0.1rem;
+  background: linear-gradient(
+    90deg,
+    var(--md-primary-fg-color),
+    var(--md-accent-fg-color)
+  );
+}
+
+/* Section intro line. */
+.md-typeset .ll-home h2 + p {
+  max-width: 36rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* Cards -------------------------------------------------------------------- */
+
+/* Tint the leading icon of each card with the accent color. */
+.md-typeset .ll-home .grid.cards .lg.middle {
+  color: var(--md-accent-fg-color);
+}
+
+/* Slightly lift cards off the page in dark mode, where borders alone sink. */
+body[data-md-color-scheme="slate"] .md-typeset .ll-home .grid.cards > ul > li {
+  background-color: color-mix(
+    in srgb,
+    var(--md-default-fg-color) 3%,
+    transparent
+  );
+}

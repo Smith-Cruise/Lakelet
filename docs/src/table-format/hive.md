@@ -1,3 +1,7 @@
+---
+icon: lucide/hexagon
+---
+
 # Hive
 
 ## Supported Data File Formats

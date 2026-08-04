@@ -1,3 +1,7 @@
+---
+icon: lucide/mountain-snow
+---
+
 # Iceberg
 
 An HMS or Glue table is treated as Iceberg when its properties contain

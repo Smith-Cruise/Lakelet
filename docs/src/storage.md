@@ -1,3 +1,7 @@
+---
+icon: lucide/hard-drive
+---
+
 # Storage
 
 Storage configuration is attached to an HMS or Glue catalog and supplies the
