@@ -95,7 +95,35 @@ body[data-md-color-scheme="slate"]:has(.ll-home) .md-main {
 }
 
 .md-typeset .ll-home > .highlight pre > code {
-  padding: 0.9rem 1rem;
+  padding: 0.9rem 3rem 0.9rem 1rem; /* right padding keeps text clear of the copy button */
+}
+
+/* Copy button: vertically centered in the code row, with visible feedback. */
+.md-typeset .ll-home > .highlight .md-code__nav {
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
+  background-color: transparent;
+}
+
+.md-typeset .ll-home > .highlight .md-code__button {
+  color: var(--md-default-fg-color--light);
+  border-radius: 0.2rem;
+  transition: color 0.25s, background-color 0.25s, transform 0.15s;
+}
+
+.md-typeset .ll-home > .highlight .md-code__button:hover,
+.md-typeset .ll-home > .highlight .md-code__button.focus-visible {
+  color: var(--md-accent-fg-color);
+  background-color: color-mix(in srgb, var(--md-accent-fg-color) 12%, transparent);
+}
+
+.md-typeset .ll-home > .highlight .md-code__button:active {
+  transform: scale(0.82);
+}
+
+.md-typeset .ll-home > .highlight .md-code__button--active {
+  color: var(--md-accent-fg-color) !important;
 }
 
 /* Platform note under the install card. */

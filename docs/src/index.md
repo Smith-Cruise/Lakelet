@@ -24,8 +24,7 @@ Linux and macOS. For Windows, grab a build from
 
 ## Catalogs
 
-Connect Lakelet to the metastore you already run — tables are discovered
-through Hive Metastore or AWS Glue.
+Bring the catalog you already run.
 
 <div class="grid cards" markdown>
 
@@ -33,8 +32,7 @@ through Hive Metastore or AWS Glue.
 
     ---
 
-    Connect to any Hive Metastore over Thrift with a single `metastore-uri`.
-    Repeat the block to add as many catalogs as you need.
+    The classic metadata service of the big data ecosystem.
 
     [:lucide-arrow-right: HMS](catalog.md#hms)
 
@@ -42,8 +40,7 @@ through Hive Metastore or AWS Glue.
 
     ---
 
-    Point Lakelet at the AWS Glue Data Catalog. Static keys or the default
-    AWS credential chain — both just work.
+    Amazon's fully managed data catalog.
 
     [:lucide-arrow-right: Glue](catalog.md#glue)
 
@@ -51,8 +48,7 @@ through Hive Metastore or AWS Glue.
 
 ## Table formats
 
-Lakelet determines a table format from metastore table properties, discovered
-through HMS or Glue.
+One engine, four open table formats.
 
 <div class="grid cards" markdown>
 
@@ -60,8 +56,7 @@ through HMS or Glue.
 
     ---
 
-    Loaded directly from the `metadata_location` property. Metadata tables are
-    served by `iceberg-rust`.
+    An open table format for large-scale analytics.
 
     [:lucide-arrow-right: Iceberg](table-format/iceberg.md)
 
@@ -69,8 +64,7 @@ through HMS or Glue.
 
     ---
 
-    Read from the table location through `delta-rs`. Experimental — support is
-    not yet complete.
+    An open table format from the Databricks ecosystem.
 
     [:lucide-arrow-right: Delta Lake](table-format/delta-lake.md)
 
@@ -78,8 +72,7 @@ through HMS or Glue.
 
     ---
 
-    The latest Paimon schema is loaded from the table location and read through
-    `paimon-datafusion`.
+    A lake format built for streaming and batch alike.
 
     [:lucide-arrow-right: Paimon](table-format/paimon.md)
 
@@ -87,7 +80,7 @@ through HMS or Glue.
 
     ---
 
-    TextFile and Parquet data files are supported. ORC is not supported yet.
+    The classic table layout of the Hadoop era.
 
     [:lucide-arrow-right: Hive](table-format/hive.md)
 
