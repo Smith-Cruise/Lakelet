@@ -6,6 +6,17 @@
  * theme's own palette variables and adapt to light/dark automatically.
  * ------------------------------------------------------------------------- */
 
+/* Site-wide: copy button turns into a green check after a click (the
+ * `ll-copied` class is added briefly by javascripts/extra.js). */
+.md-code__button.ll-copied[data-md-type="copy"] {
+  color: #2fa36b !important;
+}
+
+.md-code__button.ll-copied[data-md-type="copy"]::after {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+}
+
 /* Soft brand-colored glow behind the hero. */
 body:has(.ll-home) .md-main {
   background:

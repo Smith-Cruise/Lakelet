@@ -6,6 +6,7 @@ repo_url = "https://github.com/Smith-Cruise/Lakelet"
 repo_name = "Smith-Cruise/Lakelet"
 docs_dir = "src"
 extra_css = ["stylesheets/extra.css"]
+extra_javascript = ["javascripts/extra.js"]
 nav = [
   { "Home" = "index.md" },
   { "Docs" = [
