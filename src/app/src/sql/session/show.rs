@@ -69,41 +69,28 @@ impl ExtendedSessionContext {
         let catalogs = self.lakelet_context.catalog_manager.list_catalogs();
         let mut catalog_names = Vec::with_capacity(catalogs.len());
         let mut catalog_types = Vec::with_capacity(catalogs.len());
-        let mut catalog_configs = Vec::with_capacity(catalogs.len());
 
+        // The config itself is deliberately not exposed: it holds storage
+        // credentials, and this output reaches the web API and Flight SQL.
         for (catalog_name, catalog_config) in catalogs {
             catalog_names.push(catalog_name);
             match catalog_config {
-                CatalogConfig::Internal => {
-                    catalog_types.push("INTERNAL".to_string());
-                    catalog_configs.push(None);
-                }
-                CatalogConfig::HMS(config) => {
-                    catalog_types.push("HMS".to_string());
-                    catalog_configs.push(Some(format!("{config:?}")));
-                }
-                CatalogConfig::GLUE(config) => {
-                    catalog_types.push("GLUE".to_string());
-                    catalog_configs.push(Some(format!("{config:?}")));
-                }
-                CatalogConfig::PaimonFS(config) => {
-                    catalog_types.push("PAIMON-FS".to_string());
-                    catalog_configs.push(Some(format!("{config:?}")));
-                }
+                CatalogConfig::Internal => catalog_types.push("INTERNAL".to_string()),
+                CatalogConfig::HMS(_) => catalog_types.push("HMS".to_string()),
+                CatalogConfig::GLUE(_) => catalog_types.push("GLUE".to_string()),
+                CatalogConfig::PaimonFS(_) => catalog_types.push("PAIMON-FS".to_string()),
             }
         }
 
         let schema = Arc::new(Schema::new(vec![
             Field::new("catalog_name", DataType::Utf8, false),
             Field::new("catalog_type", DataType::Utf8, false),
-            Field::new("catalog_config", DataType::Utf8, true),
         ]));
         let batch = RecordBatch::try_new(
             schema,
             vec![
                 Arc::new(StringArray::from(catalog_names)),
                 Arc::new(StringArray::from(catalog_types)),
-                Arc::new(StringArray::from(catalog_configs)),
             ],
         )
         .map_err(|error| DataFusionError::External(Box::new(error)))?;
@@ -449,9 +436,49 @@ mod tests {
         let schema = batches[0].schema();
         let output = pretty_format_batches(&batches)?.to_string();
 
-        assert_eq!(schema.fields().len(), 3);
+        assert_eq!(schema.fields().len(), 2);
         assert_eq!(schema.field(0).name(), "catalog_name");
+        assert_eq!(schema.field(1).name(), "catalog_type");
         assert_contains!(output.as_str(), "internal");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_show_catalogs_does_not_expose_config() -> Result<()> {
+        use crate::catalog::{CatalogConfigs, CatalogManager};
+        use crate::context::LakeletContext;
+        use datafusion::execution::runtime_env::RuntimeEnv;
+        use lakelet_common::runtime::RuntimeManager;
+
+        let configs: CatalogConfigs = toml::from_str(
+            r#"
+            [[paimon-fs]]
+            name = "paimon_fs_1"
+            warehouse = "s3://bucket/warehouse"
+            s3-storage = { endpoint = "http://127.0.0.1:9000", access-key = "my-access-key", secret-key = "my-secret-key" }
+        "#,
+        )
+        .unwrap();
+        let mut catalog_manager = CatalogManager::new();
+        catalog_manager.load_catalogs(&configs)?;
+        let lakelet_context = Arc::new(LakeletContext {
+            server_config: Default::default(),
+            catalog_manager: Arc::new(catalog_manager),
+            runtime_manager: Arc::new(RuntimeManager::default()),
+            default_catalog: None,
+            default_schema: None,
+        });
+        let session = ExtendedSessionContext::new(lakelet_context, Arc::new(RuntimeEnv::default()));
+
+        let batches = session.sql("show catalogs").await?.collect().await?;
+        let output = pretty_format_batches(&batches)?.to_string();
+
+        assert_contains!(output.as_str(), "paimon_fs_1");
+        assert_contains!(output.as_str(), "PAIMON-FS");
+        // The config holds storage credentials and must never be exposed.
+        assert!(!output.contains("my-access-key"));
+        assert!(!output.contains("my-secret-key"));
+        assert!(!output.contains("s3://bucket/warehouse"));
         Ok(())
     }
 

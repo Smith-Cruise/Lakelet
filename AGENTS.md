@@ -10,6 +10,7 @@ Lakelet is a Datafusion based query engine. It focuses on data lake query.
 ### Supported Metastore
 * HMS
 * Glue
+* Paimon filesystem catalog
 
 ## Agents rules
 Agents should follow below rules:
