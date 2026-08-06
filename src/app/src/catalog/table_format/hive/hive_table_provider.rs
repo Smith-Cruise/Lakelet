@@ -34,7 +34,6 @@ use futures::StreamExt;
 use lakelet_storage::storage::{
     Storage, parse_location_schema_authority, try_register_storage_info_session,
 };
-use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::runtime::Handle;
@@ -71,10 +70,6 @@ impl HiveTableProvider {
 
 #[async_trait]
 impl TableProvider for HiveTableProvider {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> SchemaRef {
         self.hive_storage_info.table_schema.table_schema().clone()
     }

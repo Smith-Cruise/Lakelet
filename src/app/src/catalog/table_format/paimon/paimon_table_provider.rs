@@ -8,7 +8,6 @@ use datafusion::datasource::TableType;
 use datafusion::logical_expr::{Expr, TableProviderFilterPushDown};
 use datafusion::physical_plan::ExecutionPlan;
 use paimon_datafusion::PaimonTableProvider;
-use std::any::Any;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -42,10 +41,6 @@ impl LakeletPaimonTableProvider {
 
 #[async_trait]
 impl TableProvider for LakeletPaimonTableProvider {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> SchemaRef {
         self.inner_provider.schema()
     }

@@ -17,7 +17,6 @@ use deltalake::logstore::{
 };
 use deltalake::{DeltaResult, DeltaTableBuilder};
 use lakelet_storage::storage::{Storage, parse_location_schema_authority};
-use std::any::Any;
 use std::sync::{Arc, OnceLock};
 use url::Url;
 
@@ -126,10 +125,6 @@ impl DeltaTableProvider {
 
 #[async_trait::async_trait]
 impl TableProvider for DeltaTableProvider {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> SchemaRef {
         self.delta_scan.schema()
     }

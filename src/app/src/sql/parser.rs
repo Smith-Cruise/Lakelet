@@ -215,7 +215,7 @@ impl<'a> ExtendedParser<'a> {
     fn parse_show(&mut self) -> Result<ExtendedStatement> {
         let token = self.parser.peek_token();
         if let Token::Word(w) = &token.token {
-            if w.value.eq_ignore_ascii_case("catalogs") {
+            if w.keyword == Keyword::CATALOGS {
                 self.parser.advance_token();
                 return self.parse_show_catalogs();
             }

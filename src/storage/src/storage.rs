@@ -119,8 +119,7 @@ pub(crate) fn build_layered_operator<C: opendal::Configurator>(cfg: C) -> Result
     Ok(Operator::from_config(cfg)
         .map_err(|err| DataFusionError::External(Box::new(err)))?
         .layer(TimeoutLayer::new())
-        .layer(RetryLayer::new())
-        .finish())
+        .layer(RetryLayer::new()))
 }
 
 pub fn try_register_storage_info_session(

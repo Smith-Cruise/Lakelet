@@ -12,7 +12,6 @@ use iceberg::arrow::schema_to_arrow_schema;
 use iceberg::spec::Transform;
 use iceberg::table::Table;
 use iceberg_datafusion::IcebergStaticTableProvider;
-use std::any::Any;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -81,10 +80,6 @@ fn build_partition_column_names(table: &Table) -> Result<Vec<String>> {
 
 #[async_trait]
 impl TableProvider for IcebergTableProvider {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> Arc<Schema> {
         self.inner.schema()
     }
