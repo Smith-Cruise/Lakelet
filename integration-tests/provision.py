@@ -19,8 +19,10 @@ TABLE = "orders"
 PAIMON_DATABASE = "paimon_db"
 ICEBERG_DATABASE = "iceberg_db"
 DELTA_DATABASE = "delta_db"
+HIVE_DATABASE = "hive_db"
 PAIMON_LOCATION = f"s3://{BUCKET}/warehouse/{PAIMON_DATABASE}.db/{TABLE}"
 DELTA_LOCATION = f"s3://{BUCKET}/warehouse/{DELTA_DATABASE}.db/{TABLE}"
+HIVE_LOCATION = f"s3://{BUCKET}/warehouse/{HIVE_DATABASE}.db/{TABLE}"
 PAIMON_JARS = ",".join(
     [
         "/opt/spark/extra-jars/paimon-spark-4.0_2.13-1.4.1.jar",
@@ -236,6 +238,96 @@ def register_delta_table() -> None:
     )
 
 
+def create_hive_data() -> None:
+    subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(COMPOSE_FILE),
+            "exec",
+            "-T",
+            "spark",
+            "/opt/spark/bin/spark-sql",
+            "--jars",
+            DELTA_JARS,
+            "--conf",
+            "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem",
+            "--conf",
+            "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem",
+            "--conf",
+            f"spark.hadoop.fs.s3a.endpoint={SPARK_ENDPOINT}",
+            "--conf",
+            f"spark.hadoop.fs.s3a.endpoint.region={REGION}",
+            "--conf",
+            f"spark.hadoop.fs.s3a.access.key={ACCESS_KEY}",
+            "--conf",
+            f"spark.hadoop.fs.s3a.secret.key={SECRET_KEY}",
+            "--conf",
+            "spark.hadoop.fs.s3a.path.style.access=true",
+            "--conf",
+            "spark.hadoop.fs.s3a.connection.ssl.enabled=false",
+            "--conf",
+            "spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+            "-f",
+            "/integration-tests/create-hive-table.sql",
+        ],
+        check=True,
+    )
+
+
+def register_hive_table() -> None:
+    glue = client("glue")
+    try:
+        glue.delete_table(DatabaseName=HIVE_DATABASE, Name=TABLE)
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") != "EntityNotFoundException":
+            raise
+
+    columns = [
+        {"Name": "id", "Type": "int"},
+        {"Name": "name", "Type": "string"},
+        {"Name": "amount", "Type": "decimal(10,2)"},
+    ]
+    serde_info = {
+        "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+        "Parameters": {},
+    }
+    glue.create_table(
+        DatabaseName=HIVE_DATABASE,
+        TableInput={
+            "Name": TABLE,
+            "TableType": "EXTERNAL_TABLE",
+            "Parameters": {"EXTERNAL": "TRUE"},
+            "PartitionKeys": [{"Name": "dt", "Type": "string"}],
+            "StorageDescriptor": {
+                "Columns": columns,
+                "Location": HIVE_LOCATION,
+                "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+                "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+                "SerdeInfo": serde_info,
+            },
+        },
+    )
+    glue.batch_create_partition(
+        DatabaseName=HIVE_DATABASE,
+        TableName=TABLE,
+        PartitionInputList=[
+            {
+                "Values": [dt],
+                "StorageDescriptor": {
+                    "Columns": columns,
+                    "Location": f"{HIVE_LOCATION}/dt={dt}",
+                    "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+                    "SerdeInfo": serde_info,
+                },
+            }
+            for dt in ("2026-06-24", "2026-06-25")
+        ],
+    )
+
+
 def register_paimon_table() -> None:
     glue = client("glue")
     try:
@@ -273,11 +365,14 @@ def main() -> None:
     ensure_database(PAIMON_DATABASE)
     ensure_database(ICEBERG_DATABASE)
     ensure_database(DELTA_DATABASE)
+    ensure_database(HIVE_DATABASE)
     create_paimon_data()
     register_paimon_table()
     create_iceberg_data()
     create_delta_data()
     register_delta_table()
+    create_hive_data()
+    register_hive_table()
 
 
 if __name__ == "__main__":

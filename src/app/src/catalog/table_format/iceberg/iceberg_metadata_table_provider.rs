@@ -14,7 +14,6 @@ use futures::stream::BoxStream;
 use iceberg::arrow::schema_to_arrow_schema;
 use iceberg::inspect::MetadataTableType as IcebergMetadataTableType;
 use iceberg::table::Table;
-use std::any::Any;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -47,15 +46,12 @@ impl IcebergMetadataTableProvider {
 
 #[async_trait]
 impl TableProvider for IcebergMetadataTableProvider {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> SchemaRef {
         let metadata_table = self.table.inspect();
         let schema = match self.r#type {
             IcebergMetadataTableType::Snapshots => metadata_table.snapshots().schema(),
             IcebergMetadataTableType::Manifests => metadata_table.manifests().schema(),
+            IcebergMetadataTableType::History => metadata_table.history().schema(),
         };
         schema_to_arrow_schema(&schema).unwrap().into()
     }
@@ -81,6 +77,7 @@ impl IcebergMetadataTableProvider {
         let stream = match self.r#type {
             IcebergMetadataTableType::Snapshots => metadata_table.snapshots().scan().await,
             IcebergMetadataTableType::Manifests => metadata_table.manifests().scan().await,
+            IcebergMetadataTableType::History => metadata_table.history().scan().await,
         }
         .map_err(|e| DataFusionError::External(e.into()))?;
         let stream = stream.map_err(|e| DataFusionError::External(e.into()));

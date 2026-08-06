@@ -18,7 +18,6 @@ use datafusion::physical_plan::ExecutionPlan;
 use lakelet_storage::storage::{
     Storage, parse_location_schema_authority, try_register_storage_info_session,
 };
-use std::any::Any;
 use std::sync::Arc;
 use url::Url;
 
@@ -82,10 +81,6 @@ impl HiveDataFilesMetadataTableProvider {
 
 #[async_trait]
 impl TableProvider for HiveDataFilesMetadataTableProvider {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> SchemaRef {
         Arc::clone(&self.schema)
     }
@@ -224,10 +219,6 @@ impl HivePartitionsMetadataTableProvider {
 
 #[async_trait]
 impl TableProvider for HivePartitionsMetadataTableProvider {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> SchemaRef {
         Arc::clone(&self.schema)
     }
