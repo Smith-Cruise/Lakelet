@@ -40,7 +40,8 @@ impl TableProviderBuilder {
         let storage = match catalog_config {
             CatalogConfig::GLUE(glue_config) => glue_config.storage.clone(),
             CatalogConfig::HMS(hms_config) => hms_config.storage.clone(),
-            _ => {
+            CatalogConfig::PaimonFS(paimon_fs_config) => paimon_fs_config.storage.clone(),
+            CatalogConfig::Internal => {
                 panic!("unreachable")
             }
         };

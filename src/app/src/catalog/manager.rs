@@ -2,6 +2,7 @@ use crate::context::LakeletContext;
 use crate::glue_catalog::{GlueCatalog, GlueCatalogConfig};
 use crate::hms_catalog::{HMSCatalog, HMSCatalogConfig};
 use crate::internal_catalog::{INTERNAL_CATALOG, InternalCatalog};
+use crate::paimon_fs_catalog::{PaimonFSCatalog, PaimonFSCatalogConfig};
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncCatalogProviderList};
 use datafusion::common::Result;
@@ -15,6 +16,8 @@ use std::sync::Arc;
 pub struct CatalogConfigs {
     pub hms: Option<Vec<HMSCatalogConfig>>,
     pub glue: Option<Vec<GlueCatalogConfig>>,
+    #[serde(rename = "paimon-fs")]
+    pub paimon_fs: Option<Vec<PaimonFSCatalogConfig>>,
 }
 
 #[allow(clippy::upper_case_acronyms)]
@@ -23,6 +26,7 @@ pub enum CatalogConfig {
     Internal,
     HMS(HMSCatalogConfig),
     GLUE(GlueCatalogConfig),
+    PaimonFS(PaimonFSCatalogConfig),
 }
 
 #[derive(Debug, Clone)]
@@ -71,6 +75,15 @@ impl CatalogManager {
             }
         }
 
+        if let Some(ref paimon_fs_catalogs) = catalogs.paimon_fs {
+            for paimon_fs_catalog in paimon_fs_catalogs {
+                self.add_catalog(
+                    &paimon_fs_catalog.name,
+                    CatalogConfig::PaimonFS(paimon_fs_catalog.clone()),
+                )?;
+            }
+        }
+
         Ok(())
     }
 
@@ -110,6 +123,10 @@ impl CatalogManager {
                 lakelet_context,
                 Arc::new(glue_catalog.clone()),
             ))),
+            CatalogConfig::PaimonFS(paimon_fs_catalog) => Ok(Box::new(PaimonFSCatalog::try_new(
+                lakelet_context,
+                Arc::new(paimon_fs_catalog.clone()),
+            )?)),
         }
     }
 
@@ -186,6 +203,12 @@ impl AsyncCatalogProviderList for LakeletCatalogProviderList {
                 self.lakelet_context.clone(),
                 Arc::new(glue_catalog),
             )))),
+            CatalogConfig::PaimonFS(paimon_fs_catalog) => {
+                Ok(Some(Arc::new(PaimonFSCatalog::try_new(
+                    self.lakelet_context.clone(),
+                    Arc::new(paimon_fs_catalog),
+                )?)))
+            }
         }
     }
 }
@@ -199,4 +222,50 @@ pub trait LakeletCatalogProvider {
     async fn schema_exist(&self, schema_name: &str) -> Result<bool>;
 
     async fn table_exist(&self, table_name: &str, schema_name: &str) -> Result<bool>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_paimon_fs_catalog_from_config() {
+        let configs: CatalogConfigs = toml::from_str(
+            r#"
+            [[paimon-fs]]
+            name = "paimon_fs_1"
+            warehouse = "s3://bucket/warehouse"
+        "#,
+        )
+        .unwrap();
+
+        let mut catalog_manager = CatalogManager::new();
+        catalog_manager.load_catalogs(&configs).unwrap();
+        assert!(catalog_manager.catalog_exists("paimon_fs_1"));
+        assert!(matches!(
+            catalog_manager.get_catalog("paimon_fs_1"),
+            Some(CatalogConfig::PaimonFS(_))
+        ));
+    }
+
+    #[test]
+    fn test_load_catalogs_rejects_duplicate_names() {
+        let configs: CatalogConfigs = toml::from_str(
+            r#"
+            [[hms]]
+            name = "dup"
+            metastore-uri = "127.0.0.1:9083"
+
+            [[paimon-fs]]
+            name = "dup"
+            warehouse = "s3://bucket/warehouse"
+        "#,
+        )
+        .unwrap();
+
+        let mut catalog_manager = CatalogManager::new();
+        let result = catalog_manager.load_catalogs(&configs);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("already exists"));
+    }
 }

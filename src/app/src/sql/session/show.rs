@@ -86,6 +86,10 @@ impl ExtendedSessionContext {
                     catalog_types.push("GLUE".to_string());
                     catalog_configs.push(Some(format!("{config:?}")));
                 }
+                CatalogConfig::PaimonFS(config) => {
+                    catalog_types.push("PAIMON-FS".to_string());
+                    catalog_configs.push(Some(format!("{config:?}")));
+                }
             }
         }
 

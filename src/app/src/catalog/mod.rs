@@ -3,6 +3,7 @@ pub(crate) mod glue;
 pub(crate) mod hms;
 pub(crate) mod internal;
 pub(crate) mod manager;
+pub(crate) mod paimon_fs;
 pub(crate) mod table_definition_builder;
 pub(crate) mod table_format;
 
