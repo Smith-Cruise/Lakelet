@@ -20,6 +20,7 @@ pub(crate) struct SingleTablePaimonCatalog {
     table: Table,
 }
 
+// TODO: When paimon-rust expose public about metadata table builder, we can remove this code
 impl SingleTablePaimonCatalog {
     pub fn new(table: Table) -> Self {
         Self { table }
