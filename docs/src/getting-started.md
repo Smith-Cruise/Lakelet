@@ -54,10 +54,11 @@ A configuration file can contain the following top-level sections:
 | `[server]` | No | Server-wide settings. |
 | `[[catalog.hms]]` | No | A Hive Metastore catalog. Repeat the block to configure multiple HMS catalogs. |
 | `[[catalog.glue]]` | No | An AWS Glue catalog. Repeat the block to configure multiple Glue catalogs. |
+| `[[catalog.paimon-fs]]` | No | A Paimon filesystem catalog. Repeat the block to configure multiple warehouses. |
 
-At least one HMS or Glue catalog is needed to query external tables. The
-built-in `internal` catalog is always available, even when no external catalog
-is configured.
+At least one external catalog is needed to
+query external tables. The built-in `internal` catalog is always available,
+even when no external catalog is configured.
 
 The following is a minimal HMS configuration:
 
@@ -76,7 +77,7 @@ metastore-uri = "127.0.0.1:9083"
 s3-storage = { region = "us-east-1", endpoint = "http://127.0.0.1:9000", access-key = "admin", secret-key = "password", path-style-access = true }
 ```
 
-See [Server](server.md), [Catalog](catalog.md), and [Storage](storage.md) for
+See [Server](server.md), [Catalog](catalogs/index.md), and [Storage](storage.md) for
 the complete configuration reference.
 
 ## Start Lakelet

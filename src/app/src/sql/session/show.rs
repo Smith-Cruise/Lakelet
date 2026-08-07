@@ -69,37 +69,28 @@ impl ExtendedSessionContext {
         let catalogs = self.lakelet_context.catalog_manager.list_catalogs();
         let mut catalog_names = Vec::with_capacity(catalogs.len());
         let mut catalog_types = Vec::with_capacity(catalogs.len());
-        let mut catalog_configs = Vec::with_capacity(catalogs.len());
 
+        // The config itself is deliberately not exposed: it holds storage
+        // credentials.
         for (catalog_name, catalog_config) in catalogs {
             catalog_names.push(catalog_name);
             match catalog_config {
-                CatalogConfig::Internal => {
-                    catalog_types.push("INTERNAL".to_string());
-                    catalog_configs.push(None);
-                }
-                CatalogConfig::HMS(config) => {
-                    catalog_types.push("HMS".to_string());
-                    catalog_configs.push(Some(format!("{config:?}")));
-                }
-                CatalogConfig::GLUE(config) => {
-                    catalog_types.push("GLUE".to_string());
-                    catalog_configs.push(Some(format!("{config:?}")));
-                }
+                CatalogConfig::Internal => catalog_types.push("INTERNAL".to_string()),
+                CatalogConfig::HMS(_) => catalog_types.push("HMS".to_string()),
+                CatalogConfig::GLUE(_) => catalog_types.push("GLUE".to_string()),
+                CatalogConfig::PaimonFS(_) => catalog_types.push("PAIMON-FS".to_string()),
             }
         }
 
         let schema = Arc::new(Schema::new(vec![
             Field::new("catalog_name", DataType::Utf8, false),
             Field::new("catalog_type", DataType::Utf8, false),
-            Field::new("catalog_config", DataType::Utf8, true),
         ]));
         let batch = RecordBatch::try_new(
             schema,
             vec![
                 Arc::new(StringArray::from(catalog_names)),
                 Arc::new(StringArray::from(catalog_types)),
-                Arc::new(StringArray::from(catalog_configs)),
             ],
         )
         .map_err(|error| DataFusionError::External(Box::new(error)))?;
@@ -445,8 +436,9 @@ mod tests {
         let schema = batches[0].schema();
         let output = pretty_format_batches(&batches)?.to_string();
 
-        assert_eq!(schema.fields().len(), 3);
+        assert_eq!(schema.fields().len(), 2);
         assert_eq!(schema.field(0).name(), "catalog_name");
+        assert_eq!(schema.field(1).name(), "catalog_type");
         assert_contains!(output.as_str(), "internal");
         Ok(())
     }

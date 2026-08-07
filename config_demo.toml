@@ -56,3 +56,18 @@ metastore-uri = "127.0.0.1:9087"
 #   endpoint, access-key, secret-key, path-style-access (bool, default false)
 # The endpoint must be the bare regional endpoint WITHOUT the bucket name.
 # oss-storage = { endpoint = "https://oss-cn-hangzhou.aliyuncs.com", access-key = "ak", secret-key = "sk", path-style-access = false }
+
+# ---------------------------------------------------------------------------
+# Paimon filesystem catalogs. Repeat the [[catalog.paimon-fs]] block for each
+# warehouse. Serves Paimon tables only; metadata is read directly from the
+# warehouse directory (layout: warehouse/<database>.db/<table>).
+# ---------------------------------------------------------------------------
+# [[catalog.paimon-fs]]
+# Required. Unique catalog name used in SQL.
+# name = "paimon_fs_1"
+# Required. Warehouse root path: an object-store path (s3://bucket/warehouse)
+# or a local file:// URI (file:///data/paimon/warehouse).
+# warehouse = "s3://bucket/warehouse"
+# Optional storage credentials, matched by the warehouse path scheme, same
+# keys as the HMS/Glue storage blocks above. A local warehouse needs none.
+# s3-storage = { endpoint = "http://127.0.0.1:9000", region = "us-east-1", access-key = "admin", secret-key = "password", path-style-access = true }

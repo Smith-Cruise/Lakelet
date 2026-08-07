@@ -4,6 +4,14 @@ pub enum MetadataTableType {
     Partitions,
     Snapshots,
     Manifests,
+    History,                   // Iceberg only
+    Options,                   // Paimon only
+    Schemas,                   // Paimon only
+    Tags,                      // Paimon only
+    Branches,                  // Paimon only
+    PaimonTableIndexes,        // Paimon only
+    PaimonPhysicalFilesSize,   // Paimon only
+    PaimonReferencedFilesSize, // Paimon only
 }
 
 impl TryFrom<&str> for MetadataTableType {
@@ -15,6 +23,14 @@ impl TryFrom<&str> for MetadataTableType {
             "partitions" => Ok(MetadataTableType::Partitions),
             "snapshots" => Ok(MetadataTableType::Snapshots),
             "manifests" => Ok(MetadataTableType::Manifests),
+            "history" => Ok(MetadataTableType::History),
+            "options" => Ok(MetadataTableType::Options),
+            "schemas" => Ok(MetadataTableType::Schemas),
+            "tags" => Ok(MetadataTableType::Tags),
+            "branches" => Ok(MetadataTableType::Branches),
+            "table_indexes" => Ok(MetadataTableType::PaimonTableIndexes),
+            "physical_files_size" => Ok(MetadataTableType::PaimonPhysicalFilesSize),
+            "referenced_files_size" => Ok(MetadataTableType::PaimonReferencedFilesSize),
             _ => Err(format!(
                 "invalid metadata table type: {metadata_table_name}"
             )),
@@ -56,26 +72,41 @@ mod tests {
 
     #[test]
     fn parse_metadata_table() {
-        // Unquoted `$` suffix: the case that used to fail before the dialect change.
-        assert_eq!(
-            resolve_table_reference("select * from orders$data_files"),
-            ("orders".to_string(), Some(MetadataTableType::DataFiles))
-        );
+        // Every metadata table suffix, in MetadataTableType declaration order.
+        // The unquoted `$` suffix is the case that used to fail before the
+        // dialect change.
+        let cases = [
+            ("data_files", MetadataTableType::DataFiles),
+            ("partitions", MetadataTableType::Partitions),
+            ("snapshots", MetadataTableType::Snapshots),
+            ("manifests", MetadataTableType::Manifests),
+            ("history", MetadataTableType::History),
+            ("options", MetadataTableType::Options),
+            ("schemas", MetadataTableType::Schemas),
+            ("tags", MetadataTableType::Tags),
+            ("branches", MetadataTableType::Branches),
+            ("table_indexes", MetadataTableType::PaimonTableIndexes),
+            (
+                "physical_files_size",
+                MetadataTableType::PaimonPhysicalFilesSize,
+            ),
+            (
+                "referenced_files_size",
+                MetadataTableType::PaimonReferencedFilesSize,
+            ),
+        ];
+        for (suffix, expected) in cases {
+            assert_eq!(
+                resolve_table_reference(&format!("select * from orders${suffix}")),
+                ("orders".to_string(), Some(expected)),
+                "suffix: {suffix}"
+            );
+        }
 
         // Backtick-quoted form resolves to the exact same result.
         assert_eq!(
             resolve_table_reference("select * from `orders$data_files`"),
             ("orders".to_string(), Some(MetadataTableType::DataFiles))
-        );
-
-        // Qualified name `db.table$type`, with and without quoting the table part.
-        assert_eq!(
-            resolve_table_reference("select * from sales.orders$snapshots"),
-            ("orders".to_string(), Some(MetadataTableType::Snapshots))
-        );
-        assert_eq!(
-            resolve_table_reference("select * from sales.`orders$snapshots`"),
-            ("orders".to_string(), Some(MetadataTableType::Snapshots))
         );
 
         // A plain table without a `$` suffix carries no metadata type.

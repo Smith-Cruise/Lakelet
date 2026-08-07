@@ -1,0 +1,117 @@
+-- TEST: metadata_table
+-- DATABASE: iceberg_db
+
+-- QUERY
+SELECT *
+FROM `orders$snapshots`
+ORDER BY committed_at;
+-- EXPECTED
+committed_at,snapshot_id,parent_id,operation,manifest_list,summary
+{{ANY}},{{ANY}},,append,s3://lakelet-e2e/warehouse/iceberg_db.db/orders/metadata/snap-{{ANY}}.avro,{{ANY}}
+
+-- QUERY
+SELECT *
+FROM `orders$manifests`
+ORDER BY path;
+-- EXPECTED
+content,path,length,partition_spec_id,added_snapshot_id,added_data_files_count,existing_data_files_count,deleted_data_files_count,added_delete_files_count,existing_delete_files_count,deleted_delete_files_count,partition_summaries
+0,s3://lakelet-e2e/warehouse/iceberg_db.db/orders/metadata/{{ANY}}.avro,{{ANY}},0,{{ANY}},2,0,0,2,0,0,{{ANY}}
+
+-- QUERY
+SELECT *
+FROM `orders$history`
+ORDER BY made_current_at;
+-- EXPECTED
+made_current_at,snapshot_id,parent_id,is_current_ancestor
+{{ANY}},{{ANY}},,true
+
+-- QUERY
+SELECT count(*) AS data_file_count
+FROM paimon_db.orders$data_files;
+-- EXPECTED
+data_file_count
+4
+
+-- QUERY
+SELECT partition, record_count, file_count
+FROM paimon_db.orders$partitions
+ORDER BY partition;
+-- EXPECTED
+partition,record_count,file_count
+dt=2026-06-24,2,2
+dt=2026-06-25,2,2
+
+-- QUERY
+SELECT snapshot_id, schema_id, commit_kind, total_record_count, delta_record_count
+FROM paimon_db.orders$snapshots
+ORDER BY snapshot_id;
+-- EXPECTED
+snapshot_id,schema_id,commit_kind,total_record_count,delta_record_count
+1,0,APPEND,4,4
+
+-- QUERY
+SELECT count(*) AS manifest_count
+FROM paimon_db.orders$manifests;
+-- EXPECTED
+manifest_count
+1
+
+-- QUERY
+SELECT value
+FROM paimon_db.orders$options
+WHERE key = 'bucket';
+-- EXPECTED
+value
+-1
+
+-- QUERY
+SELECT schema_id, partition_keys, primary_keys
+FROM paimon_db.orders$schemas
+ORDER BY schema_id;
+-- EXPECTED
+schema_id,partition_keys,primary_keys
+0,["dt"],[]
+
+-- QUERY
+SELECT count(*) AS tag_count
+FROM paimon_db.orders$tags;
+-- EXPECTED
+tag_count
+0
+
+-- QUERY
+SELECT count(*) AS branch_count
+FROM paimon_db.orders$branches;
+-- EXPECTED
+branch_count
+0
+
+-- QUERY
+SELECT count(*) AS index_count
+FROM paimon_db.orders$table_indexes;
+-- EXPECTED
+index_count
+0
+
+-- QUERY
+SELECT manifest_file_count, data_file_count, index_file_count
+FROM paimon_db.orders$physical_files_size;
+-- EXPECTED
+manifest_file_count,data_file_count,index_file_count
+3,4,0
+
+-- QUERY
+SELECT source, data_file_count
+FROM paimon_db.orders$referenced_files_size
+ORDER BY source;
+-- EXPECTED
+source,data_file_count
+branch:main,4
+total,4
+
+-- QUERY
+SELECT count(*) AS data_file_count
+FROM paimon_fs.paimon_db.orders$data_files;
+-- EXPECTED
+data_file_count
+4

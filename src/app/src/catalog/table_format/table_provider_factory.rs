@@ -40,7 +40,8 @@ impl TableProviderBuilder {
         let storage = match catalog_config {
             CatalogConfig::GLUE(glue_config) => glue_config.storage.clone(),
             CatalogConfig::HMS(hms_config) => hms_config.storage.clone(),
-            _ => {
+            CatalogConfig::PaimonFS(paimon_fs_config) => paimon_fs_config.storage.clone(),
+            CatalogConfig::Internal => {
                 panic!("unreachable")
             }
         };
@@ -95,6 +96,7 @@ impl TableProviderBuilder {
                 DeltaTableProviderFactory::try_create_table_provider(
                     self.table_reference,
                     self.table_location,
+                    self.metadata_table_type,
                     self.storage,
                 )
                 .await
@@ -132,14 +134,10 @@ impl TableProviderBuilder {
                 )),
             },
             TableFormat::Paimon => {
-                if self.metadata_table_type.is_some() {
-                    return Err(DataFusionError::NotImplemented(
-                        "Paimon metadata tables are not supported".to_string(),
-                    ));
-                }
                 PaimonTableProviderFactory::try_create_table_provider(
                     self.table_reference,
                     self.table_location,
+                    self.metadata_table_type,
                     self.storage,
                 )
                 .await
@@ -191,33 +189,6 @@ mod tests {
     use crate::table_format::hive::hive_storage_info::HiveInputFormat;
     use datafusion::arrow::datatypes::{DataType, Field, Schema};
     use datafusion::datasource::table_schema::TableSchema;
-
-    #[test]
-    fn test_parse_table_reference() {
-        assert_eq!(
-            ("tbl".to_string(), None),
-            parse_table_reference("tbl").unwrap()
-        );
-        assert_eq!(
-            ("tbl".to_string(), Some(MetadataTableType::Snapshots)),
-            parse_table_reference("tbl$snapshots").unwrap()
-        );
-        assert_eq!(
-            ("tbl".to_string(), Some(MetadataTableType::Manifests)),
-            parse_table_reference("tbl$manifests").unwrap()
-        );
-        assert_eq!(
-            ("tbl".to_string(), Some(MetadataTableType::DataFiles)),
-            parse_table_reference("tbl$data_files").unwrap()
-        );
-        assert_eq!(
-            ("tbl".to_string(), Some(MetadataTableType::Partitions)),
-            parse_table_reference("tbl$partitions").unwrap()
-        );
-        assert!(parse_table_reference("tbl$file_path").is_err());
-        assert!(parse_table_reference("tbl$unknown").is_err());
-        assert!(parse_table_reference("$snapshots").is_err());
-    }
 
     #[test]
     fn test_deduce_table_format() {
