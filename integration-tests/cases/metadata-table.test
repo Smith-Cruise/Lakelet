@@ -43,7 +43,8 @@ dt=2026-06-25,2,2
 
 -- QUERY
 SELECT snapshot_id, schema_id, commit_kind, total_record_count, delta_record_count
-FROM paimon_db.orders$snapshots;
+FROM paimon_db.orders$snapshots
+ORDER BY snapshot_id;
 -- EXPECTED
 snapshot_id,schema_id,commit_kind,total_record_count,delta_record_count
 1,0,APPEND,4,4
@@ -65,7 +66,8 @@ value
 
 -- QUERY
 SELECT schema_id, partition_keys, primary_keys
-FROM paimon_db.orders$schemas;
+FROM paimon_db.orders$schemas
+ORDER BY schema_id;
 -- EXPECTED
 schema_id,partition_keys,primary_keys
 0,["dt"],[]
