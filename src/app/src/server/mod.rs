@@ -34,15 +34,8 @@ fn bind_error(port: u16, config_key: &str, e: &std::io::Error) -> DataFusionErro
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct LakeletArgs {
-    #[clap(
-        long,
-        required_unless_present = "agent_help",
-        help = "Specify config path"
-    )]
-    config: Option<String>,
-
-    #[clap(long, help = "Print an AI-agent friendly usage guide, then exit")]
-    agent_help: bool,
+    #[clap(long, help = "Specify config path")]
+    config: String,
 
     #[clap(
         long,
@@ -90,90 +83,12 @@ struct LakeletArgs {
 
 pub fn run() -> Result<()> {
     let args = LakeletArgs::parse();
-    if args.agent_help {
-        print_agent_help();
-        return Ok(());
-    }
-
-    let config = args
-        .config
-        .as_deref()
-        .expect("clap requires --config unless --agent-help is present");
-    let mut lakelet_context = LakeletContext::new(Some(config))?;
+    let mut lakelet_context = LakeletContext::new(Some(args.config.as_str()))?;
     lakelet_context.default_catalog = args.default_catalog.clone();
     lakelet_context.default_schema = args.default_schema.clone();
     let lakelet_context = Arc::new(lakelet_context);
     let cpu_handle = lakelet_context.runtime_manager.cpu_handle();
     cpu_handle.block_on(async_run(lakelet_context.clone(), args))
-}
-
-fn print_agent_help() {
-    println!(
-        r#"Lakelet Agent Guide
-
-Lakelet is a lakehouse SQL query engine based on DataFusion. Use it to query
-tables from configured HMS, Glue, or Paimon filesystem catalogs.
-
-Basic commands:
-  lakelet --config config.toml
-  lakelet --config config.toml --command "show catalogs;"
-  lakelet --config config.toml --command "show schemas;"
-  lakelet --config config.toml --command "show tables;"
-  lakelet --config config.toml --file query.sql
-  lakelet --config config.toml --flight-sql-server
-  lakelet --config config.toml --ui
-
-Recommended discovery workflow:
-  1. show catalogs;
-  2. use catalog <catalog_name>;
-  3. show schemas;
-  4. use <schema_name>;
-  5. show tables;
-  6. select * from <table_name> limit 10;
-
-Useful SQL:
-  show catalogs;
-  show catalogs like '%prod%';
-  show schemas;
-  show schemas from <catalog_name>;
-  show schemas from <catalog_name> like '%default%';
-  show schemas like '%default%';
-  show tables;
-  show tables from <schema_name>;
-  show tables from <catalog_name>.<schema_name> like '%events%';
-  show tables like '%events%';
-  show variables;
-  show variables verbose;
-
-Config examples:
-  [server]
-  memory-limit = "4GB"
-  # Port for --flight-sql-server, optional, default 32010
-  flight-sql-server-port = 32010
-  # Port for --ui, optional, default 6060
-  web-ui-port = 6060
-
-  [[catalog.hms]]
-  name = "hms_1"
-  metastore-uri = "127.0.0.1:9083"
-
-  [[catalog.glue]]
-  name = "glue_catalog"
-  aws-glue-region = "us-west-2"
-  s3-storage = {{ region = "us-west-2" }}
-
-  [[catalog.paimon-fs]]
-  name = "paimon_fs_1"
-  warehouse = "s3://bucket/warehouse"
-  s3-storage = {{ region = "us-west-2" }}
-
-Notes:
-  - Interactive SQL statements must end with a semicolon.
-  - --command and --file are mutually exclusive.
-  - Use fully qualified table names when context is unclear:
-    select * from <catalog>.<schema>.<table> limit 10;
-"#
-    );
 }
 
 async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> Result<()> {
@@ -263,7 +178,7 @@ mod tests {
             args.command.as_deref(),
             Some("show catalogs; show variables;")
         );
-        assert_eq!(args.config.as_deref(), Some("config.toml"));
+        assert_eq!(args.config, "config.toml");
     }
 
     #[test]
@@ -290,16 +205,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_agent_help_without_config() {
-        let args = LakeletArgs::try_parse_from(["lakelet", "--agent-help"])
-            .expect("--agent-help should not require --config");
-
-        assert!(args.agent_help);
-        assert!(args.config.is_none());
-    }
-
-    #[test]
-    fn test_parse_requires_config_without_agent_help() {
+    fn test_parse_requires_config() {
         let err = LakeletArgs::try_parse_from(["lakelet", "--command", "show catalogs;"])
             .expect_err("normal execution should require --config");
 

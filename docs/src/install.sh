@@ -103,7 +103,6 @@ info "Installed $("$dest" --version) to $dest"
 info "Get started:"
 printf '      %s\n' \
     "cp config_demo.toml config.toml   # then edit it for your catalog" \
-    "$dest --agent-help" \
     "https://lakelet.dev/getting-started/" >&2
 printf '      %s\n' \
     "Move it onto your PATH for global use, e.g. mv $dest ~/.local/bin/" >&2
