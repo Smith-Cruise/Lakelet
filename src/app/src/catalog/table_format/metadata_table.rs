@@ -23,6 +23,7 @@ impl TryFrom<&str> for MetadataTableType {
             "partitions" => Ok(MetadataTableType::Partitions),
             "snapshots" => Ok(MetadataTableType::Snapshots),
             "manifests" => Ok(MetadataTableType::Manifests),
+            "history" => Ok(MetadataTableType::History),
             "options" => Ok(MetadataTableType::Options),
             "schemas" => Ok(MetadataTableType::Schemas),
             "tags" => Ok(MetadataTableType::Tags),
