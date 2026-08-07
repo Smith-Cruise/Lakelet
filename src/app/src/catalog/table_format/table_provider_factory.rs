@@ -93,6 +93,11 @@ impl TableProviderBuilder {
                 .await
             }
             TableFormat::Delta => {
+                if let Some(metadata_table_type) = self.metadata_table_type {
+                    return Err(DataFusionError::NotImplemented(format!(
+                        "delta metadata table {metadata_table_type:?} is not supported"
+                    )));
+                }
                 DeltaTableProviderFactory::try_create_table_provider(
                     self.table_reference,
                     self.table_location,
@@ -133,14 +138,10 @@ impl TableProviderBuilder {
                 )),
             },
             TableFormat::Paimon => {
-                if self.metadata_table_type.is_some() {
-                    return Err(DataFusionError::NotImplemented(
-                        "Paimon metadata tables are not supported".to_string(),
-                    ));
-                }
                 PaimonTableProviderFactory::try_create_table_provider(
                     self.table_reference,
                     self.table_location,
+                    self.metadata_table_type,
                     self.storage,
                 )
                 .await
@@ -215,9 +216,78 @@ mod tests {
             ("tbl".to_string(), Some(MetadataTableType::Partitions)),
             parse_table_reference("tbl$partitions").unwrap()
         );
+        assert_eq!(
+            ("tbl".to_string(), Some(MetadataTableType::History)),
+            parse_table_reference("tbl$history").unwrap()
+        );
+        assert_eq!(
+            ("tbl".to_string(), Some(MetadataTableType::Options)),
+            parse_table_reference("tbl$options").unwrap()
+        );
+        assert_eq!(
+            ("tbl".to_string(), Some(MetadataTableType::Schemas)),
+            parse_table_reference("tbl$schemas").unwrap()
+        );
+        assert_eq!(
+            ("tbl".to_string(), Some(MetadataTableType::Tags)),
+            parse_table_reference("tbl$tags").unwrap()
+        );
+        assert_eq!(
+            ("tbl".to_string(), Some(MetadataTableType::Branches)),
+            parse_table_reference("tbl$branches").unwrap()
+        );
+        assert_eq!(
+            (
+                "tbl".to_string(),
+                Some(MetadataTableType::PaimonTableIndexes)
+            ),
+            parse_table_reference("tbl$table_indexes").unwrap()
+        );
+        assert_eq!(
+            (
+                "tbl".to_string(),
+                Some(MetadataTableType::PaimonPhysicalFilesSize)
+            ),
+            parse_table_reference("tbl$physical_files_size").unwrap()
+        );
+        assert_eq!(
+            (
+                "tbl".to_string(),
+                Some(MetadataTableType::PaimonReferencedFilesSize)
+            ),
+            parse_table_reference("tbl$referenced_files_size").unwrap()
+        );
+        // Paimon-native spellings that Lakelet deliberately does not accept.
+        assert!(parse_table_reference("tbl$files").is_err());
+        assert!(parse_table_reference("tbl$branchs").is_err());
         assert!(parse_table_reference("tbl$file_path").is_err());
         assert!(parse_table_reference("tbl$unknown").is_err());
         assert!(parse_table_reference("$snapshots").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_build_delta_provider_rejects_metadata_table() {
+        let error = TableProviderBuilder::new(
+            Arc::new(LakeletContext::default()),
+            "s3://bucket/path".to_string(),
+            TableReference::full("catalog", "schema", "table"),
+            HashMap::new(),
+            TableFormat::Delta,
+            CatalogConfig::HMS(crate::hms_catalog::HMSCatalogConfig {
+                name: "catalog".to_string(),
+                metastore_uri: "localhost:9083".to_string(),
+                storage: Storage::default(),
+            }),
+        )
+        .with_metadata_table_type(Some(MetadataTableType::Snapshots))
+        .build()
+        .await
+        .unwrap_err();
+
+        assert!(
+            matches!(error, DataFusionError::NotImplemented(_)),
+            "{error:?}"
+        );
     }
 
     #[test]

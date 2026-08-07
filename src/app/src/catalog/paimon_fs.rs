@@ -261,4 +261,70 @@ mod tests {
         assert!(!catalog.table_exist("t_missing", "db1").await.unwrap());
         assert!(!catalog.table_exist("t1", "db_missing").await.unwrap());
     }
+
+    #[tokio::test]
+    async fn test_paimon_fs_metadata_tables() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let config = Arc::new(PaimonFSCatalogConfig {
+            name: "paimon_fs_1".to_string(),
+            warehouse: temp_dir.path().to_str().unwrap().to_string(),
+            storage: Storage::default(),
+        });
+        let lakelet_context = Arc::new(LakeletContext::default());
+        let catalog = PaimonFSCatalog::try_new(lakelet_context.clone(), config.clone()).unwrap();
+
+        let inner_catalog = catalog.inner_catalog.clone();
+        inner_catalog
+            .create_database("db1", false, HashMap::new())
+            .await
+            .unwrap();
+        let schema = paimon::spec::Schema::builder()
+            .column(
+                "id",
+                paimon::spec::DataType::Int(paimon::spec::IntType::new()),
+            )
+            .build()
+            .unwrap();
+        inner_catalog
+            .create_table(&Identifier::new("db1", "t1"), schema, false)
+            .await
+            .unwrap();
+
+        let schema_provider = PaimonFSSchema::new(lakelet_context, config, "db1");
+        let ctx = datafusion::prelude::SessionContext::new();
+
+        // `t1$schemas` resolves through paimon-datafusion's system tables and
+        // returns the single schema written by create_table.
+        let provider = schema_provider.table("t1$schemas").await.unwrap().unwrap();
+        let batches = ctx.read_table(provider).unwrap().collect().await.unwrap();
+        let row_count: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+        assert_eq!(row_count, 1);
+
+        // `t1$options` keeps the key/value shape even with no options set.
+        let provider = schema_provider.table("t1$options").await.unwrap().unwrap();
+        let field_names: Vec<_> = provider
+            .schema()
+            .fields()
+            .iter()
+            .map(|field| field.name().clone())
+            .collect();
+        assert_eq!(field_names, vec!["key", "value"]);
+
+        // `t1$snapshots` is empty before any write but must still scan.
+        let provider = schema_provider
+            .table("t1$snapshots")
+            .await
+            .unwrap()
+            .unwrap();
+        let batches = ctx.read_table(provider).unwrap().collect().await.unwrap();
+        let row_count: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+        assert_eq!(row_count, 0);
+
+        // `history` is an Iceberg-only metadata table.
+        let error = schema_provider.table("t1$history").await.unwrap_err();
+        assert!(
+            matches!(error, DataFusionError::NotImplemented(_)),
+            "{error:?}"
+        );
+    }
 }

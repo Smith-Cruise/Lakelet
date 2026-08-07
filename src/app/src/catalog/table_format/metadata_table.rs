@@ -4,13 +4,13 @@ pub enum MetadataTableType {
     Partitions,
     Snapshots,
     Manifests,
-    History, // Iceberg
-    Options, // Paimon only
-    Schemas, // Paimon only
-    Tags, // Paimon only
-    Branches, // Paimon only
-    PaimonTableIndexes, // Paimon only
-    PaimonPhysicalFilesSize, // Paimon only
+    History,                   // Iceberg
+    Options,                   // Paimon only
+    Schemas,                   // Paimon only
+    Tags,                      // Paimon only
+    Branches,                  // Paimon only
+    PaimonTableIndexes,        // Paimon only
+    PaimonPhysicalFilesSize,   // Paimon only
     PaimonReferencedFilesSize, // Paimon only
 }
 
@@ -92,6 +92,23 @@ mod tests {
         assert_eq!(
             resolve_table_reference("select * from sales.`orders$snapshots`"),
             ("orders".to_string(), Some(MetadataTableType::Snapshots))
+        );
+
+        // Iceberg history and the Paimon-only metadata tables.
+        assert_eq!(
+            resolve_table_reference("select * from orders$history"),
+            ("orders".to_string(), Some(MetadataTableType::History))
+        );
+        assert_eq!(
+            resolve_table_reference("select * from orders$branches"),
+            ("orders".to_string(), Some(MetadataTableType::Branches))
+        );
+        assert_eq!(
+            resolve_table_reference("select * from orders$table_indexes"),
+            (
+                "orders".to_string(),
+                Some(MetadataTableType::PaimonTableIndexes)
+            )
         );
 
         // A plain table without a `$` suffix carries no metadata type.
