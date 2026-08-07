@@ -72,11 +72,36 @@ mod tests {
 
     #[test]
     fn parse_metadata_table() {
-        // Unquoted `$` suffix: the case that used to fail before the dialect change.
-        assert_eq!(
-            resolve_table_reference("select * from orders$data_files"),
-            ("orders".to_string(), Some(MetadataTableType::DataFiles))
-        );
+        // Every metadata table suffix, in MetadataTableType declaration order.
+        // The unquoted `$` suffix is the case that used to fail before the
+        // dialect change.
+        let cases = [
+            ("data_files", MetadataTableType::DataFiles),
+            ("partitions", MetadataTableType::Partitions),
+            ("snapshots", MetadataTableType::Snapshots),
+            ("manifests", MetadataTableType::Manifests),
+            ("history", MetadataTableType::History),
+            ("options", MetadataTableType::Options),
+            ("schemas", MetadataTableType::Schemas),
+            ("tags", MetadataTableType::Tags),
+            ("branches", MetadataTableType::Branches),
+            ("table_indexes", MetadataTableType::PaimonTableIndexes),
+            (
+                "physical_files_size",
+                MetadataTableType::PaimonPhysicalFilesSize,
+            ),
+            (
+                "referenced_files_size",
+                MetadataTableType::PaimonReferencedFilesSize,
+            ),
+        ];
+        for (suffix, expected) in cases {
+            assert_eq!(
+                resolve_table_reference(&format!("select * from orders${suffix}")),
+                ("orders".to_string(), Some(expected)),
+                "suffix: {suffix}"
+            );
+        }
 
         // Backtick-quoted form resolves to the exact same result.
         assert_eq!(
@@ -92,23 +117,6 @@ mod tests {
         assert_eq!(
             resolve_table_reference("select * from sales.`orders$snapshots`"),
             ("orders".to_string(), Some(MetadataTableType::Snapshots))
-        );
-
-        // Iceberg history and the Paimon-only metadata tables.
-        assert_eq!(
-            resolve_table_reference("select * from orders$history"),
-            ("orders".to_string(), Some(MetadataTableType::History))
-        );
-        assert_eq!(
-            resolve_table_reference("select * from orders$branches"),
-            ("orders".to_string(), Some(MetadataTableType::Branches))
-        );
-        assert_eq!(
-            resolve_table_reference("select * from orders$table_indexes"),
-            (
-                "orders".to_string(),
-                Some(MetadataTableType::PaimonTableIndexes)
-            )
         );
 
         // A plain table without a `$` suffix carries no metadata type.
