@@ -34,7 +34,7 @@ Bring the catalog you already run.
 
     The classic metadata service of the big data ecosystem.
 
-    [:lucide-arrow-right: HMS](catalog.md#hms)
+    [:lucide-arrow-right: HMS](catalog/hms.md)
 
 -   :lucide-cloud:{ .lg .middle } __AWS Glue__
 
@@ -42,7 +42,7 @@ Bring the catalog you already run.
 
     Amazon's fully managed data catalog.
 
-    [:lucide-arrow-right: Glue](catalog.md#glue)
+    [:lucide-arrow-right: Glue](catalog/glue.md)
 
 -   :lucide-folder-tree:{ .lg .middle } __Paimon Filesystem__
 
@@ -50,7 +50,7 @@ Bring the catalog you already run.
 
     A Paimon warehouse directory, no metastore service needed.
 
-    [:lucide-arrow-right: Paimon Filesystem](catalog.md#paimon-filesystem)
+    [:lucide-arrow-right: Paimon FileSystem](catalog/paimon-filesystem.md)
 
 </div>
 

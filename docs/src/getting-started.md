@@ -77,7 +77,7 @@ metastore-uri = "127.0.0.1:9083"
 s3-storage = { region = "us-east-1", endpoint = "http://127.0.0.1:9000", access-key = "admin", secret-key = "password", path-style-access = true }
 ```
 
-See [Server](server.md), [Catalog](catalog.md), and [Storage](storage.md) for
+See [Server](server.md), [Catalog](catalog/index.md), and [Storage](storage.md) for
 the complete configuration reference.
 
 ## Start Lakelet

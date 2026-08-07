@@ -12,10 +12,14 @@ nav = [
   { "Docs" = [
     { "Getting started" = "getting-started.md" },
     { "Server" = "server.md" },
-    { "Catalog" = "catalog.md" },
+    { "Catalog" = [
+      { "Overview" = "catalog/index.md" },
+      { "HMS" = "catalog/hms.md" },
+      { "Glue" = "catalog/glue.md" },
+      { "Paimon FileSystem" = "catalog/paimon-filesystem.md" },
+    ] },
     { "Storage" = "storage.md" },
     { "Table formats" = [
-      { "Overview" = "table-format/index.md" },
       { "Hive" = "table-format/hive.md" },
       { "Iceberg" = "table-format/iceberg.md" },
       { "Delta Lake" = "table-format/delta-lake.md" },
