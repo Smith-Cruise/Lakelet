@@ -4,6 +4,14 @@ pub enum MetadataTableType {
     Partitions,
     Snapshots,
     Manifests,
+    History, // Iceberg
+    Options, // Paimon only
+    Schemas, // Paimon only
+    Tags, // Paimon only
+    Branches, // Paimon only
+    PaimonTableIndexes, // Paimon only
+    PaimonPhysicalFilesSize, // Paimon only
+    PaimonReferencedFilesSize, // Paimon only
 }
 
 impl TryFrom<&str> for MetadataTableType {
@@ -15,6 +23,13 @@ impl TryFrom<&str> for MetadataTableType {
             "partitions" => Ok(MetadataTableType::Partitions),
             "snapshots" => Ok(MetadataTableType::Snapshots),
             "manifests" => Ok(MetadataTableType::Manifests),
+            "options" => Ok(MetadataTableType::Options),
+            "schemas" => Ok(MetadataTableType::Schemas),
+            "tags" => Ok(MetadataTableType::Tags),
+            "branches" => Ok(MetadataTableType::Branches),
+            "table_indexes" => Ok(MetadataTableType::PaimonTableIndexes),
+            "physical_files_size" => Ok(MetadataTableType::PaimonPhysicalFilesSize),
+            "referenced_files_size" => Ok(MetadataTableType::PaimonReferencedFilesSize),
             _ => Err(format!(
                 "invalid metadata table type: {metadata_table_name}"
             )),
