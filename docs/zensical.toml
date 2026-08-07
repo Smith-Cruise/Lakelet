@@ -12,18 +12,18 @@ nav = [
   { "Docs" = [
     { "Getting started" = "getting-started.md" },
     { "Server" = "server.md" },
-    { "Catalog" = [
-      { "Overview" = "catalog/index.md" },
-      { "HMS" = "catalog/hms.md" },
-      { "Glue" = "catalog/glue.md" },
-      { "Paimon FileSystem" = "catalog/paimon-filesystem.md" },
-    ] },
     { "Storage" = "storage.md" },
-    { "Table formats" = [
-      { "Hive" = "table-format/hive.md" },
-      { "Iceberg" = "table-format/iceberg.md" },
-      { "Delta Lake" = "table-format/delta-lake.md" },
-      { "Paimon" = "table-format/paimon.md" },
+    { "Catalogs" = [
+      { "Overview" = "catalogs/index.md" },
+      { "HMS" = "catalogs/hms.md" },
+      { "Glue" = "catalogs/glue.md" },
+      { "Paimon FileSystem" = "catalogs/paimon-filesystem.md" },
+    ] },
+    { "Table Formats" = [
+      { "Hive" = "table-formats/hive.md" },
+      { "Iceberg" = "table-formats/iceberg.md" },
+      { "Delta Lake" = "table-formats/delta-lake.md" },
+      { "Paimon" = "table-formats/paimon.md" },
     ] },
   ] },
 ]

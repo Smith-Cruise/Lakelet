@@ -34,7 +34,7 @@ Bring the catalog you already run.
 
     The classic metadata service of the big data ecosystem.
 
-    [:lucide-arrow-right: HMS](catalog/hms.md)
+    [:lucide-arrow-right: HMS](catalogs/hms.md)
 
 -   :lucide-cloud:{ .lg .middle } __AWS Glue__
 
@@ -42,7 +42,7 @@ Bring the catalog you already run.
 
     Amazon's fully managed data catalog.
 
-    [:lucide-arrow-right: Glue](catalog/glue.md)
+    [:lucide-arrow-right: Glue](catalogs/glue.md)
 
 -   :lucide-folder-tree:{ .lg .middle } __Paimon Filesystem__
 
@@ -50,7 +50,7 @@ Bring the catalog you already run.
 
     A Paimon warehouse directory, no metastore service needed.
 
-    [:lucide-arrow-right: Paimon FileSystem](catalog/paimon-filesystem.md)
+    [:lucide-arrow-right: Paimon FileSystem](catalogs/paimon-filesystem.md)
 
 </div>
 
@@ -66,7 +66,7 @@ One engine, four open table formats.
 
     An open table format for large-scale analytics.
 
-    [:lucide-arrow-right: Iceberg](table-format/iceberg.md)
+    [:lucide-arrow-right: Iceberg](table-formats/iceberg.md)
 
 -   :lucide-triangle:{ .lg .middle } __Delta Lake__
 
@@ -74,7 +74,7 @@ One engine, four open table formats.
 
     An open table format from the Databricks ecosystem.
 
-    [:lucide-arrow-right: Delta Lake](table-format/delta-lake.md)
+    [:lucide-arrow-right: Delta Lake](table-formats/delta-lake.md)
 
 -   :lucide-layers:{ .lg .middle } __Paimon__
 
@@ -82,7 +82,7 @@ One engine, four open table formats.
 
     A lake format built for streaming and batch alike.
 
-    [:lucide-arrow-right: Paimon](table-format/paimon.md)
+    [:lucide-arrow-right: Paimon](table-formats/paimon.md)
 
 -   :lucide-hexagon:{ .lg .middle } __Hive__
 
@@ -90,7 +90,7 @@ One engine, four open table formats.
 
     The classic table layout of the Hadoop era.
 
-    [:lucide-arrow-right: Hive](table-format/hive.md)
+    [:lucide-arrow-right: Hive](table-formats/hive.md)
 
 </div>
 
