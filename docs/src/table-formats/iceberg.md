@@ -58,3 +58,19 @@ SELECT * FROM `table_name$manifests`;
 | `existing_delete_files_count` | Number of existing delete files in the manifest |
 | `deleted_delete_files_count` | Number of delete files deleted in the manifest |
 | `partition_summaries` | Per-partition-field summaries, as a list of structs with `contains_null`, `contains_nan`, `lower_bound`, and `upper_bound` |
+
+**history**
+
+Returns one row for each entry in the table's snapshot log, including entries
+that are no longer part of the current lineage after a rollback:
+
+```sql
+SELECT * FROM `table_name$history`;
+```
+
+| Column | Description |
+| --- | --- |
+| `made_current_at` | Time the snapshot became the current snapshot, as a UTC timestamp |
+| `snapshot_id` | ID of the snapshot |
+| `parent_id` | ID of the parent snapshot, or null for the first snapshot |
+| `is_current_ancestor` | Whether the snapshot is an ancestor of the current snapshot; `false` marks rolled-back entries |
