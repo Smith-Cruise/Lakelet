@@ -12,7 +12,7 @@ without a metastore service. This catalog serves Paimon tables only.
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `name` | String | Yes | None | Unique catalog name used by Lakelet. |
-| `warehouse` | String | Yes | None | Warehouse root path, e.g. `s3://bucket/warehouse` or a local absolute path. |
+| `warehouse` | String | Yes | None | Warehouse root path, e.g. `s3://bucket/warehouse` or `file:///data/warehouse`. |
 | `s3-storage` | Inline table | No | Not configured | Credentials and endpoint for a warehouse at an `s3://` or `s3a://` path. |
 | `oss-storage` | Inline table | No | Not configured | Credentials and endpoint for a warehouse at an `oss://` path. |
 
@@ -23,12 +23,13 @@ warehouse = "s3://bucket/warehouse"
 s3-storage = { region = "us-east-1", access-key = "access-key", secret-key = "secret-key" }
 ```
 
-A local warehouse needs no storage block at all:
+A local warehouse uses a `file://` URI and needs no storage block at all
+(a bare absolute path is also accepted):
 
 ```toml
 [[catalog.paimon-fs]]
 name = "paimon_local"
-warehouse = "/data/paimon/warehouse"
+warehouse = "file:///data/paimon/warehouse"
 ```
 
 The warehouse follows the Paimon filesystem catalog layout: each database is a
