@@ -37,7 +37,7 @@ cp target/release/lakelet .
 cp config_demo.toml config.toml
 ```
 
-Configure at least one external catalog (HMS, Glue, or Paimon filesystem) in
+Configure at least one external catalog in
 `config.toml`:
 
 ```toml
