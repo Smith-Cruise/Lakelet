@@ -36,7 +36,7 @@ def test_e2e_file(test_file: Path):
     for index, block in enumerate(parsed.blocks, start=1):
         actual = run_query(block.query, parsed.database)
         expected = block.expected.strip()
-        assert_result_matches(actual, expected), (
+        assert assert_result_matches(actual, expected), (
             f"{test_file}: query block {index} failed\n\n"
             f"SQL:\n{block.query.strip()}\n\n"
             f"Expected:\n{expected}\n\n"
