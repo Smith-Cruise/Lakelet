@@ -3,8 +3,8 @@
 **Wake up, query the data lake.**
 
 Lakelet is a single-binary SQL engine for lakehouse tables. No Spark cluster is
-needed: point it at Hive Metastore or AWS Glue, then query Iceberg, Hive,
-Paimon, and Delta Lake tables directly with SQL.
+needed: point it at Hive Metastore, AWS Glue, or a Paimon filesystem warehouse,
+then query Iceberg, Hive, Paimon, and Delta Lake tables directly with SQL.
 
 ```sql
 show catalogs;
@@ -16,7 +16,7 @@ select * from default.orders limit 10;
 
 | Area | Support |
 | --- | --- |
-| Catalog | Hive Metastore, AWS Glue |
+| Catalog | Hive Metastore, AWS Glue, Paimon filesystem |
 | Table format | Iceberg, Hive, Paimon, Delta Lake |
 | File format | Parquet, Hive TextFile |
 | Storage | S3 / S3-compatible storage, Aliyun OSS, HDFS |
@@ -40,7 +40,8 @@ cp target/release/lakelet .
 cp config_demo.toml config.toml
 ```
 
-Configure at least one HMS or Glue catalog in `config.toml`:
+Configure at least one external catalog (HMS, Glue, or Paimon filesystem) in
+`config.toml`:
 
 ```toml
 [[catalog.hms]]

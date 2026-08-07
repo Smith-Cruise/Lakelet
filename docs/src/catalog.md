@@ -4,7 +4,7 @@ icon: lucide/database
 
 # Catalog
 
-Lakelet support to connect HMS and Glue catalog.
+Lakelet support to connect HMS, Glue and Paimon filesystem catalog.
 
 Storage settings are embedded directly in each catalog entry. See
 [Storage](storage.md) for their complete field reference.
@@ -77,6 +77,44 @@ aws-glue-endpoint = "http://127.0.0.1:4566"
 s3-storage = { region = "us-west-2", access-key = "access-key", secret-key = "secret-key" }
 ```
 
+## Paimon Filesystem
+
+Use `[[catalog.paimon-fs]]` to connect to a
+[Paimon filesystem catalog](https://paimon.apache.org/docs/master/concepts/catalog/):
+a warehouse directory that stores all metadata directly on the filesystem,
+without a metastore service. This catalog serves Paimon tables only.
+
+| Option | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `name` | String | Yes | None | Unique catalog name used by Lakelet. |
+| `warehouse` | String | Yes | None | Warehouse root path, e.g. `s3://bucket/warehouse` or a local absolute path. |
+| `s3-storage` | Inline table | No | Not configured | Credentials and endpoint for a warehouse at an `s3://` or `s3a://` path. |
+| `oss-storage` | Inline table | No | Not configured | Credentials and endpoint for a warehouse at an `oss://` path. |
+
+```toml
+[[catalog.paimon-fs]]
+name = "paimon_prod"
+warehouse = "s3://bucket/warehouse"
+s3-storage = { region = "us-east-1", access-key = "access-key", secret-key = "secret-key" }
+```
+
+A local warehouse needs no storage block at all:
+
+```toml
+[[catalog.paimon-fs]]
+name = "paimon_local"
+warehouse = "/data/paimon/warehouse"
+```
+
+The warehouse follows the Paimon filesystem catalog layout: each database is a
+`<database>.db` directory under the warehouse, and each table a directory
+beneath it (`warehouse/<database>.db/<table>`). Databases and tables are
+discovered by listing those directories, so `show schemas` reports every
+`*.db` directory — including non-Paimon ones if the warehouse path is shared
+with other data.
+
+## Multiple catalogs
+
 Catalog blocks are repeatable, you can create multiple catalogs like:
 
 ```toml
@@ -91,4 +129,8 @@ metastore-uri = "hms.example.com:9083"
 [[catalog.glue]]
 name = "glue_analytics"
 aws-glue-region = "us-east-1"
+
+[[catalog.paimon-fs]]
+name = "paimon_lake"
+warehouse = "s3://bucket/warehouse"
 ```

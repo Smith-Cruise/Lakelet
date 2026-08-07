@@ -112,7 +112,7 @@ fn print_agent_help() {
         r#"Lakelet Agent Guide
 
 Lakelet is a lakehouse SQL query engine based on DataFusion. Use it to query
-tables from configured HMS or Glue catalogs.
+tables from configured HMS, Glue, or Paimon filesystem catalogs.
 
 Basic commands:
   lakelet --config config.toml
@@ -160,6 +160,11 @@ Config examples:
   [[catalog.glue]]
   name = "glue_catalog"
   aws-glue-region = "us-west-2"
+  s3-storage = {{ region = "us-west-2" }}
+
+  [[catalog.paimon-fs]]
+  name = "paimon_fs_1"
+  warehouse = "s3://bucket/warehouse"
   s3-storage = {{ region = "us-west-2" }}
 
 Notes:

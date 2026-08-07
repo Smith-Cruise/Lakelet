@@ -44,6 +44,14 @@ Bring the catalog you already run.
 
     [:lucide-arrow-right: Glue](catalog.md#glue)
 
+-   :lucide-folder-tree:{ .lg .middle } __Paimon Filesystem__
+
+    ---
+
+    A Paimon warehouse directory, no metastore service needed.
+
+    [:lucide-arrow-right: Paimon Filesystem](catalog.md#paimon-filesystem)
+
 </div>
 
 ## Table formats

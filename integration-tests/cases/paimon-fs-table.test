@@ -1,0 +1,55 @@
+-- TEST: paimon_fs_orders
+-- DATABASE: paimon_db
+
+-- QUERY
+SHOW SCHEMAS FROM paimon_fs LIKE '%paimon%';
+-- EXPECTED
+schema_name
+paimon_db
+
+-- QUERY
+SHOW TABLES FROM paimon_fs.paimon_db;
+-- EXPECTED
+table_name
+orders
+
+-- QUERY
+SELECT count(*) FROM paimon_fs.paimon_db.orders;
+-- EXPECTED
+count(*)
+4
+
+-- QUERY
+SELECT id, name
+FROM paimon_fs.paimon_db.orders
+WHERE dt = '2026-06-25'
+ORDER BY id;
+-- EXPECTED
+id,name
+1,alice
+2,bob
+
+-- QUERY
+SELECT dt, sum(amount) AS total_amount
+FROM paimon_fs.paimon_db.orders
+GROUP BY dt
+ORDER BY dt;
+-- EXPECTED
+dt,total_amount
+2026-06-24,19.30
+2026-06-25,30.75
+
+-- QUERY
+SHOW CREATE TABLE paimon_fs.paimon_db.orders;
+-- EXPECTED
+definition
+CREATE TABLE `paimon_fs`.`paimon_db`.`orders`
+(
+`id` Int32,
+`name` Utf8,
+`amount` Decimal128(10, 2),
+`dt` Utf8
+)
+PARTITIONED BY (`dt`)
+USING PAIMON
+LOCATION 's3://lakelet-e2e/warehouse/paimon_db.db/orders'
