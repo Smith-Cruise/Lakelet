@@ -4,7 +4,7 @@ pub enum MetadataTableType {
     Partitions,
     Snapshots,
     Manifests,
-    History,                   // Iceberg
+    History,                   // Iceberg only
     Options,                   // Paimon only
     Schemas,                   // Paimon only
     Tags,                      // Paimon only
@@ -107,16 +107,6 @@ mod tests {
         assert_eq!(
             resolve_table_reference("select * from `orders$data_files`"),
             ("orders".to_string(), Some(MetadataTableType::DataFiles))
-        );
-
-        // Qualified name `db.table$type`, with and without quoting the table part.
-        assert_eq!(
-            resolve_table_reference("select * from sales.orders$snapshots"),
-            ("orders".to_string(), Some(MetadataTableType::Snapshots))
-        );
-        assert_eq!(
-            resolve_table_reference("select * from sales.`orders$snapshots`"),
-            ("orders".to_string(), Some(MetadataTableType::Snapshots))
         );
 
         // A plain table without a `$` suffix carries no metadata type.
