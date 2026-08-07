@@ -56,7 +56,7 @@ A configuration file can contain the following top-level sections:
 | `[[catalog.glue]]` | No | An AWS Glue catalog. Repeat the block to configure multiple Glue catalogs. |
 | `[[catalog.paimon-fs]]` | No | A Paimon filesystem catalog. Repeat the block to configure multiple warehouses. |
 
-At least one external catalog (HMS, Glue, or Paimon filesystem) is needed to
+At least one external catalog is needed to
 query external tables. The built-in `internal` catalog is always available,
 even when no external catalog is configured.
 

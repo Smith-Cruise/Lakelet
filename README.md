@@ -3,8 +3,7 @@
 **Wake up, query the data lake.**
 
 Lakelet is a single-binary SQL engine for lakehouse tables. No Spark cluster is
-needed: point it at Hive Metastore, AWS Glue, or a Paimon filesystem warehouse,
-then query Iceberg, Hive, Paimon, and Delta Lake tables directly with SQL.
+needed, query delta lake tables directly with SQL.
 
 ```sql
 show catalogs;
@@ -20,8 +19,6 @@ select * from default.orders limit 10;
 | Table format | Iceberg, Hive, Paimon, Delta Lake |
 | File format | Parquet, Hive TextFile |
 | Storage | S3 / S3-compatible storage, Aliyun OSS, HDFS |
-
-Delta Lake support is still incomplete. See the docs for detailed limitations.
 
 ## Quick Start
 
