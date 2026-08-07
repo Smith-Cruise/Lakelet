@@ -36,5 +36,4 @@ The warehouse follows the Paimon filesystem catalog layout: each database is a
 `<database>.db` directory under the warehouse, and each table a directory
 beneath it (`warehouse/<database>.db/<table>`). Databases and tables are
 discovered by listing those directories, so `show schemas` reports every
-`*.db` directory — including non-Paimon ones if the warehouse path is shared
-with other data.
+`*.db` directory — including non-Paimon ones.
