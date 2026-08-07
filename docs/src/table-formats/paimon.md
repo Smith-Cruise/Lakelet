@@ -9,8 +9,6 @@ An HMS or Glue table is treated as Paimon when its properties contain
 [Paimon FileSystem catalog](../catalogs/paimon-filesystem.md) are always
 Paimon. Lakelet loads the latest Paimon schema from the table location.
 
-Only Parquet data files are currently supported.
-
 ## Data Types
 
 The same as `paimon-rust`.
