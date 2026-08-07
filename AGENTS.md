@@ -1,13 +1,13 @@
-## Project Description
+## Project description
 Lakelet is a Datafusion based query engine. It focuses on data lake query.
 
-### Supported Table Format
+### Supported table format
 * Iceberg (parquet)
 * Delta Lake (parquet)
 * Paimon (parquet)
 * Hive (textfile, parquet)
 
-### Supported Metastore
+### Supported catalogs
 * HMS
 * Glue
 * Paimon filesystem catalog
