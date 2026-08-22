@@ -16,9 +16,6 @@ pub struct LakeletConfig {
 /// Used when `flight-sql-server-port` is not set in the config file.
 pub const DEFAULT_FLIGHT_SQL_SERVER_PORT: u16 = 32010;
 
-/// Used when `web-ui-port` is not set in the config file.
-pub const DEFAULT_WEB_UI_PORT: u16 = 6060;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ServerConfig {
@@ -28,11 +25,6 @@ pub struct ServerConfig {
     /// Port for the Arrow Flight SQL server started by `--flight-sql-server`.
     #[serde(rename = "flight-sql-server-port")]
     pub flight_sql_server_port: u16,
-
-    /// Port for the server started by `--ui`: the REST API plus the web UI
-    /// (served by reverse-proxying the hosted static site).
-    #[serde(rename = "web-ui-port")]
-    pub web_ui_port: u16,
 }
 
 impl Default for ServerConfig {
@@ -40,7 +32,6 @@ impl Default for ServerConfig {
         Self {
             memory_limit: None,
             flight_sql_server_port: DEFAULT_FLIGHT_SQL_SERVER_PORT,
-            web_ui_port: DEFAULT_WEB_UI_PORT,
         }
     }
 }
@@ -144,30 +135,6 @@ mod tests {
                 Some(4 * 1024 * 1024 * 1024)
             );
         }
-    }
-
-    #[test]
-    fn parse_web_ui_port_config() {
-        let config: LakeletConfig = toml::from_str(
-            r#"
-            [server]
-            web-ui-port = 8080
-            "#,
-        )
-        .unwrap();
-        assert_eq!(config.server_config.unwrap().web_ui_port, 8080);
-
-        let config: LakeletConfig = toml::from_str(
-            r#"
-            [server]
-            memory-limit = "1gb"
-            "#,
-        )
-        .unwrap();
-        assert_eq!(
-            config.server_config.unwrap().web_ui_port,
-            DEFAULT_WEB_UI_PORT
-        );
     }
 
     #[test]

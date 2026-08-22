@@ -14,10 +14,6 @@ memory-limit = "4GB"
 # starting with `--flight-sql-server`.
 # flight-sql-server-port = 32010
 
-# Optional, default 6060. Port the web UI listens on when starting with
-# `--ui`.
-# web-ui-port = 6060
-
 # ---------------------------------------------------------------------------
 # Glue catalogs. Repeat the [[catalog.glue]] block for each catalog.
 # ---------------------------------------------------------------------------
