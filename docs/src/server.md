@@ -41,11 +41,33 @@ lakelet --config config.toml --flight-sql-server
 The server listens on `flight-sql-server-port` under `[server]` (default
 32010).
 
-Currently supported: statement execution (`CommandStatementQuery`) with
-streaming Arrow results. Prepared statements and catalog metadata commands
-(`GetCatalogs`, `GetTables`, ...) are not implemented yet. Each request runs in
-its own session, so `USE` statements do not carry over between queries — use
-fully qualified table names (`<catalog>.<schema>.<table>`).
+Currently supported: statement execution (`CommandStatementQuery`), prepared
+statements (without parameter binding), and `GetSqlInfo`, all with streaming
+Arrow results. Catalog metadata commands (`GetCatalogs`, `GetTables`, ...) are
+not implemented yet, so ADBC's `adbc_get_objects()` and catalog browsing in
+SQL tools do not work. Each request runs in its own session, so `USE`
+statements do not carry over between queries — use fully qualified table names
+(`<catalog>.<schema>.<table>`).
+
+### Connect with ADBC (Python)
+
+Lakelet works with the [ADBC](https://arrow.apache.org/adbc/) Flight SQL
+driver:
+
+```bash
+pip install adbc_driver_flightsql pyarrow
+```
+
+```python
+import adbc_driver_flightsql.dbapi as flight_sql
+
+with flight_sql.connect("grpc://127.0.0.1:32010") as conn:
+    with conn.cursor() as cur:
+        cur.execute("select 1 as a")
+        print(cur.fetch_arrow_table())
+```
+
+Parameter binding (`cur.execute(sql, params)`) is not supported.
 
 ### Connect with dft
 
