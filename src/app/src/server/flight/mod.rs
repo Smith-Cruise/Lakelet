@@ -152,7 +152,7 @@ struct SessionDefaults {
 
 impl SessionDefaults {
     fn from_metadata(metadata: &MetadataMap) -> Result<Self, Status> {
-        let header = |key: &str| {
+        let extract_from_header = |key: &str| {
             metadata
                 .get(key)
                 .map(|value| {
@@ -165,8 +165,8 @@ impl SessionDefaults {
                 .transpose()
         };
         Ok(Self {
-            catalog: header("catalog")?,
-            schema: header("schema")?,
+            catalog: extract_from_header("catalog")?,
+            schema: extract_from_header("schema")?,
         })
     }
 }
