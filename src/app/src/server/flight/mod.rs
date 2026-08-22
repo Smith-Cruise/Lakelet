@@ -138,12 +138,12 @@ fn handle_to_sql(handle: &[u8]) -> Result<String, Status> {
         .map_err(|e| Status::invalid_argument(format!("Invalid statement handle: {e}")))
 }
 
-/// Per-request default catalog/schema, from the `catalog`/`schema` gRPC
-/// metadata headers. The keys match the Flight SQL session option names, so a
-/// future `SetSessionOptions` implementation keeps the same vocabulary. Every
-/// RPC reads its own headers (nothing is baked into tickets or prepared
-/// statement handles), so clients must send them on each call — which ADBC's
-/// connection-level `adbc.flight.sql.rpc.call_header.*` options already do.
+/// Per-request default catalog/schema, from the `default-catalog` and
+/// `default-schema` gRPC metadata headers — named after the CLI flags of the
+/// same spelling. Every RPC reads its own headers (nothing is baked into
+/// tickets or prepared statement handles), so clients must send them on each
+/// call — which ADBC's connection-level `adbc.flight.sql.rpc.call_header.*`
+/// options already do.
 #[derive(Default)]
 struct SessionDefaults {
     catalog: Option<String>,
@@ -165,8 +165,8 @@ impl SessionDefaults {
                 .transpose()
         };
         Ok(Self {
-            catalog: extract_from_header("catalog")?,
-            schema: extract_from_header("schema")?,
+            catalog: extract_from_header("default-catalog")?,
+            schema: extract_from_header("default-schema")?,
         })
     }
 }
@@ -597,7 +597,7 @@ mod tests {
 
         // A bogus schema header overrides the default and breaks resolution
         // at the GetFlightInfo (planning) stage.
-        client.set_header("schema", "no_such_schema");
+        client.set_header("default-schema", "no_such_schema");
         client
             .execute("select * from variables".to_string(), None)
             .await
@@ -605,8 +605,8 @@ mod tests {
 
         // Explicit valid headers work across the whole GetFlightInfo -> DoGet
         // chain: set_header attaches them to every call from this client.
-        client.set_header("catalog", "internal");
-        client.set_header("schema", "information_schema");
+        client.set_header("default-catalog", "internal");
+        client.set_header("default-schema", "information_schema");
         let flight_info = client
             .execute("select * from variables".to_string(), None)
             .await
@@ -633,8 +633,8 @@ mod tests {
         assert_eq!(session_defaults.catalog, None);
         assert_eq!(session_defaults.schema, None);
 
-        metadata.insert("catalog", "hive".parse().unwrap());
-        metadata.insert("schema", "sales".parse().unwrap());
+        metadata.insert("default-catalog", "hive".parse().unwrap());
+        metadata.insert("default-schema", "sales".parse().unwrap());
         let session_defaults =
             SessionDefaults::from_metadata(&metadata).expect("valid headers should parse");
         assert_eq!(session_defaults.catalog.as_deref(), Some("hive"));

@@ -46,14 +46,14 @@ not implemented yet, so ADBC's `adbc_get_objects()` and catalog browsing in
 SQL tools do not work. Each request runs in its own session, so `USE`
 statements do not carry over between queries — either use fully qualified
 table names (`<catalog>.<schema>.<table>`), or set the default per request
-with the `catalog` and `schema` gRPC headers (see below).
+with the `default-catalog` and `default-schema` gRPC headers (see below).
 
 ### Default catalog and schema headers
 
-Every request may carry `catalog` and/or `schema` gRPC metadata headers; they
-override the server-wide defaults (`--default-catalog`/`--default-schema`) for
-that request, so unqualified table names resolve against them. The header
-names match the Arrow Flight SQL session option keys.
+Every request may carry `default-catalog` and/or `default-schema` gRPC
+metadata headers; they override the server-wide defaults for that request, so
+unqualified table names resolve against them. The header names match the
+`--default-catalog`/`--default-schema` CLI flags.
 
 With ADBC, pass them as call headers — set at connection level they are
 attached to every RPC automatically:
@@ -67,17 +67,18 @@ HEADER = DatabaseOptions.RPC_CALL_HEADER_PREFIX.value
 with flight_sql.connect(
     "grpc://127.0.0.1:32010",
     db_kwargs={
-        HEADER + "catalog": "hive",
-        HEADER + "schema": "sales",
+        HEADER + "default-catalog": "hive",
+        HEADER + "default-schema": "sales",
     },
 ) as conn:
     ...
 ```
 
 With the Arrow Flight SQL JDBC driver, URL parameters the driver does not
-recognize are forwarded as gRPC headers, so `?schema=sales` works. `catalog=`
-does not: the JDBC driver intercepts it and issues a `SetSessionOptions`
-action, which Lakelet does not implement — qualify the catalog in SQL instead.
+recognize are forwarded as gRPC headers, so
+`?default-catalog=hive&default-schema=sales` works. Do not use the driver's
+own `catalog=` parameter: the JDBC driver intercepts it and issues a
+`SetSessionOptions` action, which Lakelet does not implement.
 
 ### Connect with ADBC (Python)
 
