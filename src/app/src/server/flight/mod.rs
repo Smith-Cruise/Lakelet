@@ -69,19 +69,19 @@ impl LakeletFlightSqlService {
     // A fresh session per request: `create_dataframe` replaces the session's
     // catalog list with only the catalogs resolved for that query, so a shared
     // session would race under concurrent requests.
-    fn new_session(&self, defaults: SessionDefaults) -> ExtendedSessionContext {
+    fn new_session(&self, session_defaults: SessionDefaults) -> ExtendedSessionContext {
         ExtendedSessionContext::new_with_defaults(
             self.lakelet_context.clone(),
             self.runtime_env.clone(),
-            defaults.catalog,
-            defaults.schema,
+            session_defaults.catalog,
+            session_defaults.schema,
         )
     }
 
     // Plan only (no execution) to learn the result schema.
-    async fn plan_schema(&self, sql: &str, defaults: SessionDefaults) -> Result<Schema, Status> {
+    async fn plan_schema(&self, sql: &str, session_defaults: SessionDefaults) -> Result<Schema, Status> {
         let dataframe = self
-            .new_session(defaults)
+            .new_session(session_defaults)
             .sql(sql)
             .await
             .map_err(df_error_to_status)?;
@@ -109,11 +109,11 @@ impl LakeletFlightSqlService {
     async fn execute_sql(
         &self,
         sql: &str,
-        defaults: SessionDefaults,
+        session_defaults: SessionDefaults,
     ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
         log_executing(sql);
         let dataframe = self
-            .new_session(defaults)
+            .new_session(session_defaults)
             .sql(sql)
             .await
             .map_err(df_error_to_status)?;
@@ -215,8 +215,8 @@ impl FlightSqlService for LakeletFlightSqlService {
     ) -> Result<Response<FlightInfo>, Status> {
         // The SQL text is embedded in the ticket, so the server stays
         // stateless; DoGet re-plans.
-        let defaults = SessionDefaults::from_metadata(request.metadata())?;
-        let schema = self.plan_schema(&query.query, defaults).await?;
+        let session_defaults = SessionDefaults::from_metadata(request.metadata())?;
+        let schema = self.plan_schema(&query.query, session_defaults).await?;
         let ticket = TicketStatementQuery {
             statement_handle: query.query.into_bytes().into(),
         };
@@ -233,9 +233,9 @@ impl FlightSqlService for LakeletFlightSqlService {
         ticket: TicketStatementQuery,
         request: Request<Ticket>,
     ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
-        let defaults = SessionDefaults::from_metadata(request.metadata())?;
+        let session_defaults = SessionDefaults::from_metadata(request.metadata())?;
         let sql = handle_to_sql(&ticket.statement_handle)?;
-        self.execute_sql(&sql, defaults).await
+        self.execute_sql(&sql, session_defaults).await
     }
 
     async fn get_flight_info_prepared_statement(
@@ -243,9 +243,9 @@ impl FlightSqlService for LakeletFlightSqlService {
         query: CommandPreparedStatementQuery,
         request: Request<FlightDescriptor>,
     ) -> Result<Response<FlightInfo>, Status> {
-        let defaults = SessionDefaults::from_metadata(request.metadata())?;
+        let session_defaults = SessionDefaults::from_metadata(request.metadata())?;
         let sql = handle_to_sql(&query.prepared_statement_handle)?;
-        let schema = self.plan_schema(&sql, defaults).await?;
+        let schema = self.plan_schema(&sql, session_defaults).await?;
         // Round-trip the command in the ticket so DoGet dispatches back to
         // do_get_prepared_statement.
         let flight_info = Self::flight_info(
@@ -261,9 +261,9 @@ impl FlightSqlService for LakeletFlightSqlService {
         query: CommandPreparedStatementQuery,
         request: Request<Ticket>,
     ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
-        let defaults = SessionDefaults::from_metadata(request.metadata())?;
+        let session_defaults = SessionDefaults::from_metadata(request.metadata())?;
         let sql = handle_to_sql(&query.prepared_statement_handle)?;
-        self.execute_sql(&sql, defaults).await
+        self.execute_sql(&sql, session_defaults).await
     }
 
     async fn get_flight_info_sql_info(
@@ -337,8 +337,8 @@ impl FlightSqlService for LakeletFlightSqlService {
     ) -> Result<ActionCreatePreparedStatementResult, Status> {
         // Plan once to validate the SQL and learn the result schema. The
         // handle is the SQL text itself, so no server-side state is created.
-        let defaults = SessionDefaults::from_metadata(request.metadata())?;
-        let schema = self.plan_schema(&query.query, defaults).await?;
+        let session_defaults = SessionDefaults::from_metadata(request.metadata())?;
+        let schema = self.plan_schema(&query.query, session_defaults).await?;
         let IpcMessage(schema_bytes) = SchemaAsIpc::new(&schema, &IpcWriteOptions::default())
             .try_into()
             .map_err(|e| Status::internal(format!("Failed to encode schema: {e}")))?;
@@ -628,17 +628,17 @@ mod tests {
     #[test]
     fn test_session_defaults_from_metadata() {
         let mut metadata = MetadataMap::new();
-        let defaults =
+        let session_defaults =
             SessionDefaults::from_metadata(&metadata).expect("empty metadata should parse");
-        assert_eq!(defaults.catalog, None);
-        assert_eq!(defaults.schema, None);
+        assert_eq!(session_defaults.catalog, None);
+        assert_eq!(session_defaults.schema, None);
 
         metadata.insert("catalog", "hive".parse().unwrap());
         metadata.insert("schema", "sales".parse().unwrap());
-        let defaults =
+        let session_defaults =
             SessionDefaults::from_metadata(&metadata).expect("valid headers should parse");
-        assert_eq!(defaults.catalog.as_deref(), Some("hive"));
-        assert_eq!(defaults.schema.as_deref(), Some("sales"));
+        assert_eq!(session_defaults.catalog.as_deref(), Some("hive"));
+        assert_eq!(session_defaults.schema.as_deref(), Some("sales"));
     }
 
     #[test]
