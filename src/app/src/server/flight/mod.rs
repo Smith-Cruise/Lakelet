@@ -28,6 +28,7 @@ use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
+use tonic::metadata::MetadataMap;
 use tonic::transport::Server;
 use tonic::transport::server::TcpIncoming;
 use tonic::{Request, Response, Status, Streaming};
@@ -68,14 +69,19 @@ impl LakeletFlightSqlService {
     // A fresh session per request: `create_dataframe` replaces the session's
     // catalog list with only the catalogs resolved for that query, so a shared
     // session would race under concurrent requests.
-    fn new_session(&self) -> ExtendedSessionContext {
-        ExtendedSessionContext::new(self.lakelet_context.clone(), self.runtime_env.clone())
+    fn new_session(&self, defaults: SessionDefaults) -> ExtendedSessionContext {
+        ExtendedSessionContext::new_with_defaults(
+            self.lakelet_context.clone(),
+            self.runtime_env.clone(),
+            defaults.catalog,
+            defaults.schema,
+        )
     }
 
     // Plan only (no execution) to learn the result schema.
-    async fn plan_schema(&self, sql: &str) -> Result<Schema, Status> {
+    async fn plan_schema(&self, sql: &str, defaults: SessionDefaults) -> Result<Schema, Status> {
         let dataframe = self
-            .new_session()
+            .new_session(defaults)
             .sql(sql)
             .await
             .map_err(df_error_to_status)?;
@@ -103,10 +109,11 @@ impl LakeletFlightSqlService {
     async fn execute_sql(
         &self,
         sql: &str,
+        defaults: SessionDefaults,
     ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
         log_executing(sql);
         let dataframe = self
-            .new_session()
+            .new_session(defaults)
             .sql(sql)
             .await
             .map_err(df_error_to_status)?;
@@ -129,6 +136,39 @@ impl LakeletFlightSqlService {
 fn handle_to_sql(handle: &[u8]) -> Result<String, Status> {
     String::from_utf8(handle.to_vec())
         .map_err(|e| Status::invalid_argument(format!("Invalid statement handle: {e}")))
+}
+
+/// Per-request default catalog/schema, from the `catalog`/`schema` gRPC
+/// metadata headers. The keys match the Flight SQL session option names, so a
+/// future `SetSessionOptions` implementation keeps the same vocabulary. Every
+/// RPC reads its own headers (nothing is baked into tickets or prepared
+/// statement handles), so clients must send them on each call — which ADBC's
+/// connection-level `adbc.flight.sql.rpc.call_header.*` options already do.
+#[derive(Default)]
+struct SessionDefaults {
+    catalog: Option<String>,
+    schema: Option<String>,
+}
+
+impl SessionDefaults {
+    fn from_metadata(metadata: &MetadataMap) -> Result<Self, Status> {
+        let header = |key: &str| {
+            metadata
+                .get(key)
+                .map(|value| {
+                    value.to_str().map(str::to_string).map_err(|_| {
+                        Status::invalid_argument(format!(
+                            "Invalid '{key}' header: value must be visible ASCII"
+                        ))
+                    })
+                })
+                .transpose()
+        };
+        Ok(Self {
+            catalog: header("catalog")?,
+            schema: header("schema")?,
+        })
+    }
 }
 
 fn log_executing(sql: &str) {
@@ -175,7 +215,8 @@ impl FlightSqlService for LakeletFlightSqlService {
     ) -> Result<Response<FlightInfo>, Status> {
         // The SQL text is embedded in the ticket, so the server stays
         // stateless; DoGet re-plans.
-        let schema = self.plan_schema(&query.query).await?;
+        let defaults = SessionDefaults::from_metadata(request.metadata())?;
+        let schema = self.plan_schema(&query.query, defaults).await?;
         let ticket = TicketStatementQuery {
             statement_handle: query.query.into_bytes().into(),
         };
@@ -190,10 +231,11 @@ impl FlightSqlService for LakeletFlightSqlService {
     async fn do_get_statement(
         &self,
         ticket: TicketStatementQuery,
-        _request: Request<Ticket>,
+        request: Request<Ticket>,
     ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
+        let defaults = SessionDefaults::from_metadata(request.metadata())?;
         let sql = handle_to_sql(&ticket.statement_handle)?;
-        self.execute_sql(&sql).await
+        self.execute_sql(&sql, defaults).await
     }
 
     async fn get_flight_info_prepared_statement(
@@ -201,8 +243,9 @@ impl FlightSqlService for LakeletFlightSqlService {
         query: CommandPreparedStatementQuery,
         request: Request<FlightDescriptor>,
     ) -> Result<Response<FlightInfo>, Status> {
+        let defaults = SessionDefaults::from_metadata(request.metadata())?;
         let sql = handle_to_sql(&query.prepared_statement_handle)?;
-        let schema = self.plan_schema(&sql).await?;
+        let schema = self.plan_schema(&sql, defaults).await?;
         // Round-trip the command in the ticket so DoGet dispatches back to
         // do_get_prepared_statement.
         let flight_info = Self::flight_info(
@@ -216,10 +259,11 @@ impl FlightSqlService for LakeletFlightSqlService {
     async fn do_get_prepared_statement(
         &self,
         query: CommandPreparedStatementQuery,
-        _request: Request<Ticket>,
+        request: Request<Ticket>,
     ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
+        let defaults = SessionDefaults::from_metadata(request.metadata())?;
         let sql = handle_to_sql(&query.prepared_statement_handle)?;
-        self.execute_sql(&sql).await
+        self.execute_sql(&sql, defaults).await
     }
 
     async fn get_flight_info_sql_info(
@@ -289,11 +333,12 @@ impl FlightSqlService for LakeletFlightSqlService {
     async fn do_action_create_prepared_statement(
         &self,
         query: ActionCreatePreparedStatementRequest,
-        _request: Request<Action>,
+        request: Request<Action>,
     ) -> Result<ActionCreatePreparedStatementResult, Status> {
         // Plan once to validate the SQL and learn the result schema. The
         // handle is the SQL text itself, so no server-side state is created.
-        let schema = self.plan_schema(&query.query).await?;
+        let defaults = SessionDefaults::from_metadata(request.metadata())?;
+        let schema = self.plan_schema(&query.query, defaults).await?;
         let IpcMessage(schema_bytes) = SchemaAsIpc::new(&schema, &IpcWriteOptions::default())
             .try_into()
             .map_err(|e| Status::internal(format!("Failed to encode schema: {e}")))?;
@@ -537,6 +582,63 @@ mod tests {
             .expect("info_name should be UInt32");
         assert_eq!(info_name.value(0), SqlInfo::FlightSqlServerName as u32);
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_catalog_schema_headers_applied() -> Result<()> {
+        let mut client = start_test_server().await?;
+
+        // Baseline: the server defaults (internal.information_schema) resolve
+        // the unqualified name.
+        client
+            .execute("select * from variables".to_string(), None)
+            .await
+            .expect("default catalog/schema should resolve 'variables'");
+
+        // A bogus schema header overrides the default and breaks resolution
+        // at the GetFlightInfo (planning) stage.
+        client.set_header("schema", "no_such_schema");
+        client
+            .execute("select * from variables".to_string(), None)
+            .await
+            .expect_err("bogus 'schema' header should break name resolution");
+
+        // Explicit valid headers work across the whole GetFlightInfo -> DoGet
+        // chain: set_header attaches them to every call from this client.
+        client.set_header("catalog", "internal");
+        client.set_header("schema", "information_schema");
+        let flight_info = client
+            .execute("select * from variables".to_string(), None)
+            .await
+            .expect("valid catalog/schema headers should resolve 'variables'");
+        let ticket = flight_info.endpoint[0]
+            .ticket
+            .clone()
+            .expect("endpoint should carry a ticket");
+        let _batches: Vec<_> = client
+            .do_get(ticket)
+            .await
+            .expect("do_get should honor the same headers")
+            .try_collect()
+            .await
+            .expect("result stream should decode");
+        Ok(())
+    }
+
+    #[test]
+    fn test_session_defaults_from_metadata() {
+        let mut metadata = MetadataMap::new();
+        let defaults =
+            SessionDefaults::from_metadata(&metadata).expect("empty metadata should parse");
+        assert_eq!(defaults.catalog, None);
+        assert_eq!(defaults.schema, None);
+
+        metadata.insert("catalog", "hive".parse().unwrap());
+        metadata.insert("schema", "sales".parse().unwrap());
+        let defaults =
+            SessionDefaults::from_metadata(&metadata).expect("valid headers should parse");
+        assert_eq!(defaults.catalog.as_deref(), Some("hive"));
+        assert_eq!(defaults.schema.as_deref(), Some("sales"));
     }
 
     #[test]
