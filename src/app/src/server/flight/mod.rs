@@ -79,13 +79,17 @@ impl LakeletFlightSqlService {
     }
 
     // Plan only (no execution) to learn the result schema.
-    async fn plan_schema(&self, sql: &str, session_defaults: SessionDefaults) -> Result<Schema, Status> {
+    async fn plan_schema(
+        &self,
+        sql: &str,
+        session_defaults: SessionDefaults,
+    ) -> Result<Schema, Status> {
         let dataframe = self
             .new_session(session_defaults)
             .sql(sql)
             .await
             .map_err(df_error_to_status)?;
-        Ok(dataframe.schema().as_arrow().clone())
+        Ok(advertised_schema(dataframe.schema().as_arrow().clone()))
     }
 
     // Build a single-endpoint FlightInfo whose ticket carries the given
@@ -129,6 +133,21 @@ impl LakeletFlightSqlService {
             .map_err(Status::from);
         Ok(Response::new(Box::pin(flight_data_stream)))
     }
+}
+
+// The schema the DoGet stream actually carries: FlightDataEncoder hydrates
+// dictionary columns (e.g. Delta partition columns) to their value types, so
+// run the planned schema through the same preparation. Advertising the raw
+// planned schema makes strict clients (the ADBC flightsql driver) reject the
+// stream as inconsistent.
+fn advertised_schema(schema: Schema) -> Schema {
+    let encoder = FlightDataEncoderBuilder::new()
+        .with_schema(Arc::new(schema))
+        .build(futures::stream::empty());
+    let schema = encoder
+        .known_schema()
+        .expect("with_schema always sets the encoder schema");
+    schema.as_ref().clone()
 }
 
 // The handle is the SQL text itself: the server stays stateless, at the cost
@@ -370,6 +389,7 @@ mod tests {
     use super::*;
     use arrow_flight::sql::client::FlightSqlServiceClient;
     use datafusion::arrow::array::{ArrayRef, Int64Array, RecordBatch, UInt32Array};
+    use datafusion::arrow::datatypes::DataType;
     use tonic::transport::Channel;
 
     async fn start_test_server() -> Result<FlightSqlServiceClient<Channel>> {
@@ -639,6 +659,49 @@ mod tests {
             SessionDefaults::from_metadata(&metadata).expect("valid headers should parse");
         assert_eq!(session_defaults.catalog.as_deref(), Some("hive"));
         assert_eq!(session_defaults.schema.as_deref(), Some("sales"));
+    }
+
+    #[tokio::test]
+    async fn test_dictionary_schema_advertised_hydrated() -> Result<()> {
+        let mut client = start_test_server().await?;
+
+        // Dictionary columns (e.g. Delta partition columns) are hydrated by
+        // the DoGet encoder; the advertised schema must match or strict
+        // clients (the ADBC flightsql driver) reject the stream.
+        let sql = "select arrow_cast('a', 'Dictionary(Int32, Utf8)') as d".to_string();
+
+        let mut stmt = client
+            .prepare(sql.clone(), None)
+            .await
+            .expect("prepare should succeed");
+        let dataset_schema = stmt
+            .dataset_schema()
+            .expect("prepare should return the result schema");
+        assert_eq!(dataset_schema.field(0).data_type(), &DataType::Utf8);
+
+        let flight_info = client
+            .execute(sql, None)
+            .await
+            .expect("execute should return a FlightInfo");
+        let schema = flight_info
+            .clone()
+            .try_decode_schema()
+            .expect("FlightInfo should carry the result schema");
+        assert_eq!(schema.field(0).data_type(), &DataType::Utf8);
+
+        let ticket = flight_info.endpoint[0]
+            .ticket
+            .clone()
+            .expect("endpoint should carry a ticket");
+        let batches: Vec<_> = client
+            .do_get(ticket)
+            .await
+            .expect("do_get should stream results")
+            .try_collect()
+            .await
+            .expect("result stream should decode");
+        assert_eq!(batches[0].schema().field(0).data_type(), &DataType::Utf8);
+        Ok(())
     }
 
     #[test]
