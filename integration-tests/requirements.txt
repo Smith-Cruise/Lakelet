@@ -1,2 +1,4 @@
+adbc-driver-flightsql
 boto3
+pyarrow
 pytest

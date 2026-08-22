@@ -1,15 +1,27 @@
+import datetime
 import os
 import re
+import socket
 import subprocess
-import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
+
+import adbc_driver_flightsql.dbapi as flight_sql
+import pytest
+from adbc_driver_flightsql import DatabaseOptions
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CASES_DIR = REPO_ROOT / "integration-tests" / "cases"
 CONFIG_PATH = REPO_ROOT / "integration-tests" / "lakelet-integration.toml"
 LAKELET_BIN = Path(os.environ.get("LAKELET_BIN", REPO_ROOT / "target" / "debug" / "lakelet"))
+
+# lakelet-integration.toml has no [server] table, so the server listens on the
+# default flight-sql-server-port.
+FLIGHT_PORT = 32010
+SERVER_READY_TIMEOUT_SECONDS = 30
+CALL_HEADER = DatabaseOptions.RPC_CALL_HEADER_PREFIX.value
 
 
 @dataclass(frozen=True)
@@ -31,17 +43,66 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("test_file", files, ids=[str(path.relative_to(CASES_DIR)) for path in files])
 
 
-def test_e2e_file(test_file: Path):
+@pytest.fixture(scope="session")
+def flight_server():
+    """One lakelet --flight-sql-server process shared by every test."""
+    process = subprocess.Popen(
+        [str(LAKELET_BIN), "--config", str(CONFIG_PATH), "--flight-sql-server"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    try:
+        wait_for_server(process)
+        yield f"grpc://127.0.0.1:{FLIGHT_PORT}"
+    finally:
+        process.terminate()
+        process.wait()
+
+
+def wait_for_server(process: subprocess.Popen) -> None:
+    deadline = time.monotonic() + SERVER_READY_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise AssertionError(
+                f"Lakelet Flight SQL server exited with status {process.returncode}\n\n{process.stdout.read()}"
+            )
+        try:
+            with socket.create_connection(("127.0.0.1", FLIGHT_PORT), timeout=1):
+                return
+        except OSError:
+            time.sleep(0.1)
+    process.terminate()
+    raise AssertionError(
+        f"Lakelet Flight SQL server did not open port {FLIGHT_PORT} within {SERVER_READY_TIMEOUT_SECONDS}s"
+    )
+
+
+def connect(uri: str, database: str):
+    # The default-catalog/default-schema gRPC headers replace the CLI
+    # --default-catalog/--default-schema flags per connection; set as
+    # connection-level call headers they ride along on every RPC.
+    return flight_sql.connect(
+        uri,
+        db_kwargs={
+            CALL_HEADER + "default-catalog": "moto_glue",
+            CALL_HEADER + "default-schema": database,
+        },
+    )
+
+
+def test_e2e_file(test_file: Path, flight_server: str):
     parsed = parse_test_file(test_file)
-    for index, block in enumerate(parsed.blocks, start=1):
-        actual = run_query(block.query, parsed.database)
-        expected = block.expected.strip()
-        assert assert_result_matches(actual, expected), (
-            f"{test_file}: query block {index} failed\n\n"
-            f"SQL:\n{block.query.strip()}\n\n"
-            f"Expected:\n{expected}\n\n"
-            f"Actual:\n{actual}"
-        )
+    with connect(flight_server, parsed.database) as conn:
+        for index, block in enumerate(parsed.blocks, start=1):
+            actual = run_query(conn, block.query)
+            expected = block.expected.strip()
+            assert assert_result_matches(actual, expected), (
+                f"{test_file}: query block {index} failed\n\n"
+                f"SQL:\n{block.query.strip()}\n\n"
+                f"Expected:\n{expected}\n\n"
+                f"Actual:\n{actual}"
+            )
     print(f"PASSED {test_file.relative_to(CASES_DIR)} ({len(parsed.blocks)} queries)", flush=True)
 
 
@@ -107,48 +168,37 @@ def build_block(path: Path, query: list[str], expected: list[str]) -> QueryBlock
     return QueryBlock(query=query_text, expected=expected_text)
 
 
-def run_query(sql: str, database: str) -> str:
-    with tempfile.NamedTemporaryFile("w", suffix=".sql", encoding="utf-8", delete=False) as query_file:
-        query_file.write(sql)
-        query_path = Path(query_file.name)
-
-    try:
-        output = subprocess.run(
-            [
-                str(LAKELET_BIN),
-                "--config",
-                str(CONFIG_PATH),
-                "--default-catalog",
-                "moto_glue",
-                "--default-schema",
-                database,
-                "--file",
-                str(query_path),
-            ],
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
-    finally:
-        query_path.unlink(missing_ok=True)
-
-    if output.returncode != 0:
-        raise AssertionError(f"Lakelet query failed with status {output.returncode}\nSQL:\n{sql}\n\n{output.stdout}")
-
-    return normalize_query_result(output.stdout)
+def run_query(conn, sql: str) -> str:
+    with conn.cursor() as cursor:
+        try:
+            cursor.execute(sql)
+            table = cursor.fetch_arrow_table()
+        except Exception as e:
+            raise AssertionError(f"Lakelet query failed\nSQL:\n{sql}\n\n{e}") from e
+    return format_arrow_table(table)
 
 
-def normalize_query_result(stdout: str) -> str:
-    table_lines = [
-        line.strip()
-        for line in stdout.splitlines()
-        if line.strip().startswith("|") and line.strip().endswith("|")
-    ]
-    rows = [
-        [cell.strip() for cell in line.strip().strip("|").split("|")]
-        for line in table_lines
-    ]
-    if not rows:
+def format_arrow_table(table) -> str:
+    """Render an Arrow table the way the old REPL output normalized: a header
+    line of schema field names, then one comma-joined line per row."""
+    lines = [",".join(table.schema.names)]
+    columns = table.columns
+    for row_index in range(table.num_rows):
+        cells = [format_cell(column[row_index].as_py()) for column in columns]
+        lines.append(",".join(cells))
+    # Multi-line cells (e.g. SHOW CREATE TABLE) expand into physical lines;
+    # strip each one, matching how the old table output was normalized.
+    return "\n".join(line.strip() for text in lines for line in text.split("\n"))
+
+
+def format_cell(value) -> str:
+    if value is None:
+        # NULL rendered as an empty cell in the old table output.
         return ""
-    return "\n".join(",".join(row) for row in rows)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, datetime.datetime):
+        # Arrow's display uses the RFC 3339 "T" separator.
+        return value.isoformat()
+    # str() keeps Decimal scale ("19.30") and matches dates ("2026-06-24").
+    return str(value)
