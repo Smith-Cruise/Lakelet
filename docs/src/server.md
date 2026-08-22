@@ -60,12 +60,15 @@ attached to every RPC automatically:
 
 ```python
 import adbc_driver_flightsql.dbapi as flight_sql
+from adbc_driver_flightsql import DatabaseOptions
+
+HEADER = DatabaseOptions.RPC_CALL_HEADER_PREFIX.value
 
 with flight_sql.connect(
     "grpc://127.0.0.1:32010",
     db_kwargs={
-        "adbc.flight.sql.rpc.call_header.catalog": "hive",
-        "adbc.flight.sql.rpc.call_header.schema": "sales",
+        HEADER + "catalog": "hive",
+        HEADER + "schema": "sales",
     },
 ) as conn:
     ...
