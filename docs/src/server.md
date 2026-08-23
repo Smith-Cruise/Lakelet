@@ -40,7 +40,8 @@ The server listens on `flight-sql-server-port` under `[server]` (default
 32010).
 
 Note: Each flight SQL connection is a new fresh session, it will not share any SessionState.
-So the `USE` statement will not affect next connection.
+So `USE` state is discarded after every RPC and does not affect 
+the next query even on the same ADBC connection.
 
 ### Connect with ADBC (Python)
 
