@@ -17,7 +17,7 @@ use datafusion::logical_expr::ExplainFormat;
 use datafusion::logical_expr::sqlparser::ast::Statement;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use lakelet_common::runtime::RuntimeManager;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc};
 
 pub struct ExtendedSessionContext {
     lakelet_context: Arc<LakeletContext>,

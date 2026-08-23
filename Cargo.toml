@@ -40,7 +40,7 @@ lakelet-storage = {path = "src/storage"}
 lakelet-common = {path = "src/common"}
 
 [profile.release]
-debug = 1
+debug = 0
 lto = "thin"
 opt-level = "s"
 codegen-units = 1
