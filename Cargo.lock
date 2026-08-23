@@ -1077,13 +1077,10 @@ checksum = "31b698c5f9a010f6573133b09e0de5408834d0c82f8d7475a89fc1867a71cd90"
 dependencies = [
  "axum-core",
  "bytes",
- "form_urlencoded",
  "futures-util",
  "http 1.5.0",
  "http-body 1.0.1",
  "http-body-util",
- "hyper 1.7.0",
- "hyper-util",
  "itoa",
  "matchit",
  "memchr",
@@ -1091,15 +1088,10 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "serde_core",
- "serde_json",
- "serde_path_to_error",
- "serde_urlencoded",
  "sync_wrapper",
- "tokio",
  "tower",
  "tower-layer",
  "tower-service",
- "tracing",
 ]
 
 [[package]]
@@ -1118,7 +1110,6 @@ dependencies = [
  "sync_wrapper",
  "tower-layer",
  "tower-service",
- "tracing",
 ]
 
 [[package]]
@@ -3812,7 +3803,6 @@ dependencies = [
  "tokio",
  "tokio-rustls 0.26.4",
  "tower-service",
- "webpki-roots",
 ]
 
 [[package]]
@@ -4319,11 +4309,9 @@ name = "lakelet-app"
 version = "0.1.0"
 dependencies = [
  "arrow-flight",
- "async-stream",
  "async-trait",
  "aws-config",
  "aws-sdk-glue",
- "axum",
  "bytes",
  "clap",
  "comfy-table",
@@ -4342,16 +4330,13 @@ dependencies = [
  "paimon-datafusion",
  "percent-encoding",
  "prost 0.14.3",
- "reqwest 0.12.24",
  "rustyline",
  "serde",
- "serde_json",
  "sqlparser 0.62.0",
  "tempfile",
  "tokio",
  "toml",
  "tonic",
- "tower",
  "typetag",
  "url",
  "volo-thrift",
@@ -6343,7 +6328,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams 0.4.2",
  "web-sys",
- "webpki-roots",
 ]
 
 [[package]]
@@ -6794,17 +6778,6 @@ dependencies = [
  "itoa",
  "memchr",
  "ryu",
- "serde",
- "serde_core",
-]
-
-[[package]]
-name = "serde_path_to_error"
-version = "0.1.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
-dependencies = [
- "itoa",
  "serde",
  "serde_core",
 ]
@@ -8180,15 +8153,6 @@ name = "webpki-root-certs"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f31141ce3fc3e300ae89b78c0dd67f9708061d1d2eda54b8209346fd6be9a92c"
-dependencies = [
- "rustls-pki-types",
-]
-
-[[package]]
-name = "webpki-roots"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2878ef029c47c6e8cf779119f20fcf52bde7ad42a731b2a304bc221df17571e"
 dependencies = [
  "rustls-pki-types",
 ]

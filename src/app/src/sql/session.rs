@@ -17,50 +17,13 @@ use datafusion::logical_expr::ExplainFormat;
 use datafusion::logical_expr::sqlparser::ast::Statement;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use lakelet_common::runtime::RuntimeManager;
-use std::collections::HashMap;
-use std::sync::{Arc, OnceLock, RwLock};
-
-static SESSION_MANAGER: OnceLock<RwLock<HashMap<i64, Arc<SessionContext>>>> = OnceLock::new();
-
-fn get_session_manager() -> &'static RwLock<HashMap<i64, Arc<SessionContext>>> {
-    SESSION_MANAGER.get_or_init(|| RwLock::new(HashMap::new()))
-}
-
-pub struct SessionManager {}
-
-impl SessionManager {
-    pub fn register_session(
-        session_id: i64,
-        session_context: Arc<SessionContext>,
-    ) -> Result<Arc<SessionContext>> {
-        let manager = get_session_manager();
-        let mut map = manager
-            .write()
-            .map_err(|e| DataFusionError::Internal(e.to_string()))?;
-        if let Some(value) = map.insert(session_id, session_context) {
-            Ok(value.clone())
-        } else {
-            Err(DataFusionError::Internal("failed to insert session".into()))
-        }
-    }
-
-    pub fn get_session(session_id: i64) -> Result<Arc<SessionContext>> {
-        let manager = get_session_manager();
-        let map = manager
-            .read()
-            .map_err(|e| DataFusionError::Internal(e.to_string()))?;
-        if let Some(value) = map.get(&session_id) {
-            Ok(value.clone())
-        } else {
-            Err(DataFusionError::Internal(format!(
-                "session {} is not found",
-                session_id
-            )))
-        }
-    }
-}
+use std::sync::Arc;
 
 pub struct ExtendedSessionContext {
+    // Injected by the server entry point and shared across sessions, so
+    // catalog providers and their metastore clients are built once per
+    // process instead of per statement.
+    catalog_provider_list: Arc<LakeletCatalogProviderList>,
     lakelet_context: Arc<LakeletContext>,
     session_context: SessionContext,
 }
@@ -75,12 +38,18 @@ impl Default for ExtendedSessionContext {
             default_schema: None,
         });
         let runtime_env = Arc::new(RuntimeEnv::default());
-        Self::new(lakelet_context, runtime_env)
+        let catalog_provider_list =
+            Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone()));
+        Self::new(catalog_provider_list, lakelet_context, runtime_env)
     }
 }
 
 impl ExtendedSessionContext {
-    pub fn new(lakelet_context: Arc<LakeletContext>, runtime_env: Arc<RuntimeEnv>) -> Self {
+    pub fn new(
+        catalog_provider_list: Arc<LakeletCatalogProviderList>,
+        lakelet_context: Arc<LakeletContext>,
+        runtime_env: Arc<RuntimeEnv>,
+    ) -> Self {
         let catalog = lakelet_context
             .default_catalog
             .as_deref()
@@ -95,6 +64,7 @@ impl ExtendedSessionContext {
             SessionConfig::from(options).with_default_catalog_and_schema(catalog, schema);
         let session_context = SessionContext::new_with_config_rt(session_config, runtime_env);
         Self {
+            catalog_provider_list,
             session_context,
             lakelet_context,
         }
@@ -160,9 +130,11 @@ impl ExtendedSessionContext {
         };
 
         // Now we can asynchronously resolve the table references to get a cached catalog
-        // that we can use for our query
-        let catalog_provider_list = LakeletCatalogProviderList::new(self.lakelet_context.clone());
-        let resolved_catalog_providers = catalog_provider_list
+        // that we can use for our query. The provider list is shared across
+        // statements, so catalog providers and their metastore clients are
+        // reused instead of rebuilt per statement.
+        let resolved_catalog_providers = self
+            .catalog_provider_list
             .resolve(&references, state.config())
             .await?;
         self.session_context
@@ -207,7 +179,10 @@ mod tests {
             .with_object_store_registry(instrumented_registry.clone())
             .build_arc()?;
         let lakelet_context = Arc::new(LakeletContext::default());
-        let session = ExtendedSessionContext::new(lakelet_context, runtime_env);
+        let catalog_provider_list =
+            Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone()));
+        let session =
+            ExtendedSessionContext::new(catalog_provider_list, lakelet_context, runtime_env);
 
         let store_url = Url::parse("memory://bucket").unwrap();
         let object_store = Arc::new(InMemory::new());

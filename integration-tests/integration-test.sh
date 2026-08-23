@@ -36,11 +36,14 @@ integration-tests/download-jars.sh
 
 docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans
 
-if lsof -nP -iTCP:5050 -sTCP:LISTEN >/tmp/lakelet-integration-port-5050.txt 2>/dev/null; then
-  echo "Port 5050 is already in use:" >&2
-  cat /tmp/lakelet-integration-port-5050.txt >&2
-  exit 1
-fi
+# 5050: moto container; 32010: the Flight SQL server pytest starts.
+for port in 5050 32010; do
+  if lsof -nP -iTCP:"${port}" -sTCP:LISTEN >"/tmp/lakelet-integration-port-${port}.txt" 2>/dev/null; then
+    echo "Port ${port} is already in use:" >&2
+    cat "/tmp/lakelet-integration-port-${port}.txt" >&2
+    exit 1
+  fi
+done
 
 docker compose -f "${COMPOSE_FILE}" up -d --wait
 if [[ -n "${LAKELET_BIN:-}" ]]; then

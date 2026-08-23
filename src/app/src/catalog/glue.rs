@@ -18,6 +18,7 @@ use lakelet_storage::storage::Storage;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::sync::Arc;
+use tokio::sync::OnceCell;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlueCatalogConfig {
@@ -34,27 +35,12 @@ pub struct GlueCatalogConfig {
     pub storage: Storage,
 }
 
-async fn build_glue_client(config: &GlueCatalogConfig) -> Client {
-    let mut aws_config = aws_config::defaults(aws_config::BehaviorVersion::latest());
-    if let (Some(access_key), Some(secret_key)) =
-        (&config.aws_glue_access_key, &config.aws_glue_secret_key)
-    {
-        let credential_provider = Credentials::new(access_key, secret_key, None, None, "Lakelet");
-        aws_config = aws_config.credentials_provider(credential_provider);
-    }
-    if let Some(region) = &config.aws_glue_region {
-        aws_config = aws_config.region(Region::new(region.clone()));
-    }
-    if let Some(endpoint) = &config.aws_glue_endpoint {
-        aws_config = aws_config.endpoint_url(endpoint.clone());
-    }
-    let aws_config = aws_config.load().await;
-    Client::new(&aws_config)
-}
-
 pub struct GlueCatalog {
     lakelet_context: Arc<LakeletContext>,
     config: Arc<GlueCatalogConfig>,
+    // Lazily built once; the catalog provider list caches GlueCatalog itself,
+    // so the client (and its connection pool) outlives a single statement.
+    client: OnceCell<Client>,
 }
 
 impl GlueCatalog {
@@ -62,7 +48,36 @@ impl GlueCatalog {
         Self {
             lakelet_context,
             config,
+            client: OnceCell::new(),
         }
+    }
+
+    async fn client(&self) -> Client {
+        self.client
+            .get_or_init(|| self.build_glue_client())
+            .await
+            // The aws sdk Client is Arc-backed; clones share the connection pool.
+            .clone()
+    }
+
+    async fn build_glue_client(&self) -> Client {
+        let config = &self.config;
+        let mut aws_config = aws_config::defaults(aws_config::BehaviorVersion::latest());
+        if let (Some(access_key), Some(secret_key)) =
+            (&config.aws_glue_access_key, &config.aws_glue_secret_key)
+        {
+            let credential_provider =
+                Credentials::new(access_key, secret_key, None, None, "Lakelet");
+            aws_config = aws_config.credentials_provider(credential_provider);
+        }
+        if let Some(region) = &config.aws_glue_region {
+            aws_config = aws_config.region(Region::new(region.clone()));
+        }
+        if let Some(endpoint) = &config.aws_glue_endpoint {
+            aws_config = aws_config.endpoint_url(endpoint.clone());
+        }
+        let aws_config = aws_config.load().await;
+        Client::new(&aws_config)
     }
 }
 
@@ -70,6 +85,7 @@ impl GlueCatalog {
 impl AsyncCatalogProvider for GlueCatalog {
     async fn schema(&self, schema_name: &str) -> Result<Option<Arc<dyn AsyncSchemaProvider>>> {
         Ok(Some(Arc::new(GlueSchema::new(
+            self.client().await,
             self.lakelet_context.clone(),
             self.config.clone(),
             schema_name.to_string(),
@@ -78,6 +94,7 @@ impl AsyncCatalogProvider for GlueCatalog {
 }
 
 pub struct GlueSchema {
+    glue_client: Client,
     lakelet_context: Arc<LakeletContext>,
     config: Arc<GlueCatalogConfig>,
     schema_name: String,
@@ -85,11 +102,13 @@ pub struct GlueSchema {
 
 impl GlueSchema {
     pub fn new(
+        glue_client: Client,
         lakelet_context: Arc<LakeletContext>,
         config: Arc<GlueCatalogConfig>,
         schema_name: String,
     ) -> Self {
         Self {
+            glue_client,
             lakelet_context,
             config,
             schema_name,
@@ -102,8 +121,8 @@ impl AsyncSchemaProvider for GlueSchema {
     async fn table(&self, tbl_name: &str) -> Result<Option<Arc<dyn TableProvider>>> {
         let (table_name, metadata_table_type) = parse_table_reference(tbl_name)?;
 
-        let glue_client = build_glue_client(&self.config).await;
-        let resp = match glue_client
+        let resp = match self
+            .glue_client
             .get_table()
             .database_name(&self.schema_name)
             .name(table_name.as_str())
@@ -157,7 +176,8 @@ impl AsyncSchemaProvider for GlueSchema {
                 .table_partition_cols()
                 .is_empty()
             {
-                let paginator = glue_client
+                let paginator = self
+                    .glue_client
                     .get_partitions()
                     .database_name(&self.schema_name)
                     .table_name(table_name.as_str())
@@ -204,7 +224,7 @@ impl AsyncSchemaProvider for GlueSchema {
 #[async_trait]
 impl LakeletCatalogProvider for GlueCatalog {
     async fn list_schema_names(&self) -> Result<Vec<String>> {
-        let glue_client = build_glue_client(&self.config).await;
+        let glue_client = self.client().await;
         let paginator = glue_client.get_databases().into_paginator().send();
         tokio::pin!(paginator);
 
@@ -220,7 +240,7 @@ impl LakeletCatalogProvider for GlueCatalog {
     }
 
     async fn list_table_names(&self, schema_name: &str) -> Result<Vec<String>> {
-        let glue_client = build_glue_client(&self.config).await;
+        let glue_client = self.client().await;
         let paginator = glue_client
             .get_tables()
             .database_name(schema_name)
@@ -240,7 +260,7 @@ impl LakeletCatalogProvider for GlueCatalog {
     }
 
     async fn schema_exist(&self, schema_name: &str) -> Result<bool> {
-        let glue_client = build_glue_client(&self.config).await;
+        let glue_client = self.client().await;
         match glue_client.get_database().name(schema_name).send().await {
             Ok(_) => Ok(true),
             Err(err)
@@ -255,7 +275,7 @@ impl LakeletCatalogProvider for GlueCatalog {
     }
 
     async fn table_exist(&self, table_name: &str, schema_name: &str) -> Result<bool> {
-        let glue_client = build_glue_client(&self.config).await;
+        let glue_client = self.client().await;
         match glue_client
             .get_table()
             .database_name(schema_name)

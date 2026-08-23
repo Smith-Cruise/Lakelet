@@ -2,8 +2,8 @@ pub mod cli_helper;
 pub mod flight;
 pub mod print;
 pub mod repl;
-pub mod web;
 
+use crate::catalog::LakeletCatalogProviderList;
 use crate::context::LakeletContext;
 use crate::sql::session::ExtendedSessionContext;
 use clap::Parser;
@@ -68,17 +68,10 @@ struct LakeletArgs {
 
     #[clap(
         long,
-        help = "Start an Arrow Flight SQL server instead of the interactive REPL. Listens on 'flight-sql-server-port' under [server] in the config file (default 32010). Conflicts with --command, --file and --ui.",
+        help = "Start an Arrow Flight SQL server instead of the interactive REPL. Listens on 'flight-sql-server-port' under [server] in the config file (default 32010). Conflicts with --command and --file.",
         conflicts_with_all = ["command", "file"]
     )]
     flight_sql_server: bool,
-
-    #[clap(
-        long,
-        help = "Start the local web UI server instead of the interactive REPL. Listens on 'web-ui-port' under [server] in the config file (default 6060). Conflicts with --command, --file and --flight-sql-server.",
-        conflicts_with_all = ["command", "file", "flight_sql_server"]
-    )]
-    ui: bool,
 }
 
 pub fn run() -> Result<()> {
@@ -105,14 +98,14 @@ async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> R
         .with_object_store_registry(instrumented_registry.clone())
         .build_arc()?;
 
+    // One catalog provider list per process: it caches catalog providers and
+    // their metastore clients across statements (and, for Flight SQL, across
+    // requests).
+    let catalog_provider_list = Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone()));
+
     if args.flight_sql_server {
         let port = lakelet_context.server_config.flight_sql_server_port;
-        return flight::serve(lakelet_context, runtime_env, port).await;
-    }
-
-    if args.ui {
-        let port = lakelet_context.server_config.web_ui_port;
-        return web::serve(lakelet_context, runtime_env, port).await;
+        return flight::serve(catalog_provider_list, lakelet_context, runtime_env, port).await;
     }
 
     let print_options = PrintOptions {
@@ -122,7 +115,8 @@ async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> R
         color: true,
         instrumented_registry: instrumented_registry.clone(),
     };
-    let session_context = ExtendedSessionContext::new(lakelet_context, runtime_env);
+    let session_context =
+        ExtendedSessionContext::new(catalog_provider_list, lakelet_context, runtime_env);
     let command = args.command;
     let file = args.file;
     if let Some(command) = command {
@@ -241,36 +235,6 @@ mod tests {
             argv.extend(conflicting);
             let err = LakeletArgs::try_parse_from(argv)
                 .expect_err("--flight-sql-server should conflict with --command/--file");
-
-            assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
-        }
-    }
-
-    #[test]
-    fn test_parse_ui() {
-        let args = LakeletArgs::try_parse_from(["lakelet", "--config", "config.toml", "--ui"])
-            .expect("--ui should parse");
-
-        assert!(args.ui);
-    }
-
-    #[test]
-    fn test_parse_ui_conflicts() {
-        let file = NamedTempFile::new().expect("temp sql file should be created");
-        let file_path = file
-            .path()
-            .to_str()
-            .expect("temp sql file path should be valid utf-8");
-
-        for conflicting in [
-            vec!["--command", "show catalogs;"],
-            vec!["--file", file_path],
-            vec!["--flight-sql-server"],
-        ] {
-            let mut argv = vec!["lakelet", "--config", "config.toml", "--ui"];
-            argv.extend(conflicting);
-            let err = LakeletArgs::try_parse_from(argv)
-                .expect_err("--ui should conflict with --command/--file/--flight-sql-server");
 
             assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
         }
