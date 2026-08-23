@@ -74,7 +74,7 @@ impl HMSCatalog {
     }
 
     fn build_hms_client(&self) -> Result<ThriftHiveMetastoreClient> {
-        let address = &self
+        let address = self
             .config
             .metastore_uri
             .as_str()
@@ -84,11 +84,11 @@ impl HMSCatalog {
             .ok_or_else(|| {
                 DataFusionError::Configuration(format!(
                     "invalid address: {}",
-                    &self.config.metastore_uri
+                    self.config.metastore_uri
                 ))
             })?;
         let client = ThriftHiveMetastoreClientBuilder::new("hms")
-            .address(*address)
+            .address(address)
             .make_codec(volo_thrift::codec::default::DefaultMakeCodec::buffered())
             .build();
         Ok(client)

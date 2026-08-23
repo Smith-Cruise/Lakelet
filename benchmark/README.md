@@ -2,6 +2,9 @@
 
 This directory contains benchmark SQL files and the Python benchmark runner.
 
+The benchmark runner is a test harness itself and intentionally has no unit
+tests. Verify changes by running a benchmark end to end instead.
+
 Currently supported benchmark suite:
 
 - `tpch`
