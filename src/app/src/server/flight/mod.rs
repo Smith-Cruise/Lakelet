@@ -70,10 +70,8 @@ impl LakeletFlightSqlService {
     // catalog list with only the catalogs resolved for that query, so a shared
     // session would race under concurrent requests.
     fn new_session(&self, session_defaults: SessionDefaults) -> ExtendedSessionContext {
-        let session = ExtendedSessionContext::new(
-            self.lakelet_context.clone(),
-            self.runtime_env.clone()
-        );
+        let session =
+            ExtendedSessionContext::new(self.lakelet_context.clone(), self.runtime_env.clone());
         let state = session.session_context().state_ref();
         let mut state = state.write();
         let config_options = state.config_mut().options_mut();
@@ -678,7 +676,7 @@ mod tests {
         // clients (the ADBC flightsql driver) reject the stream.
         let sql = "select arrow_cast('a', 'Dictionary(Int32, Utf8)') as d".to_string();
 
-        let mut stmt = client
+        let stmt = client
             .prepare(sql.clone(), None)
             .await
             .expect("prepare should succeed");
