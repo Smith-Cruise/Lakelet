@@ -17,7 +17,7 @@ sqlparser = "0.62.0"
 arrow-flight = { version = "58.4.0", features = ["flight-sql"] }
 tonic = "0.14"
 prost = "0.14"
-tokio = { version = "1.0", features = ["rt-multi-thread", "tracing", "rt", "signal"] }
+tokio = { version = "1.0", features = ["rt-multi-thread", "tracing", "rt", "signal", "sync"] }
 console-subscriber = "0.5.0"
 serde = { version = "1.0.228", features = ["derive"] }
 typetag = "0.2"

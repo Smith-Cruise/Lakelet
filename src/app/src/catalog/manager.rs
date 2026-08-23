@@ -10,7 +10,7 @@ use datafusion::error::DataFusionError;
 use lakelet_common::runtime::RuntimeManager;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct CatalogConfigs {
@@ -170,11 +170,18 @@ impl CatalogManager {
 
 pub struct LakeletCatalogProviderList {
     lakelet_context: Arc<LakeletContext>,
+    // One catalog provider per configured catalog, built on first reference.
+    // Providers own their metastore clients, so caching them here keeps
+    // clients (and their connection pools) alive across statements.
+    catalogs: Mutex<HashMap<String, Arc<dyn AsyncCatalogProvider>>>,
 }
 
 impl LakeletCatalogProviderList {
     pub fn new(lakelet_context: Arc<LakeletContext>) -> LakeletCatalogProviderList {
-        Self { lakelet_context }
+        Self {
+            lakelet_context,
+            catalogs: Mutex::new(HashMap::new()),
+        }
     }
 }
 
@@ -191,25 +198,30 @@ impl AsyncCatalogProviderList for LakeletCatalogProviderList {
             return Ok(None);
         };
 
-        match catalog_config {
-            CatalogConfig::Internal => Ok(Some(Arc::new(
-                crate::internal_catalog::InternalCatalog::new(self.lakelet_context.clone()),
-            ))),
-            CatalogConfig::HMS(hms_catalog) => Ok(Some(Arc::new(HMSCatalog::new(
+        // All provider constructors are synchronous, so the lock is never
+        // held across an await point.
+        let mut catalogs = self.catalogs.lock().unwrap();
+        if let Some(catalog) = catalogs.get(catalog_name) {
+            return Ok(Some(catalog.clone()));
+        }
+
+        let catalog: Arc<dyn AsyncCatalogProvider> = match catalog_config {
+            CatalogConfig::Internal => Arc::new(InternalCatalog::new(self.lakelet_context.clone())),
+            CatalogConfig::HMS(hms_catalog) => Arc::new(HMSCatalog::new(
                 self.lakelet_context.clone(),
                 Arc::new(hms_catalog),
-            )))),
-            CatalogConfig::GLUE(glue_catalog) => Ok(Some(Arc::new(GlueCatalog::new(
+            )),
+            CatalogConfig::GLUE(glue_catalog) => Arc::new(GlueCatalog::new(
                 self.lakelet_context.clone(),
                 Arc::new(glue_catalog),
-            )))),
-            CatalogConfig::PaimonFS(paimon_fs_catalog) => {
-                Ok(Some(Arc::new(PaimonFSCatalog::try_new(
-                    self.lakelet_context.clone(),
-                    Arc::new(paimon_fs_catalog),
-                )?)))
-            }
-        }
+            )),
+            CatalogConfig::PaimonFS(paimon_fs_catalog) => Arc::new(PaimonFSCatalog::try_new(
+                self.lakelet_context.clone(),
+                Arc::new(paimon_fs_catalog),
+            )?),
+        };
+        catalogs.insert(catalog_name.to_string(), catalog.clone());
+        Ok(Some(catalog))
     }
 }
 
@@ -267,5 +279,23 @@ mod tests {
         let result = catalog_manager.load_catalogs(&configs);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
+    }
+
+    #[tokio::test]
+    async fn test_catalog_provider_list_caches_providers() {
+        let provider_list = LakeletCatalogProviderList::new(Arc::new(LakeletContext::default()));
+        let first = provider_list
+            .catalog(INTERNAL_CATALOG)
+            .await
+            .unwrap()
+            .unwrap();
+        let second = provider_list
+            .catalog(INTERNAL_CATALOG)
+            .await
+            .unwrap()
+            .unwrap();
+        // Repeated resolution returns the same cached provider instance.
+        assert!(Arc::ptr_eq(&first, &second));
+        assert!(provider_list.catalog("missing").await.unwrap().is_none());
     }
 }

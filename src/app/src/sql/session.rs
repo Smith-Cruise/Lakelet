@@ -20,6 +20,10 @@ use lakelet_common::runtime::RuntimeManager;
 use std::sync::Arc;
 
 pub struct ExtendedSessionContext {
+    // Injected by the server entry point and shared across sessions, so
+    // catalog providers and their metastore clients are built once per
+    // process instead of per statement.
+    catalog_provider_list: Arc<LakeletCatalogProviderList>,
     lakelet_context: Arc<LakeletContext>,
     session_context: SessionContext,
 }
@@ -34,12 +38,18 @@ impl Default for ExtendedSessionContext {
             default_schema: None,
         });
         let runtime_env = Arc::new(RuntimeEnv::default());
-        Self::new(lakelet_context, runtime_env)
+        let catalog_provider_list =
+            Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone()));
+        Self::new(catalog_provider_list, lakelet_context, runtime_env)
     }
 }
 
 impl ExtendedSessionContext {
-    pub fn new(lakelet_context: Arc<LakeletContext>, runtime_env: Arc<RuntimeEnv>) -> Self {
+    pub fn new(
+        catalog_provider_list: Arc<LakeletCatalogProviderList>,
+        lakelet_context: Arc<LakeletContext>,
+        runtime_env: Arc<RuntimeEnv>,
+    ) -> Self {
         let catalog = lakelet_context
             .default_catalog
             .as_deref()
@@ -54,6 +64,7 @@ impl ExtendedSessionContext {
             SessionConfig::from(options).with_default_catalog_and_schema(catalog, schema);
         let session_context = SessionContext::new_with_config_rt(session_config, runtime_env);
         Self {
+            catalog_provider_list,
             session_context,
             lakelet_context,
         }
@@ -119,9 +130,11 @@ impl ExtendedSessionContext {
         };
 
         // Now we can asynchronously resolve the table references to get a cached catalog
-        // that we can use for our query
-        let catalog_provider_list = LakeletCatalogProviderList::new(self.lakelet_context.clone());
-        let resolved_catalog_providers = catalog_provider_list
+        // that we can use for our query. The provider list is shared across
+        // statements, so catalog providers and their metastore clients are
+        // reused instead of rebuilt per statement.
+        let resolved_catalog_providers = self
+            .catalog_provider_list
             .resolve(&references, state.config())
             .await?;
         self.session_context
@@ -166,7 +179,10 @@ mod tests {
             .with_object_store_registry(instrumented_registry.clone())
             .build_arc()?;
         let lakelet_context = Arc::new(LakeletContext::default());
-        let session = ExtendedSessionContext::new(lakelet_context, runtime_env);
+        let catalog_provider_list =
+            Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone()));
+        let session =
+            ExtendedSessionContext::new(catalog_provider_list, lakelet_context, runtime_env);
 
         let store_url = Url::parse("memory://bucket").unwrap();
         let object_store = Arc::new(InMemory::new());

@@ -1,5 +1,6 @@
 mod sql_info;
 
+use crate::catalog::LakeletCatalogProviderList;
 use crate::context::LakeletContext;
 use crate::sql::session::ExtendedSessionContext;
 use arrow_flight::encode::FlightDataEncoderBuilder;
@@ -28,6 +29,7 @@ use tonic::transport::server::TcpIncoming;
 use tonic::{Request, Response, Status, Streaming};
 
 pub async fn serve(
+    catalog_provider_list: Arc<LakeletCatalogProviderList>,
     lakelet_context: Arc<LakeletContext>,
     runtime_env: Arc<RuntimeEnv>,
     port: u16,
@@ -36,7 +38,7 @@ pub async fn serve(
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| super::bind_error(port, "flight-sql-server-port", &e))?;
-    let service = LakeletFlightSqlService::new(lakelet_context, runtime_env);
+    let service = LakeletFlightSqlService::new(catalog_provider_list, lakelet_context, runtime_env);
     println!("Lakelet Flight SQL server listening on port {port}");
     Server::builder()
         .add_service(FlightServiceServer::new(service))
@@ -48,13 +50,22 @@ pub async fn serve(
 }
 
 pub struct LakeletFlightSqlService {
+    // The process-wide list, shared across all per-request sessions so
+    // catalog providers (and their metastore clients) are built once per
+    // process, not per request.
+    catalog_provider_list: Arc<LakeletCatalogProviderList>,
     lakelet_context: Arc<LakeletContext>,
     runtime_env: Arc<RuntimeEnv>,
 }
 
 impl LakeletFlightSqlService {
-    pub fn new(lakelet_context: Arc<LakeletContext>, runtime_env: Arc<RuntimeEnv>) -> Self {
+    pub fn new(
+        catalog_provider_list: Arc<LakeletCatalogProviderList>,
+        lakelet_context: Arc<LakeletContext>,
+        runtime_env: Arc<RuntimeEnv>,
+    ) -> Self {
         Self {
+            catalog_provider_list,
             lakelet_context,
             runtime_env,
         }
@@ -62,10 +73,15 @@ impl LakeletFlightSqlService {
 
     // A fresh session per request: `create_dataframe` replaces the session's
     // catalog list with only the catalogs resolved for that query, so a shared
-    // session would race under concurrent requests.
+    // session would race under concurrent requests. Sharing the catalog
+    // provider list is safe: it is read-only per resolution and its provider
+    // cache is lock-protected.
     fn new_session(&self, session_defaults: SessionDefaults) -> ExtendedSessionContext {
-        let session =
-            ExtendedSessionContext::new(self.lakelet_context.clone(), self.runtime_env.clone());
+        let session = ExtendedSessionContext::new(
+            self.catalog_provider_list.clone(),
+            self.lakelet_context.clone(),
+            self.runtime_env.clone(),
+        );
         let state = session.session_context().state_ref();
         let mut state = state.write();
         let config_options = state.config_mut().options_mut();
@@ -300,7 +316,10 @@ mod tests {
     async fn start_test_server() -> Result<FlightSqlServiceClient<Channel>> {
         let lakelet_context = Arc::new(LakeletContext::default());
         let runtime_env = Arc::new(RuntimeEnv::default());
-        let service = LakeletFlightSqlService::new(lakelet_context, runtime_env);
+        let catalog_provider_list =
+            Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone()));
+        let service =
+            LakeletFlightSqlService::new(catalog_provider_list, lakelet_context, runtime_env);
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let addr = listener.local_addr()?;

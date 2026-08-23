@@ -3,6 +3,7 @@ pub mod flight;
 pub mod print;
 pub mod repl;
 
+use crate::catalog::LakeletCatalogProviderList;
 use crate::context::LakeletContext;
 use crate::sql::session::ExtendedSessionContext;
 use clap::Parser;
@@ -97,9 +98,14 @@ async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> R
         .with_object_store_registry(instrumented_registry.clone())
         .build_arc()?;
 
+    // One catalog provider list per process: it caches catalog providers and
+    // their metastore clients across statements (and, for Flight SQL, across
+    // requests).
+    let catalog_provider_list = Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone()));
+
     if args.flight_sql_server {
         let port = lakelet_context.server_config.flight_sql_server_port;
-        return flight::serve(lakelet_context, runtime_env, port).await;
+        return flight::serve(catalog_provider_list, lakelet_context, runtime_env, port).await;
     }
 
     let print_options = PrintOptions {
@@ -109,7 +115,8 @@ async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> R
         color: true,
         instrumented_registry: instrumented_registry.clone(),
     };
-    let session_context = ExtendedSessionContext::new(lakelet_context, runtime_env);
+    let session_context =
+        ExtendedSessionContext::new(catalog_provider_list, lakelet_context, runtime_env);
     let command = args.command;
     let file = args.file;
     if let Some(command) = command {

@@ -22,6 +22,7 @@ use std::fmt::Debug;
 use std::net::ToSocketAddrs;
 use std::ops::Deref;
 use std::sync::Arc;
+use tokio::sync::OnceCell;
 use volo_thrift::MaybeException;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,23 +32,6 @@ pub struct HMSCatalogConfig {
     pub metastore_uri: String,
     #[serde(flatten, default)]
     pub storage: Storage,
-}
-
-fn build_hms_client(config: &Arc<HMSCatalogConfig>) -> Result<ThriftHiveMetastoreClient> {
-    let address = config
-        .metastore_uri
-        .as_str()
-        .to_socket_addrs()
-        .map_err(|e| DataFusionError::External(Box::new(e)))?
-        .next()
-        .ok_or_else(|| {
-            DataFusionError::Configuration(format!("invalid address: {}", config.metastore_uri))
-        })?;
-    let client = ThriftHiveMetastoreClientBuilder::new("hms")
-        .address(address)
-        .make_codec(volo_thrift::codec::default::DefaultMakeCodec::buffered())
-        .build();
-    Ok(client)
 }
 
 /// Format a thrift exception into iceberg error.
@@ -64,6 +48,9 @@ pub fn from_thrift_exception<T, E: Debug>(value: MaybeException<T, E>) -> Result
 pub struct HMSCatalog {
     lakelet_context: Arc<LakeletContext>,
     config: Arc<HMSCatalogConfig>,
+    // Lazily built once; the catalog provider list caches HMSCatalog itself,
+    // so volo's pooled transports stay warm across statements.
+    client: OnceCell<ThriftHiveMetastoreClient>,
 }
 
 impl HMSCatalog {
@@ -71,14 +58,47 @@ impl HMSCatalog {
         Self {
             lakelet_context,
             config,
+            client: OnceCell::new(),
         }
+    }
+
+    async fn client(&self) -> Result<ThriftHiveMetastoreClient> {
+        // On failure the cell stays empty, so a transient DNS error is
+        // retried by the next call.
+        self.client
+            .get_or_try_init(|| async { self.build_hms_client() })
+            .await
+            // The volo-thrift client is cheap to clone; clones share the
+            // pooled transport.
+            .cloned()
+    }
+
+    fn build_hms_client(&self) -> Result<ThriftHiveMetastoreClient> {
+        let address = &self
+            .config
+            .metastore_uri
+            .as_str()
+            .to_socket_addrs()
+            .map_err(|e| DataFusionError::External(Box::new(e)))?
+            .next()
+            .ok_or_else(|| {
+                DataFusionError::Configuration(format!(
+                    "invalid address: {}",
+                    &self.config.metastore_uri
+                ))
+            })?;
+        let client = ThriftHiveMetastoreClientBuilder::new("hms")
+            .address(*address)
+            .make_codec(volo_thrift::codec::default::DefaultMakeCodec::buffered())
+            .build();
+        Ok(client)
     }
 }
 
 #[async_trait]
 impl LakeletCatalogProvider for HMSCatalog {
     async fn list_schema_names(&self) -> Result<Vec<String>> {
-        let hms_client = build_hms_client(&self.config)?;
+        let hms_client = self.client().await?;
         let all_database_names = hms_client
             .get_all_databases()
             .await
@@ -91,7 +111,7 @@ impl LakeletCatalogProvider for HMSCatalog {
     }
 
     async fn list_table_names(&self, schema_name: &str) -> Result<Vec<String>> {
-        let hms_client = build_hms_client(&self.config)?;
+        let hms_client = self.client().await?;
         let all_tables = hms_client
             .get_all_tables(schema_name.to_string().into())
             .await
@@ -104,7 +124,7 @@ impl LakeletCatalogProvider for HMSCatalog {
     }
 
     async fn schema_exist(&self, schema_name: &str) -> Result<bool> {
-        let hms_client = build_hms_client(&self.config)?;
+        let hms_client = self.client().await?;
         match hms_client
             .get_database(schema_name.to_string().into())
             .await
@@ -120,7 +140,7 @@ impl LakeletCatalogProvider for HMSCatalog {
     }
 
     async fn table_exist(&self, table_name: &str, schema_name: &str) -> Result<bool> {
-        let hms_client = build_hms_client(&self.config)?;
+        let hms_client = self.client().await?;
         let get_table_request = GetTableRequest {
             db_name: schema_name.to_string().into(),
             tbl_name: table_name.to_string().into(),
@@ -145,6 +165,7 @@ impl LakeletCatalogProvider for HMSCatalog {
 impl AsyncCatalogProvider for HMSCatalog {
     async fn schema(&self, schema_name: &str) -> Result<Option<Arc<dyn AsyncSchemaProvider>>> {
         Ok(Some(Arc::new(HMSSchema::new(
+            self.client().await?,
             self.lakelet_context.clone(),
             self.config.clone(),
             schema_name,
@@ -153,6 +174,7 @@ impl AsyncCatalogProvider for HMSCatalog {
 }
 
 struct HMSSchema {
+    client: ThriftHiveMetastoreClient,
     lakelet_context: Arc<LakeletContext>,
     config: Arc<HMSCatalogConfig>,
     schema_name: String,
@@ -160,11 +182,13 @@ struct HMSSchema {
 
 impl HMSSchema {
     pub fn new(
+        client: ThriftHiveMetastoreClient,
         lakelet_context: Arc<LakeletContext>,
         config: Arc<HMSCatalogConfig>,
         schema_name: &str,
     ) -> Result<Self> {
         Ok(Self {
+            client,
             lakelet_context,
             config,
             schema_name: schema_name.to_string(),
@@ -177,7 +201,7 @@ impl AsyncSchemaProvider for HMSSchema {
     async fn table(&self, tbl_name: &str) -> Result<Option<Arc<dyn TableProvider>>> {
         let (table_name, metadata_table_type) = parse_table_reference(tbl_name)?;
 
-        let hms_client = build_hms_client(&self.config)?;
+        let hms_client = &self.client;
         let get_table_request = GetTableRequest {
             db_name: self.schema_name.clone().into(),
             tbl_name: table_name.to_string().into(),
@@ -306,5 +330,22 @@ mod tests {
                 .unwrap()
                 .is_some()
         );
+    }
+
+    #[tokio::test]
+    async fn test_hms_client_init_failure_is_retried() {
+        let catalog = HMSCatalog::new(
+            Arc::new(LakeletContext::default()),
+            Arc::new(HMSCatalogConfig {
+                name: "hms_1".to_string(),
+                // Missing port: to_socket_addrs fails without any network access.
+                metastore_uri: "not-a-valid-uri".to_string(),
+                storage: Storage::default(),
+            }),
+        );
+        assert!(catalog.client().await.is_err());
+        // The cell stays empty after a failed init, so the next call retries.
+        assert!(catalog.client.get().is_none());
+        assert!(catalog.client().await.is_err());
     }
 }
