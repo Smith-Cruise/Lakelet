@@ -70,12 +70,20 @@ impl LakeletFlightSqlService {
     // catalog list with only the catalogs resolved for that query, so a shared
     // session would race under concurrent requests.
     fn new_session(&self, session_defaults: SessionDefaults) -> ExtendedSessionContext {
-        ExtendedSessionContext::new_with_defaults(
+        let session = ExtendedSessionContext::new(
             self.lakelet_context.clone(),
-            self.runtime_env.clone(),
-            session_defaults.catalog,
-            session_defaults.schema,
-        )
+            self.runtime_env.clone()
+        );
+        let state = session.session_context().state_ref();
+        let mut state = state.write();
+        let config_options = state.config_mut().options_mut();
+        if let Some(default_catalog) = session_defaults.default_catalog {
+            config_options.catalog.default_catalog = default_catalog;
+        }
+        if let Some(default_schema) = session_defaults.default_schema {
+            config_options.catalog.default_schema = default_schema;
+        }
+        session
     }
 
     // Plan only (no execution) to learn the result schema.
@@ -165,8 +173,8 @@ fn handle_to_sql(handle: &[u8]) -> Result<String, Status> {
 /// options already do.
 #[derive(Default)]
 struct SessionDefaults {
-    catalog: Option<String>,
-    schema: Option<String>,
+    default_catalog: Option<String>,
+    default_schema: Option<String>,
 }
 
 impl SessionDefaults {
@@ -184,8 +192,8 @@ impl SessionDefaults {
                 .transpose()
         };
         Ok(Self {
-            catalog: extract_from_header("default-catalog")?,
-            schema: extract_from_header("default-schema")?,
+            default_catalog: extract_from_header("default-catalog")?,
+            default_schema: extract_from_header("default-schema")?,
         })
     }
 }
@@ -650,15 +658,15 @@ mod tests {
         let mut metadata = MetadataMap::new();
         let session_defaults =
             SessionDefaults::from_metadata(&metadata).expect("empty metadata should parse");
-        assert_eq!(session_defaults.catalog, None);
-        assert_eq!(session_defaults.schema, None);
+        assert_eq!(session_defaults.default_catalog, None);
+        assert_eq!(session_defaults.default_schema, None);
 
         metadata.insert("default-catalog", "hive".parse().unwrap());
         metadata.insert("default-schema", "sales".parse().unwrap());
         let session_defaults =
             SessionDefaults::from_metadata(&metadata).expect("valid headers should parse");
-        assert_eq!(session_defaults.catalog.as_deref(), Some("hive"));
-        assert_eq!(session_defaults.schema.as_deref(), Some("sales"));
+        assert_eq!(session_defaults.default_catalog.as_deref(), Some("hive"));
+        assert_eq!(session_defaults.default_schema.as_deref(), Some("sales"));
     }
 
     #[tokio::test]

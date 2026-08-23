@@ -30,7 +30,7 @@ The `memory-limit` value is an integer with an optional, case-insensitive unit. 
 ## Arrow Flight SQL server
 
 Lakelet can run as an [Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html)
-server instead of the interactive REPL:
+server, including ADBC instead of the interactive REPL:
 
 ```bash
 lakelet --config config.toml --flight-sql-server
@@ -39,46 +39,8 @@ lakelet --config config.toml --flight-sql-server
 The server listens on `flight-sql-server-port` under `[server]` (default
 32010).
 
-Currently supported: statement execution (`CommandStatementQuery`), prepared
-statements (without parameter binding), and `GetSqlInfo`, all with streaming
-Arrow results. Catalog metadata commands (`GetCatalogs`, `GetTables`, ...) are
-not implemented yet, so ADBC's `adbc_get_objects()` and catalog browsing in
-SQL tools do not work. Each request runs in its own session, so `USE`
-statements do not carry over between queries — either use fully qualified
-table names (`<catalog>.<schema>.<table>`), or set the default per request
-with the `default-catalog` and `default-schema` gRPC headers (see below).
-
-### Default catalog and schema headers
-
-Every request may carry `default-catalog` and/or `default-schema` gRPC
-metadata headers; they override the server-wide defaults for that request, so
-unqualified table names resolve against them. The header names match the
-`--default-catalog`/`--default-schema` CLI flags.
-
-With ADBC, pass them as call headers — set at connection level they are
-attached to every RPC automatically:
-
-```python
-import adbc_driver_flightsql.dbapi as flight_sql
-from adbc_driver_flightsql import DatabaseOptions
-
-HEADER = DatabaseOptions.RPC_CALL_HEADER_PREFIX.value
-
-with flight_sql.connect(
-    "grpc://127.0.0.1:32010",
-    db_kwargs={
-        HEADER + "default-catalog": "hive",
-        HEADER + "default-schema": "sales",
-    },
-) as conn:
-    ...
-```
-
-With the Arrow Flight SQL JDBC driver, URL parameters the driver does not
-recognize are forwarded as gRPC headers, so
-`?default-catalog=hive&default-schema=sales` works. Do not use the driver's
-own `catalog=` parameter: the JDBC driver intercepts it and issues a
-`SetSessionOptions` action, which Lakelet does not implement.
+Note: Each flight SQL connection is a new fresh session, it will not share any SessionState.
+So the `USE` statement will not affect next connection.
 
 ### Connect with ADBC (Python)
 
@@ -99,6 +61,25 @@ with flight_sql.connect("grpc://127.0.0.1:32010") as conn:
 ```
 
 Parameter binding (`cur.execute(sql, params)`) is not supported.
+
+Every request may carry `default-catalog` and/or `default-schema` gRPC
+metadata headers.
+
+```python
+import adbc_driver_flightsql.dbapi as flight_sql
+from adbc_driver_flightsql import DatabaseOptions
+
+HEADER = DatabaseOptions.RPC_CALL_HEADER_PREFIX.value
+
+with flight_sql.connect(
+    "grpc://127.0.0.1:32010",
+    db_kwargs={
+        HEADER + "default-catalog": "hive",
+        HEADER + "default-schema": "sales",
+    },
+) as conn:
+    ...
+```
 
 ### Connect with dft
 

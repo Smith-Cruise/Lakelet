@@ -81,24 +81,13 @@ impl Default for ExtendedSessionContext {
 
 impl ExtendedSessionContext {
     pub fn new(lakelet_context: Arc<LakeletContext>, runtime_env: Arc<RuntimeEnv>) -> Self {
-        Self::new_with_defaults(lakelet_context, runtime_env, None, None)
-    }
-
-    /// Overrides win over the server-wide defaults in `LakeletContext`; used by
-    /// the Flight SQL server to honor per-request `catalog`/`schema` headers.
-    pub fn new_with_defaults(
-        lakelet_context: Arc<LakeletContext>,
-        runtime_env: Arc<RuntimeEnv>,
-        default_catalog: Option<String>,
-        default_schema: Option<String>,
-    ) -> Self {
-        let catalog = default_catalog
+        let catalog = lakelet_context
+            .default_catalog
             .as_deref()
-            .or(lakelet_context.default_catalog.as_deref())
             .unwrap_or(INTERNAL_CATALOG);
-        let schema = default_schema
+        let schema = lakelet_context
+            .default_schema
             .as_deref()
-            .or(lakelet_context.default_schema.as_deref())
             .unwrap_or(INFORMATION_SCHEMA);
         let mut options = ConfigOptions::new();
         options.explain.format = ExplainFormat::Tree;
