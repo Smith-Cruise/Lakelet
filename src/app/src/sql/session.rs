@@ -17,48 +17,7 @@ use datafusion::logical_expr::ExplainFormat;
 use datafusion::logical_expr::sqlparser::ast::Statement;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use lakelet_common::runtime::RuntimeManager;
-use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
-
-static SESSION_MANAGER: OnceLock<RwLock<HashMap<i64, Arc<SessionContext>>>> = OnceLock::new();
-
-fn get_session_manager() -> &'static RwLock<HashMap<i64, Arc<SessionContext>>> {
-    SESSION_MANAGER.get_or_init(|| RwLock::new(HashMap::new()))
-}
-
-pub struct SessionManager {}
-
-impl SessionManager {
-    pub fn register_session(
-        session_id: i64,
-        session_context: Arc<SessionContext>,
-    ) -> Result<Arc<SessionContext>> {
-        let manager = get_session_manager();
-        let mut map = manager
-            .write()
-            .map_err(|e| DataFusionError::Internal(e.to_string()))?;
-        if let Some(value) = map.insert(session_id, session_context) {
-            Ok(value.clone())
-        } else {
-            Err(DataFusionError::Internal("failed to insert session".into()))
-        }
-    }
-
-    pub fn get_session(session_id: i64) -> Result<Arc<SessionContext>> {
-        let manager = get_session_manager();
-        let map = manager
-            .read()
-            .map_err(|e| DataFusionError::Internal(e.to_string()))?;
-        if let Some(value) = map.get(&session_id) {
-            Ok(value.clone())
-        } else {
-            Err(DataFusionError::Internal(format!(
-                "session {} is not found",
-                session_id
-            )))
-        }
-    }
-}
 
 pub struct ExtendedSessionContext {
     lakelet_context: Arc<LakeletContext>,
