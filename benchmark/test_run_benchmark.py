@@ -123,6 +123,7 @@ class LakeletRunnerTest(unittest.TestCase):
                 "adbc.flight.sql.rpc.call_header.default-catalog": "hive",
                 "adbc.flight.sql.rpc.call_header.default-schema": "tpch",
             },
+            autocommit=True,
         )
 
         runner.close()

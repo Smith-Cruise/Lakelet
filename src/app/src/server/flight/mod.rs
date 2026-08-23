@@ -2,23 +2,17 @@ mod sql_info;
 
 use crate::context::LakeletContext;
 use crate::sql::session::ExtendedSessionContext;
-use arrow_flight::decode::FlightRecordBatchStream;
 use arrow_flight::encode::FlightDataEncoderBuilder;
 use arrow_flight::error::FlightError;
 use arrow_flight::flight_service_server::{FlightService, FlightServiceServer};
-use arrow_flight::sql::server::{FlightSqlService, PeekableFlightDataStream};
+use arrow_flight::sql::server::FlightSqlService;
 use arrow_flight::sql::{
-    ActionClosePreparedStatementRequest, ActionCreatePreparedStatementRequest,
-    ActionCreatePreparedStatementResult, CommandGetSqlInfo, CommandPreparedStatementQuery,
-    CommandPreparedStatementUpdate, CommandStatementQuery, DoPutPreparedStatementResult,
-    ProstMessageExt, SqlInfo, TicketStatementQuery,
+    CommandGetSqlInfo, CommandStatementQuery, ProstMessageExt, SqlInfo, TicketStatementQuery,
 };
 use arrow_flight::{
-    Action, FlightData, FlightDescriptor, FlightEndpoint, FlightInfo, HandshakeRequest,
-    HandshakeResponse, IpcMessage, SchemaAsIpc, Ticket,
+    FlightDescriptor, FlightEndpoint, FlightInfo, HandshakeRequest, HandshakeResponse, Ticket,
 };
 use datafusion::arrow::datatypes::Schema;
-use datafusion::arrow::ipc::writer::IpcWriteOptions;
 use datafusion::common::Result;
 use datafusion::error::DataFusionError;
 use datafusion::execution::runtime_env::RuntimeEnv;
@@ -156,8 +150,8 @@ fn advertised_schema(schema: Schema) -> Schema {
     schema.as_ref().clone()
 }
 
-// The handle is the SQL text itself: the server stays stateless, at the cost
-// of planning a prepared query once per RPC (prepare, GetFlightInfo, DoGet).
+// The statement ticket handle is the SQL text itself, so the server stays
+// stateless. DoGet uses it to reconstruct and execute the query.
 fn handle_to_sql(handle: &[u8]) -> Result<String, Status> {
     String::from_utf8(handle.to_vec())
         .map_err(|e| Status::invalid_argument(format!("Invalid statement handle: {e}")))
@@ -166,9 +160,8 @@ fn handle_to_sql(handle: &[u8]) -> Result<String, Status> {
 /// Per-request default catalog/schema, from the `default-catalog` and
 /// `default-schema` gRPC metadata headers — named after the CLI flags of the
 /// same spelling. Every RPC reads its own headers (nothing is baked into
-/// tickets or prepared statement handles), so clients must send them on each
-/// call — which ADBC's connection-level `adbc.flight.sql.rpc.call_header.*`
-/// options already do.
+/// statement tickets), so clients must send them on each call — which ADBC's
+/// connection-level `adbc.flight.sql.rpc.call_header.*` options already do.
 #[derive(Default)]
 struct SessionDefaults {
     default_catalog: Option<String>,
@@ -263,34 +256,6 @@ impl FlightSqlService for LakeletFlightSqlService {
         self.execute_sql(&sql, session_defaults).await
     }
 
-    async fn get_flight_info_prepared_statement(
-        &self,
-        query: CommandPreparedStatementQuery,
-        request: Request<FlightDescriptor>,
-    ) -> Result<Response<FlightInfo>, Status> {
-        let session_defaults = SessionDefaults::from_metadata(request.metadata())?;
-        let sql = handle_to_sql(&query.prepared_statement_handle)?;
-        let schema = self.plan_schema(&sql, session_defaults).await?;
-        // Round-trip the command in the ticket so DoGet dispatches back to
-        // do_get_prepared_statement.
-        let flight_info = Self::flight_info(
-            &schema,
-            query.as_any().encode_to_vec(),
-            request.into_inner(),
-        )?;
-        Ok(Response::new(flight_info))
-    }
-
-    async fn do_get_prepared_statement(
-        &self,
-        query: CommandPreparedStatementQuery,
-        request: Request<Ticket>,
-    ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
-        let session_defaults = SessionDefaults::from_metadata(request.metadata())?;
-        let sql = handle_to_sql(&query.prepared_statement_handle)?;
-        self.execute_sql(&sql, session_defaults).await
-    }
-
     async fn get_flight_info_sql_info(
         &self,
         query: CommandGetSqlInfo,
@@ -319,72 +284,6 @@ impl FlightSqlService for LakeletFlightSqlService {
         Ok(Response::new(Box::pin(stream)))
     }
 
-    async fn do_put_prepared_statement_query(
-        &self,
-        query: CommandPreparedStatementQuery,
-        request: Request<PeekableFlightDataStream>,
-    ) -> Result<DoPutPreparedStatementResult, Status> {
-        // Clients only issue this DoPut to bind parameters, but the stream may
-        // legitimately hold a schema-only message or zero-row batches; reject
-        // only actual parameter rows.
-        let flight_data: Vec<FlightData> = request.into_inner().try_collect().await?;
-        let batches: Vec<_> = FlightRecordBatchStream::new_from_flight_data(futures::stream::iter(
-            flight_data.into_iter().map(Ok::<_, FlightError>),
-        ))
-        .try_collect()
-        .await
-        .map_err(|e| Status::invalid_argument(format!("Invalid parameter stream: {e}")))?;
-        if batches.iter().any(|batch| batch.num_rows() > 0) {
-            return Err(Status::invalid_argument(
-                "Lakelet does not support prepared statement parameters",
-            ));
-        }
-        // Echo the handle back unchanged so the client keeps using it.
-        Ok(DoPutPreparedStatementResult {
-            prepared_statement_handle: Some(query.prepared_statement_handle),
-        })
-    }
-
-    async fn do_put_prepared_statement_update(
-        &self,
-        _query: CommandPreparedStatementUpdate,
-        _request: Request<PeekableFlightDataStream>,
-    ) -> Result<i64, Status> {
-        Err(Status::unimplemented(
-            "Lakelet is a read-only query engine; update statements are not supported",
-        ))
-    }
-
-    async fn do_action_create_prepared_statement(
-        &self,
-        query: ActionCreatePreparedStatementRequest,
-        request: Request<Action>,
-    ) -> Result<ActionCreatePreparedStatementResult, Status> {
-        // Plan once to validate the SQL and learn the result schema. The
-        // handle is the SQL text itself, so no server-side state is created.
-        let session_defaults = SessionDefaults::from_metadata(request.metadata())?;
-        let schema = self.plan_schema(&query.query, session_defaults).await?;
-        let IpcMessage(schema_bytes) = SchemaAsIpc::new(&schema, &IpcWriteOptions::default())
-            .try_into()
-            .map_err(|e| Status::internal(format!("Failed to encode schema: {e}")))?;
-        Ok(ActionCreatePreparedStatementResult {
-            prepared_statement_handle: query.query.into_bytes().into(),
-            dataset_schema: schema_bytes,
-            // Empty bytes: parameters are not supported, clients decode this
-            // as an empty parameter schema.
-            parameter_schema: Default::default(),
-        })
-    }
-
-    async fn do_action_close_prepared_statement(
-        &self,
-        _query: ActionClosePreparedStatementRequest,
-        _request: Request<Action>,
-    ) -> Result<(), Status> {
-        // Nothing to release: prepared statements hold no server-side state.
-        Ok(())
-    }
-
     // Sql-info is served from the static table in `sql_info`, so there is no
     // per-instance registry to fill.
     async fn register_sql_info(&self, _id: i32, _result: &SqlInfo) {}
@@ -394,7 +293,7 @@ impl FlightSqlService for LakeletFlightSqlService {
 mod tests {
     use super::*;
     use arrow_flight::sql::client::FlightSqlServiceClient;
-    use datafusion::arrow::array::{ArrayRef, Int64Array, RecordBatch, UInt32Array};
+    use datafusion::arrow::array::{Int64Array, UInt32Array};
     use datafusion::arrow::datatypes::DataType;
     use tonic::transport::Channel;
 
@@ -472,89 +371,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_prepared_statement_roundtrip() -> Result<()> {
-        let mut client = start_test_server().await?;
-
-        let mut stmt = client
-            .prepare("select 1 as a".to_string(), None)
-            .await
-            .expect("prepare should succeed");
-        let dataset_schema = stmt
-            .dataset_schema()
-            .expect("prepare should return the result schema");
-        assert_eq!(dataset_schema.field(0).name(), "a");
-        let parameter_schema = stmt
-            .parameter_schema()
-            .expect("prepare should return a parameter schema");
-        assert!(parameter_schema.fields().is_empty());
-
-        let flight_info = stmt.execute().await.expect("execute should succeed");
-        assert_eq!(flight_info.endpoint.len(), 1);
-        let schema = flight_info
-            .clone()
-            .try_decode_schema()
-            .expect("FlightInfo should carry the result schema");
-        assert_eq!(schema.field(0).name(), "a");
-
-        let ticket = flight_info.endpoint[0]
-            .ticket
-            .clone()
-            .expect("endpoint should carry a ticket");
-        let batches: Vec<_> = client
-            .do_get(ticket)
-            .await
-            .expect("do_get should stream results")
-            .try_collect()
-            .await
-            .expect("result stream should decode");
-        assert_eq!(batches.len(), 1);
-        let column = batches[0]
-            .column(0)
-            .as_any()
-            .downcast_ref::<Int64Array>()
-            .expect("column should be Int64");
-        assert_eq!(column.value(0), 1);
-
-        stmt.close().await.expect("close should succeed");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_prepare_invalid_sql() -> Result<()> {
+    async fn test_prepared_statement_is_unimplemented() -> Result<()> {
         let mut client = start_test_server().await?;
 
         let err = client
-            .prepare("select from from".to_string(), None)
-            .await
-            .expect_err("preparing invalid SQL should fail");
-        assert!(
-            err.to_string().contains("invalid argument"),
-            "unexpected error: {err}"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_prepared_statement_parameters_rejected() -> Result<()> {
-        let mut client = start_test_server().await?;
-
-        let mut stmt = client
             .prepare("select 1 as a".to_string(), None)
             .await
-            .expect("prepare should succeed");
-        let params = RecordBatch::try_from_iter(vec![(
-            "p",
-            Arc::new(Int64Array::from(vec![42])) as ArrayRef,
-        )])
-        .expect("parameter batch should build");
-        stmt.set_parameters(params)
-            .expect("setting parameters client-side should succeed");
-        let err = stmt
-            .execute()
-            .await
-            .expect_err("executing with parameters should fail");
+            .expect_err("prepare should be unsupported");
         assert!(
-            err.to_string().contains("parameters"),
+            matches!(err, FlightError::Tonic(ref status) if status.code() == tonic::Code::Unimplemented),
             "unexpected error: {err}"
         );
         Ok(())
@@ -675,15 +500,6 @@ mod tests {
         // the DoGet encoder; the advertised schema must match or strict
         // clients (the ADBC flightsql driver) reject the stream.
         let sql = "select arrow_cast('a', 'Dictionary(Int32, Utf8)') as d".to_string();
-
-        let stmt = client
-            .prepare(sql.clone(), None)
-            .await
-            .expect("prepare should succeed");
-        let dataset_schema = stmt
-            .dataset_schema()
-            .expect("prepare should return the result schema");
-        assert_eq!(dataset_schema.field(0).data_type(), &DataType::Utf8);
 
         let flight_info = client
             .execute(sql, None)

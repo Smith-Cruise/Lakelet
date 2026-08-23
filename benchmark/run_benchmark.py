@@ -200,6 +200,7 @@ class LakeletRunner(EngineRunner):
                     header_prefix + "default-catalog": self.default_catalog,
                     header_prefix + "default-schema": self.default_schema,
                 },
+                autocommit=True,
             )
         except Exception as exc:
             self.close()

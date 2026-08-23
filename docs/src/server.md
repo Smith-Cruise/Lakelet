@@ -55,7 +55,7 @@ pip install adbc_driver_flightsql pyarrow
 ```python
 import adbc_driver_flightsql.dbapi as flight_sql
 
-with flight_sql.connect("grpc://127.0.0.1:32010") as conn:
+with flight_sql.connect("grpc://127.0.0.1:32010", autocommit=True) as conn:
     with conn.cursor() as cur:
         cur.execute("select 1 as a")
         print(cur.fetch_arrow_table())
@@ -78,8 +78,11 @@ with flight_sql.connect(
         HEADER + "default-catalog": "hive",
         HEADER + "default-schema": "sales",
     },
+    autocommit=True,
 ) as conn:
-    ...
+    with conn.cursor() as cur:
+        cur.execute("select * from orders limit 10")
+        print(cur.fetch_arrow_table())
 ```
 
 ### Connect with dft

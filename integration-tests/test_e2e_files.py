@@ -88,6 +88,7 @@ def connect(uri: str, database: str):
             CALL_HEADER + "default-catalog": "moto_glue",
             CALL_HEADER + "default-schema": database,
         },
+        autocommit=True,
     )
 
 
