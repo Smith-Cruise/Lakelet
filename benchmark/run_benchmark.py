@@ -2,8 +2,7 @@
 import argparse
 import csv
 import os
-import re
-import signal
+import socket
 import subprocess
 import sys
 import time
@@ -16,13 +15,20 @@ from typing import Sequence
 
 RUNS_PER_QUERY = 1
 SUPPORTED_BENCHMARK_TYPES = ("tpch",)
-ELAPSED_PATTERN = re.compile(r"^Elapsed ([0-9.]+) seconds\.$", re.MULTILINE)
+FLIGHT_SQL_HOST = "127.0.0.1"
+DEFAULT_FLIGHT_SQL_SERVER_PORT = 32010
+SERVER_READY_TIMEOUT_SECONDS = 30
+SERVER_SHUTDOWN_TIMEOUT_SECONDS = 10
 
 
 class BenchmarkError(Exception):
     def __init__(self, message: str, raw_output: str | None = None) -> None:
         super().__init__(message)
         self.raw_output = raw_output
+
+
+class BenchmarkInfrastructureError(BenchmarkError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -138,69 +144,136 @@ class LakeletRunner(EngineRunner):
     def __init__(
         self,
         repo_root: Path,
-        benchmark_type: str,
         bin_path: Path,
         config_path: Path,
         default_catalog: str,
         default_schema: str,
+        server_log_path: Path,
     ) -> None:
         self.repo_root = repo_root
-        self.benchmark_type = benchmark_type
         self.bin_path = bin_path
         self.config_path = config_path
         self.default_catalog = default_catalog
         self.default_schema = default_schema
+        self.server_log_path = server_log_path
+        self.server_port = None
+        self.server_process = None
+        self.server_log_file = None
+        self.connection = None
 
         if not self.bin_path.is_file() or not os.access(self.bin_path, os.X_OK):
             raise BenchmarkError(f"binary is not executable: {self.bin_path}")
         if not self.config_path.is_file():
             raise BenchmarkError(f"config file does not exist: {self.config_path}")
 
-    def run_query(self, sql_file: Path) -> QueryRunResult:
-        sql_path_for_cli = Path("benchmark") / self.benchmark_type / sql_file.name
-        sql = sql_file.read_text(encoding="utf-8")
+    def prepare(self) -> None:
+        flight_sql, database_options = load_adbc_driver()
+        self.server_port = read_flight_sql_server_port(self.config_path)
+        ensure_port_available(FLIGHT_SQL_HOST, self.server_port)
         command = [
             str(self.bin_path),
             "--config",
             str(self.config_path),
-            "--default-catalog",
-            self.default_catalog,
-            "--default-schema",
-            self.default_schema,
-            "--file",
-            str(sql_path_for_cli),
+            "--flight-sql-server",
         ]
 
         try:
-            result = subprocess.run(
+            self.server_log_file = self.server_log_path.open("w", encoding="utf-8")
+            self.server_process = subprocess.Popen(
                 command,
                 cwd=self.repo_root,
                 text=True,
-                stdout=subprocess.PIPE,
+                stdout=self.server_log_file,
                 stderr=subprocess.STDOUT,
-                check=False,
                 start_new_session=True,
             )
-        except OSError as exc:
-            raw_output = format_lakelet_output(command, sql, str(exc))
-            raise BenchmarkError(
-                f"failed to execute Lakelet process: {exc}", raw_output=raw_output
-            ) from exc
-        raw_output = format_lakelet_output(command, sql, result.stdout)
-        if result.returncode != 0:
-            raise BenchmarkError(
-                format_process_failure(result.returncode, result.stdout),
-                raw_output=raw_output,
+            wait_for_server(
+                self.server_process,
+                FLIGHT_SQL_HOST,
+                self.server_port,
+                SERVER_READY_TIMEOUT_SECONDS,
             )
+            header_prefix = database_options.RPC_CALL_HEADER_PREFIX.value
+            self.connection = flight_sql.connect(
+                f"grpc://{FLIGHT_SQL_HOST}:{self.server_port}",
+                db_kwargs={
+                    header_prefix + "default-catalog": self.default_catalog,
+                    header_prefix + "default-schema": self.default_schema,
+                },
+            )
+        except Exception as exc:
+            self.close()
+            details = read_server_log(self.server_log_path)
+            message = f"failed to start Lakelet Flight SQL server: {exc}"
+            if details:
+                message += f"\n\nLakelet server log:\n{details}"
+            raise BenchmarkInfrastructureError(message) from exc
 
-        elapsed_seconds = parse_elapsed_seconds(result.stdout)
-        if elapsed_seconds is None:
-            raise BenchmarkError(
-                "failed to parse elapsed time from Lakelet output:\n"
-                f"{result.stdout.rstrip()}",
-                raw_output=raw_output,
+    def run_query(self, sql_file: Path) -> QueryRunResult:
+        if self.connection is None or self.server_process is None:
+            raise BenchmarkInfrastructureError(
+                "Lakelet ADBC connection has not been prepared"
             )
+        self._ensure_server_running()
+
+        sql = sql_file.read_text(encoding="utf-8")
+        table = None
+        start = time.perf_counter()
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(sql)
+                table = cursor.fetch_arrow_table()
+        except Exception as exc:
+            self._ensure_server_running()
+            raw_output = format_lakelet_output(
+                query_name=sql_file.stem,
+                sql=sql,
+                status="failed",
+                elapsed_seconds=None,
+                table=None,
+                error=str(exc),
+            )
+            raise BenchmarkError(
+                f"Lakelet query failed: {exc}", raw_output=raw_output
+            ) from exc
+        elapsed_seconds = time.perf_counter() - start
+        raw_output = format_lakelet_output(
+            query_name=sql_file.stem,
+            sql=sql,
+            status="success",
+            elapsed_seconds=elapsed_seconds,
+            table=table,
+            error=None,
+        )
         return QueryRunResult(elapsed_seconds=elapsed_seconds, raw_output=raw_output)
+
+    def _ensure_server_running(self) -> None:
+        if self.server_process is None:
+            raise BenchmarkInfrastructureError(
+                "Lakelet Flight SQL server was not started"
+            )
+        returncode = self.server_process.poll()
+        if returncode is None:
+            return
+        details = read_server_log(self.server_log_path)
+        message = f"Lakelet Flight SQL server exited with status {returncode}"
+        if details:
+            message += f"\n\nLakelet server log:\n{details}"
+        raise BenchmarkInfrastructureError(message)
+
+    def close(self) -> None:
+        try:
+            if self.connection is not None:
+                self.connection.close()
+        finally:
+            self.connection = None
+            try:
+                stop_process(self.server_process, SERVER_SHUTDOWN_TIMEOUT_SECONDS)
+            finally:
+                self.server_process = None
+                if self.server_log_file is not None:
+                    self.server_log_file.close()
+                    self.server_log_file = None
 
 
 class StarRocksRunner(EngineRunner):
@@ -296,67 +369,146 @@ class StarRocksRunner(EngineRunner):
             self.connection = None
 
 
-def parse_elapsed_seconds(output: str) -> float | None:
-    match = ELAPSED_PATTERN.search(output)
-    if match is None:
-        return None
-    return float(match.group(1))
-
-
-def format_process_failure(returncode: int, output: str) -> str:
-    output = output.rstrip()
-    if returncode < 0:
-        signal_number = -returncode
-        try:
-            signal_name = signal.Signals(signal_number).name
-        except ValueError:
-            signal_name = f"signal {signal_number}"
-        message = f"Lakelet process was terminated by {signal_name}"
-        if output:
-            return f"{message}: {output}"
-        return message
-
-    if output:
-        return output
-    return f"Lakelet process exited with status {returncode}"
-
-
 def quote_identifier(identifier: str) -> str:
     escaped = identifier.replace("`", "``")
     return f"`{escaped}`"
 
 
-def format_lakelet_output(command: Sequence[str], sql: str, process_output: str) -> str:
-    sql_result = extract_lakelet_sql_result(process_output)
-    return "\n".join(
-        [
-            "command:",
-            " ".join(command),
-            "",
-            "sql:",
-            sql.rstrip(),
-            "",
-            "sql_result:",
-            sql_result,
-            "",
-            "raw_output:",
-            process_output.rstrip(),
-            "",
-        ]
+def format_lakelet_output(
+    query_name: str,
+    sql: str,
+    status: str,
+    elapsed_seconds: float | None,
+    table: object | None,
+    error: str | None,
+) -> str:
+    lines = [
+        f"query={query_name}",
+        "protocol=adbc-flight-sql",
+        f"status={status}",
+    ]
+    if elapsed_seconds is not None:
+        lines.append(f"elapsed_seconds={format_seconds(elapsed_seconds)}")
+    if error is not None:
+        lines.append(f"error={error}")
+
+    lines.extend(["", "sql:", sql.rstrip(), "", "output:"])
+    if table is None:
+        lines.append("(no result captured)")
+    else:
+        columns, rows = arrow_table_to_result_set(table)
+        lines.append(format_result_set(columns, rows))
+    lines.append("")
+    return "\n".join(lines)
+
+
+def arrow_table_to_result_set(
+    table: object,
+) -> tuple[Sequence[str], Sequence[Sequence[object]]]:
+    columns = list(table.schema.names)
+    rows = [
+        [column[row_index].as_py() for column in table.columns]
+        for row_index in range(table.num_rows)
+    ]
+    return columns, rows
+
+
+def load_adbc_driver():
+    try:
+        import adbc_driver_flightsql.dbapi as flight_sql
+        from adbc_driver_flightsql import DatabaseOptions
+    except ImportError as exc:
+        raise BenchmarkInfrastructureError(
+            "adbc-driver-flightsql and pyarrow are required for Lakelet benchmarks. "
+            "Install them with: pip install -r benchmark/requirements.txt"
+        ) from exc
+    return flight_sql, DatabaseOptions
+
+
+def read_flight_sql_server_port(config_path: Path) -> int:
+    try:
+        try:
+            import tomllib
+        except ModuleNotFoundError:
+            import tomli as tomllib
+    except ImportError as exc:
+        raise BenchmarkInfrastructureError(
+            "tomli is required to read Lakelet config files on Python 3.10. "
+            "Install it with: pip install -r benchmark/requirements.txt"
+        ) from exc
+
+    try:
+        with config_path.open("rb") as config_file:
+            config = tomllib.load(config_file)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise BenchmarkInfrastructureError(
+            f"failed to read Lakelet config {config_path}: {exc}"
+        ) from exc
+
+    server = config.get("server", {})
+    if not isinstance(server, dict):
+        raise BenchmarkInfrastructureError(
+            f"invalid [server] table in Lakelet config: {config_path}"
+        )
+    port = server.get("flight-sql-server-port", DEFAULT_FLIGHT_SQL_SERVER_PORT)
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise BenchmarkInfrastructureError(
+            "flight-sql-server-port must be an integer between 1 and 65535"
+        )
+    return port
+
+
+def ensure_port_available(host: str, port: int) -> None:
+    try:
+        with socket.create_connection((host, port), timeout=0.2):
+            pass
+    except OSError:
+        return
+    raise BenchmarkInfrastructureError(
+        f"Flight SQL server port {host}:{port} is already in use"
     )
 
 
-def extract_lakelet_sql_result(process_output: str) -> str:
-    result_lines = []
-    for line in process_output.splitlines():
-        if line.startswith("Elapsed ") or re.match(r"^\d+ row\(s\) fetched\.", line):
-            break
-        result_lines.append(line)
+def wait_for_server(
+    process: subprocess.Popen,
+    host: str,
+    port: int,
+    timeout_seconds: float,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        returncode = process.poll()
+        if returncode is not None:
+            raise BenchmarkInfrastructureError(
+                f"Lakelet Flight SQL server exited with status {returncode}"
+            )
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                return
+        except OSError:
+            time.sleep(0.1)
+    raise BenchmarkInfrastructureError(
+        f"Lakelet Flight SQL server did not open {host}:{port} "
+        f"within {timeout_seconds:g} seconds"
+    )
 
-    result = "\n".join(result_lines).strip()
-    if result:
-        return result
-    return "(no SQL result captured from Lakelet stdout)"
+
+def stop_process(process: subprocess.Popen | None, timeout_seconds: float) -> None:
+    if process is None or process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
+def read_server_log(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8").rstrip()
+    except OSError:
+        return ""
 
 
 def format_starrocks_output(
@@ -515,15 +667,17 @@ def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
             parser.error("--user is required when --engine starrocks")
 
 
-def build_runner(args: argparse.Namespace, repo_root: Path) -> EngineRunner:
+def build_runner(
+    args: argparse.Namespace, repo_root: Path, run_dir: Path
+) -> EngineRunner:
     if args.engine == "lakelet":
         return LakeletRunner(
             repo_root=repo_root,
-            benchmark_type=args.benchmark_type,
             bin_path=Path(args.bin).expanduser().resolve(),
             config_path=Path(args.config).expanduser().resolve(),
             default_catalog=args.default_catalog,
             default_schema=args.default_schema,
+            server_log_path=run_dir / "lakelet-server.log",
         )
 
     password = args.password
@@ -575,7 +729,7 @@ def run_benchmark(args: argparse.Namespace, repo_root: Path) -> None:
 
     try:
         suite = BenchmarkSuite(repo_root, args.benchmark_type, args.queries)
-        runner = build_runner(args, repo_root)
+        runner = build_runner(args, repo_root, output.run_dir)
         all_times = []
         failed_runs = 0
 
@@ -592,6 +746,8 @@ def run_benchmark(args: argparse.Namespace, repo_root: Path) -> None:
                 for run_index in range(1, args.runs + 1):
                     try:
                         result = runner.run_query(sql_file)
+                    except BenchmarkInfrastructureError:
+                        raise
                     except BenchmarkError as exc:
                         failed_runs += 1
                         output.write_failure(query_name, run_index, exc)

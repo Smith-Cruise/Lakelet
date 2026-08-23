@@ -13,14 +13,14 @@ Currently supported engines:
 
 ## Setup
 
-Install Python dependencies when running StarRocks benchmarks:
+Install the benchmark dependencies:
 
 ```bash
 python3 -m pip install -r benchmark/requirements.txt
 ```
 
-Lakelet benchmarks do not require the Python dependencies because the runner
-executes the Lakelet binary directly.
+Lakelet benchmarks use the ADBC Flight SQL driver and PyArrow. StarRocks
+benchmarks use PyMySQL.
 
 ## Common Options
 
@@ -68,8 +68,18 @@ python3 benchmark/run_benchmark.py \
   --config config.toml
 ```
 
-The Lakelet runner executes each SQL file with `--file` and parses elapsed time
-from Lakelet output.
+The Lakelet runner starts one `lakelet --flight-sql-server` process for the
+whole benchmark and reuses one ADBC Flight SQL connection for every query run.
+The connection sends the requested default catalog and schema as Flight SQL
+request headers.
+
+The runner reads the Flight SQL port from `flight-sql-server-port` under the
+config file's `[server]` table. It uses port `32010` when the option is omitted.
+The configured port must be free before the benchmark starts.
+
+Elapsed time starts immediately before ADBC executes the SQL and ends after the
+complete Arrow result has been fetched. Server startup and result formatting
+are not included.
 
 ## StarRocks
 
@@ -133,7 +143,8 @@ Each benchmark run creates a timestamped directory under `--output` with:
 - `console.txt`: benchmark console output.
 - `results.csv`: query, run index, status, elapsed seconds, and error message.
 - `raw/<query>/run<N>.txt`: SQL text and SQL output result for each run.
-  Lakelet raw files include both extracted `sql_result` and full `raw_output`.
+- `lakelet-server.log`: Lakelet Flight SQL server output. This file is created
+  only for Lakelet benchmarks.
 
 If one SQL run fails, the runner records it as `failed`, prints a `Skip ...`
 message, and continues with the remaining runs.
