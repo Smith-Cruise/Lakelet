@@ -97,6 +97,7 @@ impl TableProvider for HiveTableProvider {
         let object_store = state.runtime_env().object_store(&store_url)?;
         let meta_fetch_concurrency = state.config_options().execution.meta_fetch_concurrency;
 
+        let mut partition_pruned = false;
         let scan_file_list: Vec<PartitionedFile> = if self.partitions.is_empty() {
             let file_object_metas =
                 list_files_by_directories(state, &object_store, vec![self.table_location.clone()])
@@ -112,6 +113,7 @@ impl TableProvider for HiveTableProvider {
                 filters,
                 state,
             )?;
+            partition_pruned = selected_partition_indices.len() < self.partitions.len();
 
             let partition_scan_tasks = selected_partition_indices
                 .into_iter()
@@ -151,10 +153,11 @@ impl TableProvider for HiveTableProvider {
                 .collect()
         };
 
-        let statistics = build_table_statistics(
+        let statistics = try_fill_table_statistics_by_file_list(
+            self.hive_storage_info.table_statistics.clone(),
             self.hive_storage_info.table_schema.table_schema().clone(),
             &scan_file_list,
-            &self.hive_storage_info.table_properties,
+            partition_pruned,
         );
         let file_group = FileGroup::new(scan_file_list);
 
@@ -230,29 +233,31 @@ fn build_csv_exec(
     Ok(DataSourceExec::from_data_source(config))
 }
 
-fn build_table_statistics(
+fn try_fill_table_statistics_by_file_list(
+    mut statistics: Statistics,
     table_schema: SchemaRef,
     files: &[PartitionedFile],
-    table_properties: &HashMap<String, String>,
+    partition_pruned: bool,
 ) -> Statistics {
+    // Catalog-level num_rows/total_byte_size describe the whole table; once
+    // partitions are pruned they overestimate the scan, so re-estimate both
+    // from the surviving files instead.
+    if partition_pruned {
+        statistics.num_rows = Precision::Absent;
+        statistics.total_byte_size = Precision::Absent;
+    }
     let total_size = files
         .iter()
         .map(|file| usize::try_from(file.object_meta.size).unwrap_or(usize::MAX))
         .fold(0usize, usize::saturating_add);
 
-    let mut statistics = Statistics::new_unknown(&table_schema);
-    statistics.total_byte_size = Precision::Inexact(total_size);
-    statistics.num_rows = Precision::Inexact(
-        parse_hive_num_rows(table_properties)
-            .unwrap_or_else(|| estimate_num_rows(&table_schema, total_size)),
-    );
+    if matches!(statistics.num_rows, Precision::Absent) {
+        statistics.num_rows = Precision::Inexact(estimate_num_rows(&table_schema, total_size));
+    }
+    if matches!(statistics.total_byte_size, Precision::Absent) {
+        statistics.total_byte_size = Precision::Inexact(total_size);
+    }
     statistics
-}
-
-fn parse_hive_num_rows(table_properties: &HashMap<String, String>) -> Option<usize> {
-    table_properties
-        .get("numRows")
-        .and_then(|num_rows| num_rows.trim().parse::<usize>().ok())
 }
 
 fn estimate_num_rows(schema: &Schema, total_size: usize) -> usize {
@@ -750,33 +755,90 @@ mod tests {
     use datafusion::logical_expr::expr::InList;
     use datafusion::logical_expr::{Expr, Operator, binary_expr, col, lit};
     use datafusion::prelude::SessionContext;
-    use std::collections::HashMap;
 
     #[test]
-    fn test_build_table_statistics_uses_num_rows_property() {
-        let table_schema = statistics_schema();
-        let files = vec![PartitionedFile::new("file1.parquet", 64)];
-        let table_properties = HashMap::from([("numRows".to_string(), " 42 ".to_string())]);
-
-        let statistics = build_table_statistics(table_schema, &files, &table_properties);
-
-        assert_eq!(statistics.total_byte_size, Precision::Inexact(64));
-        assert_eq!(statistics.num_rows, Precision::Inexact(42));
-    }
-
-    #[test]
-    fn test_build_table_statistics_estimates_rows_when_num_rows_missing() {
+    fn test_try_fill_table_statistics_estimates_rows_when_num_rows_missing() {
         let table_schema = statistics_schema();
         let files = vec![
             PartitionedFile::new("file1.parquet", 64),
             PartitionedFile::new("file2.parquet", 56),
         ];
-        let table_properties = HashMap::new();
 
-        let statistics = build_table_statistics(table_schema, &files, &table_properties);
+        let statistics = try_fill_table_statistics_by_file_list(
+            Statistics::new_unknown(&table_schema),
+            table_schema,
+            &files,
+            false,
+        );
 
         assert_eq!(statistics.total_byte_size, Precision::Inexact(120));
         assert_eq!(statistics.num_rows, Precision::Inexact(10));
+    }
+
+    #[test]
+    fn test_try_fill_table_statistics_preserves_existing_values() {
+        let table_schema = statistics_schema();
+        let files = vec![PartitionedFile::new("file1.parquet", 64)];
+
+        let mut complete = Statistics::new_unknown(&table_schema);
+        complete.num_rows = Precision::Inexact(7);
+        complete.total_byte_size = Precision::Exact(128);
+        complete.column_statistics[0].distinct_count = Precision::Inexact(5);
+        let statistics =
+            try_fill_table_statistics_by_file_list(complete, table_schema.clone(), &files, false);
+        assert_eq!(statistics.num_rows, Precision::Inexact(7));
+        assert_eq!(statistics.total_byte_size, Precision::Exact(128));
+        assert_eq!(
+            statistics.column_statistics[0].distinct_count,
+            Precision::Inexact(5)
+        );
+
+        let mut existing_num_rows = Statistics::new_unknown(&table_schema);
+        existing_num_rows.num_rows = Precision::Inexact(7);
+        let statistics = try_fill_table_statistics_by_file_list(
+            existing_num_rows,
+            table_schema.clone(),
+            &files,
+            false,
+        );
+        assert_eq!(statistics.num_rows, Precision::Inexact(7));
+        assert_eq!(statistics.total_byte_size, Precision::Inexact(64));
+
+        let mut existing_total_byte_size = Statistics::new_unknown(&table_schema);
+        existing_total_byte_size.total_byte_size = Precision::Exact(128);
+        let statistics = try_fill_table_statistics_by_file_list(
+            existing_total_byte_size,
+            table_schema,
+            &files,
+            false,
+        );
+        assert_eq!(statistics.num_rows, Precision::Inexact(5));
+        assert_eq!(statistics.total_byte_size, Precision::Exact(128));
+    }
+
+    #[test]
+    fn test_try_fill_table_statistics_reestimates_when_partitions_pruned() {
+        let table_schema = statistics_schema();
+        let files = vec![PartitionedFile::new("file1.parquet", 64)];
+
+        let mut catalog_statistics = Statistics::new_unknown(&table_schema);
+        catalog_statistics.num_rows = Precision::Inexact(1000);
+        catalog_statistics.total_byte_size = Precision::Inexact(4096);
+        catalog_statistics.column_statistics[0].distinct_count = Precision::Inexact(5);
+
+        let statistics = try_fill_table_statistics_by_file_list(
+            catalog_statistics,
+            table_schema.clone(),
+            &files,
+            true,
+        );
+
+        assert_eq!(statistics.num_rows, Precision::Inexact(5));
+        assert_eq!(statistics.total_byte_size, Precision::Inexact(64));
+        assert_eq!(
+            statistics.column_statistics[0].distinct_count,
+            Precision::Inexact(5)
+        );
     }
 
     #[test]

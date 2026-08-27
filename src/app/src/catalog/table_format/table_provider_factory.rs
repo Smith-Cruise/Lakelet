@@ -188,6 +188,7 @@ mod tests {
     use super::*;
     use crate::table_format::hive::hive_storage_info::HiveInputFormat;
     use datafusion::arrow::datatypes::{DataType, Field, Schema};
+    use datafusion::common::Statistics;
     use datafusion::datasource::table_schema::TableSchema;
 
     #[test]
@@ -261,14 +262,16 @@ mod tests {
     }
 
     fn test_hive_storage_info() -> HiveStorageInfo {
+        let table_schema = TableSchema::new(
+            Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, true)])),
+            vec![],
+        );
+        let table_statistics = Statistics::new_unknown(table_schema.table_schema());
         HiveStorageInfo {
             input_format: HiveInputFormat::Parquet,
-            table_schema: TableSchema::new(
-                Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, true)])),
-                vec![],
-            ),
+            table_schema,
+            table_statistics,
             serde_properties: HashMap::new(),
-            table_properties: HashMap::new(),
         }
     }
 }

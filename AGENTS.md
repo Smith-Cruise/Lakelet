@@ -19,6 +19,7 @@ Agents should follow below rules:
 * Code's comments, commit message, pull request must use English.
 * If config items are modified, please note that the `@docs/` needs to be updated.
 * Keep the PR descriptions as concise as possible.
+* After change the code, don't commit it by yourself, unless user required it.
 
 ### Pull request checklist
 Agents should finish below checklist before pull request.

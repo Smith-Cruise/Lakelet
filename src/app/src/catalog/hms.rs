@@ -1,6 +1,8 @@
+use crate::catalog::table_format::hive::parse_statistics_from_table_properties;
 use crate::catalog::{CatalogConfig, LakeletCatalogProvider};
 use crate::context::LakeletContext;
 use crate::table_format::TableFormat;
+use crate::table_format::hive::HMSTableSchemaBuilder;
 use crate::table_format::hive::hive_partition::HivePartition;
 use crate::table_format::hive::hive_storage_info::HiveStorageInfo;
 use crate::table_format::table_provider_factory::{
@@ -8,8 +10,8 @@ use crate::table_format::table_provider_factory::{
 };
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
-use datafusion::common::Result;
 use datafusion::common::TableReference;
+use datafusion::common::{Result, Statistics};
 use datafusion::error::DataFusionError;
 use hive_metastore::{
     GetTableRequest, ThriftHiveMetastoreClient, ThriftHiveMetastoreClientBuilder,
@@ -239,7 +241,19 @@ impl AsyncSchemaProvider for HMSSchema {
             .ok_or_else(|| DataFusionError::Internal("location not existed".to_string()))?;
         let table_format = deduce_table_format(&hms_table_properties)?;
         let (hive_storage_info, hive_partitions) = if table_format == TableFormat::Hive {
-            let hive_storage_info = HiveStorageInfo::try_new_from_hms_table(&hms_table)?;
+            let table_schema = HMSTableSchemaBuilder::new(&hms_table).build()?;
+            let mut table_statistics = Statistics::new_unknown(table_schema.table_schema());
+            if metadata_table_type.is_none() {
+                parse_statistics_from_table_properties(
+                    &mut table_statistics,
+                    &hms_table_properties,
+                );
+            }
+            let hive_storage_info = HiveStorageInfo::try_new_from_hms_table(
+                table_schema,
+                table_statistics,
+                &hms_table,
+            )?;
             let hive_partitions = if !hive_storage_info
                 .table_schema
                 .table_partition_cols()

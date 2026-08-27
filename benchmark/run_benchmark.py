@@ -34,6 +34,7 @@ class BenchmarkInfrastructureError(BenchmarkError):
 @dataclass(frozen=True)
 class QueryRunResult:
     elapsed_seconds: float
+    row_count: int
     raw_output: str
 
 
@@ -48,7 +49,9 @@ class BenchmarkOutput:
         self.console_file = self.console_path.open("w", encoding="utf-8")
         self.results_file = self.results_path.open("w", newline="", encoding="utf-8")
         self.results_writer = csv.writer(self.results_file)
-        self.results_writer.writerow(["query", "run", "status", "elapsed_seconds", "error"])
+        self.results_writer.writerow(
+            ["query", "run", "status", "elapsed_seconds", "row_count", "error"]
+        )
         self.results_file.flush()
 
     @classmethod
@@ -68,7 +71,14 @@ class BenchmarkOutput:
 
     def write_result(self, query_name: str, run_index: int, result: QueryRunResult) -> None:
         self.results_writer.writerow(
-            [query_name, run_index, "success", format_seconds(result.elapsed_seconds), ""]
+            [
+                query_name,
+                run_index,
+                "success",
+                format_seconds(result.elapsed_seconds),
+                result.row_count,
+                "",
+            ]
         )
         self.results_file.flush()
         self.write_raw_output(query_name, run_index, result.raw_output)
@@ -81,7 +91,7 @@ class BenchmarkOutput:
     ) -> None:
         error_message = " ".join(str(error).splitlines())
         self.results_writer.writerow(
-            [query_name, run_index, "failed", "", error_message]
+            [query_name, run_index, "failed", "", "", error_message]
         )
         self.results_file.flush()
         if error.raw_output is not None:
@@ -246,7 +256,11 @@ class LakeletRunner(EngineRunner):
             table=table,
             error=None,
         )
-        return QueryRunResult(elapsed_seconds=elapsed_seconds, raw_output=raw_output)
+        return QueryRunResult(
+            elapsed_seconds=elapsed_seconds,
+            row_count=table.num_rows,
+            raw_output=raw_output,
+        )
 
     def _ensure_server_running(self) -> None:
         if self.server_process is None:
@@ -362,7 +376,11 @@ class StarRocksRunner(EngineRunner):
             result_sets=result_sets,
             error=None,
         )
-        return QueryRunResult(elapsed_seconds=elapsed_seconds, raw_output=raw_output)
+        return QueryRunResult(
+            elapsed_seconds=elapsed_seconds,
+            row_count=sum(len(rows) for _, rows in result_sets),
+            raw_output=raw_output,
+        )
 
     def close(self) -> None:
         if self.connection is not None:
@@ -547,7 +565,7 @@ def format_result_set(
 
     table_rows = [[format_sql_value(value) for value in row] for row in rows]
     widths = [
-        max(len(str(column)), *(len(row[index]) for row in table_rows))
+        max([len(str(column)), *(len(row[index]) for row in table_rows)])
         for index, column in enumerate(columns)
     ]
     header = " | ".join(
