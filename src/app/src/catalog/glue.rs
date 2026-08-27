@@ -183,22 +183,13 @@ impl AsyncSchemaProvider for GlueSchema {
                 // partition level, so a table-level fetch only makes sense for
                 // unpartitioned tables.
                 if table_schema.table_partition_cols().is_empty() {
-                    match load_glue_columns_statistics(
+                    table_statistics.column_statistics = load_glue_columns_statistics(
                         &self.glue_client,
                         &self.schema_name,
                         table_name.as_str(),
                         &table_schema,
                     )
-                    .await
-                    {
-                        Ok(column_statistics) => {
-                            table_statistics.column_statistics = column_statistics
-                        }
-                        Err(error) => eprintln!(
-                            "Warning: failed to load Glue column statistics for {}.{}: {}",
-                            self.schema_name, table_name, error
-                        ),
-                    }
+                    .await;
                 }
             }
             let hive_storage_info = HiveStorageInfo::try_new_from_glue_table(

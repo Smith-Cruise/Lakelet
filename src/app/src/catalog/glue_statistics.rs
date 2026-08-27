@@ -3,21 +3,23 @@ use aws_sdk_glue::types::{
     ColumnStatistics as GlueColumnStatistics, ColumnStatisticsType, DecimalNumber,
 };
 use datafusion::arrow::datatypes::{DataType, Field, TimeUnit};
+use datafusion::common::ScalarValue;
 use datafusion::common::stats::{ColumnStatistics, Precision};
-use datafusion::common::{DataFusionError, Result, ScalarValue};
 use datafusion::datasource::table_schema::TableSchema;
-use futures::{StreamExt, TryStreamExt, stream};
+use futures::{StreamExt, stream};
 use std::collections::HashMap;
 
 const MAX_COLUMNS_PER_REQUEST: usize = 100;
 const MAX_CONCURRENT_REQUESTS: usize = 4;
 
+/// Statistics are best-effort: failed requests and columns without statistics
+/// (e.g. tables that were never analyzed) silently stay unknown.
 pub async fn load_glue_columns_statistics(
     client: &Client,
     schema_name: &str,
     table_name: &str,
     table_schema: &TableSchema,
-) -> Result<Vec<ColumnStatistics>> {
+) -> Vec<ColumnStatistics> {
     let column_names: Vec<_> = table_schema
         .file_schema()
         .fields()
@@ -25,12 +27,12 @@ pub async fn load_glue_columns_statistics(
         .map(|field| field.name().to_string())
         .collect();
     if column_names.is_empty() {
-        return Ok(table_schema
+        return table_schema
             .table_schema()
             .fields()
             .iter()
             .map(|_| ColumnStatistics::new_unknown())
-            .collect());
+            .collect();
     }
 
     let column_batches = batch_column_names(column_names);
@@ -46,55 +48,22 @@ pub async fn load_glue_columns_statistics(
                 .set_column_names(Some(column_names))
                 .send()
                 .await
-                .map_err(|error| DataFusionError::External(Box::new(error)))
+                .ok()
         }
     });
 
-    let responses = stream::iter(requests)
+    let responses: Vec<_> = stream::iter(requests)
         .buffer_unordered(MAX_CONCURRENT_REQUESTS)
-        .try_collect::<Vec<_>>()
-        .await?;
+        .collect()
+        .await;
 
-    let mut glue_statistics = Vec::new();
-    let mut failed_columns = Vec::new();
-    for response in responses {
-        for error in response.errors() {
-            failed_columns.push(error.column_name().unwrap_or("<unknown>").to_string());
-        }
-        for column_statistics in response.column_statistics_list() {
-            glue_statistics.push(column_statistics.clone());
-        }
-    }
-    // Tables that were never analyzed report an error entry for every column,
-    // so aggregate them into a single warning instead of one line per column.
-    if !failed_columns.is_empty() {
-        const MAX_LISTED_COLUMNS: usize = 10;
-        let listed = failed_columns
-            .iter()
-            .take(MAX_LISTED_COLUMNS)
-            .map(String::as_str)
-            .collect::<Vec<_>>()
-            .join(", ");
-        let elided = if failed_columns.len() > MAX_LISTED_COLUMNS {
-            ", ..."
-        } else {
-            ""
-        };
-        eprintln!(
-            "Warning: Glue column statistics unavailable for {} of {} columns in {}.{}: {}{}",
-            failed_columns.len(),
-            table_schema.file_schema().fields().len(),
-            schema_name,
-            table_name,
-            listed,
-            elided
-        );
-    }
+    let glue_statistics: Vec<_> = responses
+        .into_iter()
+        .flatten()
+        .flat_map(|response| response.column_statistics_list().to_vec())
+        .collect();
 
-    Ok(convert_glue_columns_statistics(
-        table_schema,
-        &glue_statistics,
-    ))
+    convert_glue_columns_statistics(table_schema, &glue_statistics)
 }
 
 fn batch_column_names(column_names: Vec<String>) -> Vec<Vec<String>> {
