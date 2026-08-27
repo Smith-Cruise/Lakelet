@@ -144,7 +144,8 @@ Benchmark output: /tmp/lakelet-benchmark-20260425-153000-12345
 Each benchmark run creates a timestamped directory under `--output` with:
 
 - `console.txt`: benchmark console output.
-- `results.csv`: query, run index, status, elapsed seconds, and error message.
+- `results.csv`: query, run index, status, elapsed seconds, returned row count,
+  and error message.
 - `raw/<query>/run<N>.txt`: SQL text and SQL output result for each run.
 - `lakelet-server.log`: Lakelet Flight SQL server output. This file is created
   only for Lakelet benchmarks.
