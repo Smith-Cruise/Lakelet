@@ -1,10 +1,8 @@
-use crate::table_format::hive::hive_type::hive_type_to_arrow_type;
-use aws_sdk_glue::types::{Column as GlueColumn, Table as GlueTable};
-use datafusion::common::{DataFusionError, Result};
+use aws_sdk_glue::types::Table as GlueTable;
+use datafusion::common::{DataFusionError, Result, Statistics};
 use datafusion::datasource::table_schema::TableSchema;
-use deltalake::arrow::datatypes::{Field, Schema};
-use hive_metastore::{FieldSchema, Table as HMSTable};
-use std::{collections::HashMap, sync::Arc};
+use hive_metastore::Table as HMSTable;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum HiveInputFormat {
@@ -17,17 +15,16 @@ pub enum HiveInputFormat {
 pub struct HiveStorageInfo {
     pub input_format: HiveInputFormat,
     pub table_schema: TableSchema,
+    pub table_statistics: Statistics,
     pub serde_properties: HashMap<String, String>,
     pub table_properties: HashMap<String, String>,
 }
 
 impl HiveStorageInfo {
-    pub fn try_new_from_hms_table(table: &HMSTable) -> Result<Self> {
+    pub fn try_new_from_hms_table(table: &HMSTable, table_schema: TableSchema, table_statistics: Statistics) -> Result<Self> {
         let sd = table.sd.as_ref().ok_or_else(|| {
             DataFusionError::Internal("Storage descriptor not existed".to_string())
         })?;
-        let data_cols = Self::extract_hms_field_schemas(&sd.cols)?;
-        let table_partition_cols = Self::extract_hms_field_schemas(&table.partition_keys)?;
         let serde_properties = sd
             .serde_info
             .as_ref()
@@ -50,19 +47,21 @@ impl HiveStorageInfo {
 
         Self::try_new(
             sd.input_format.as_deref(),
-            data_cols,
-            table_partition_cols,
+            table_schema,
+            table_statistics,
             serde_properties,
             table_properties,
         )
     }
 
-    pub fn try_new_from_glue_table(table: &GlueTable) -> Result<Self> {
+    pub fn try_new_from_glue_table(
+        table: &GlueTable,
+        table_schema: TableSchema,
+        table_statistics: Statistics,
+    ) -> Result<Self> {
         let sd = table.storage_descriptor.as_ref().ok_or_else(|| {
             DataFusionError::Internal("Storage descriptor not existed".to_string())
         })?;
-        let data_cols = Self::extract_glue_field_schemas(sd.columns())?;
-        let table_partition_cols = Self::extract_glue_field_schemas(table.partition_keys())?;
         let serde_properties = sd
             .serde_info()
             .and_then(|s| s.parameters())
@@ -73,8 +72,8 @@ impl HiveStorageInfo {
 
         Self::try_new(
             sd.input_format(),
-            data_cols,
-            table_partition_cols,
+            table_schema,
+            table_statistics,
             serde_properties,
             table_properties,
         )
@@ -97,8 +96,8 @@ impl HiveStorageInfo {
 
     fn try_new(
         input_format: Option<&str>,
-        data_cols: Vec<Arc<Field>>,
-        table_partition_cols: Vec<Arc<Field>>,
+        table_schema: TableSchema,
+        table_statistics: Statistics,
         serde_properties: HashMap<String, String>,
         table_properties: HashMap<String, String>,
     ) -> Result<Self> {
@@ -111,63 +110,64 @@ impl HiveStorageInfo {
             }
         };
 
+        // valid table_schema && table_statistics is vaild
+        if table_statistics.column_statistics.len() != table_schema.table_schema().fields().len() {
+            return Err(DataFusionError::Internal(format!(
+                "statistics column count mismatch: statistics={}, schema={}",
+                table_statistics.column_statistics.len(),
+                table_schema.table_schema().fields().len()
+            )));
+        }
         Ok(Self {
             input_format,
-            table_schema: TableSchema::new(Arc::new(Schema::new(data_cols)), table_partition_cols),
+            table_schema,
+            table_statistics,
             serde_properties,
             table_properties,
         })
     }
+}
 
-    fn extract_hms_field_schemas(
-        field_schemas: &Option<Vec<FieldSchema>>,
-    ) -> Result<Vec<Arc<Field>>> {
-        let fields: Result<Vec<(String, String)>> = field_schemas
-            .as_ref()
-            .map(|field_schemas| {
-                field_schemas
-                    .iter()
-                    .map(|field_schema| {
-                        let name = field_schema.name.as_ref().ok_or_else(|| {
-                            DataFusionError::Internal("FieldSchema's name not existed".to_string())
-                        })?;
-                        let ty = field_schema.r#type.as_ref().ok_or_else(|| {
-                            DataFusionError::Internal("FieldSchema's type not existed".to_string())
-                        })?;
-                        Ok((name.to_string(), ty.to_string()))
-                    })
-                    .collect()
-            })
-            .unwrap_or_else(|| Ok(Vec::new()));
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::table_format::hive::HMSTableSchemaBuilder;
+    use datafusion::common::stats::Precision;
+    use hive_metastore::{FieldSchema, StorageDescriptor as HMSStorageDescriptor};
 
-        Self::extract_arrow_fields(fields?)
-    }
+    const PARQUET_INPUT_FORMAT: &str =
+        "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat";
 
-    fn extract_glue_field_schemas(field_schemas: &[GlueColumn]) -> Result<Vec<Arc<Field>>> {
-        let fields: Result<Vec<(String, String)>> = field_schemas
-            .iter()
-            .map(|field_schema| {
-                let ty = field_schema.r#type().ok_or_else(|| {
-                    DataFusionError::Internal("FieldSchema's type not existed".to_string())
-                })?;
-                Ok((field_schema.name().to_string(), ty.to_string()))
-            })
-            .collect();
+    #[test]
+    fn hms_table_initializes_unknown_statistics() {
+        let field = FieldSchema {
+            name: Some("id".into()),
+            r#type: Some("bigint".into()),
+            ..Default::default()
+        };
+        let storage_descriptor = HMSStorageDescriptor {
+            cols: Some(vec![field]),
+            input_format: Some(PARQUET_INPUT_FORMAT.into()),
+            ..Default::default()
+        };
+        let table = HMSTable {
+            sd: Some(storage_descriptor),
+            parameters: Some([("numRows".into(), "42".into())].into_iter().collect()),
+            ..Default::default()
+        };
 
-        Self::extract_arrow_fields(fields?)
-    }
+        let table_schema = HMSTableSchemaBuilder::new(&table).build().unwrap();
+        let table_statistics = Statistics::new_unknown(table_schema.table_schema());
+        let info = HiveStorageInfo::try_new_from_hms_table(&table, table_schema, table_statistics).unwrap();
 
-    fn extract_arrow_fields(fields: Vec<(String, String)>) -> Result<Vec<Arc<Field>>> {
-        let fields: Result<Vec<Arc<Field>>> = fields
-            .iter()
-            .map(|(name, ty)| {
-                Ok(Arc::new(Field::new(
-                    name,
-                    hive_type_to_arrow_type(ty)?,
-                    true,
-                )))
-            })
-            .collect();
-        fields
+        assert_eq!(info.table_statistics.num_rows, Precision::Absent);
+        assert_eq!(info.table_statistics.total_byte_size, Precision::Absent);
+        assert!(
+            info.table_statistics
+                .column_statistics
+                .iter()
+                .all(|statistics| *statistics
+                    == datafusion::common::stats::ColumnStatistics::new_unknown())
+        );
     }
 }

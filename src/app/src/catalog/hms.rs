@@ -1,6 +1,7 @@
 use crate::catalog::{CatalogConfig, LakeletCatalogProvider};
 use crate::context::LakeletContext;
 use crate::table_format::TableFormat;
+use crate::table_format::hive::HMSTableSchemaBuilder;
 use crate::table_format::hive::hive_partition::HivePartition;
 use crate::table_format::hive::hive_storage_info::HiveStorageInfo;
 use crate::table_format::table_provider_factory::{
@@ -8,7 +9,7 @@ use crate::table_format::table_provider_factory::{
 };
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
-use datafusion::common::Result;
+use datafusion::common::{Result, Statistics};
 use datafusion::common::TableReference;
 use datafusion::error::DataFusionError;
 use hive_metastore::{
@@ -22,8 +23,11 @@ use std::fmt::Debug;
 use std::net::ToSocketAddrs;
 use std::ops::Deref;
 use std::sync::Arc;
+use datafusion::common::stats::Precision;
 use tokio::sync::OnceCell;
 use volo_thrift::MaybeException;
+use crate::catalog::glue_statistics::load_glue_columns_statistics;
+use crate::catalog::table_format::hive::{parse_hive_num_rows, parse_hive_total_byte_size};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HMSCatalogConfig {
@@ -239,7 +243,20 @@ impl AsyncSchemaProvider for HMSSchema {
             .ok_or_else(|| DataFusionError::Internal("location not existed".to_string()))?;
         let table_format = deduce_table_format(&hms_table_properties)?;
         let (hive_storage_info, hive_partitions) = if table_format == TableFormat::Hive {
-            let hive_storage_info = HiveStorageInfo::try_new_from_hms_table(&hms_table)?;
+            let table_schema = HMSTableSchemaBuilder::new(&hms_table).build()?;
+            let mut table_statistics = Statistics::new_unknown(table_schema.table_schema());
+            if metadata_table_type.is_none() {
+                if let Some(num_rows) = parse_hive_num_rows(&hms_table_properties)
+                {
+                    table_statistics.num_rows = Precision::Inexact(num_rows);
+                }
+                if let Some(total_byte_size) = parse_hive_total_byte_size(&hms_table_properties)
+                {
+                    table_statistics.total_byte_size = Precision::Inexact(total_byte_size);
+                }
+            }
+            let hive_storage_info =
+                HiveStorageInfo::try_new_from_hms_table(&hms_table, table_schema, table_statistics)?;
             let hive_partitions = if !hive_storage_info
                 .table_schema
                 .table_partition_cols()

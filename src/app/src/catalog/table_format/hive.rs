@@ -1,9 +1,14 @@
 mod hive_file_utils;
 mod hive_metadata_table_provider;
 pub mod hive_partition;
+mod hive_schema_utils;
 pub mod hive_storage_info;
 mod hive_table_provider;
 mod hive_type;
+mod hive_utils;
+pub(crate) use hive_utils::parse_hive_num_rows;
+pub(crate) use hive_utils::parse_hive_total_byte_size;
+pub(crate) use hive_schema_utils::{GlueTableSchemaBuilder, HMSTableSchemaBuilder};
 
 use crate::table_format::hive::hive_metadata_table_provider::{
     HiveDataFilesMetadataTableProvider, HivePartitionsMetadataTableProvider,

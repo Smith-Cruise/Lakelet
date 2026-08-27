@@ -1,6 +1,9 @@
+use crate::table_format::hive::parse_hive_num_rows;
+use crate::catalog::glue_statistics::load_glue_columns_statistics;
 use crate::catalog::{CatalogConfig, LakeletCatalogProvider};
 use crate::context::LakeletContext;
 use crate::table_format::TableFormat;
+use crate::table_format::hive::GlueTableSchemaBuilder;
 use crate::table_format::hive::hive_partition::HivePartition;
 use crate::table_format::hive::hive_storage_info::HiveStorageInfo;
 use crate::table_format::table_provider_factory::{
@@ -11,14 +14,15 @@ use aws_config::Region;
 use aws_sdk_glue::Client;
 use aws_sdk_glue::config::Credentials;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
-use datafusion::common::Result;
-use datafusion::common::TableReference;
+use datafusion::common::stats::Precision;
+use datafusion::common::{Result, Statistics, TableReference};
 use datafusion::error::DataFusionError;
 use lakelet_storage::storage::Storage;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
+use crate::catalog::table_format::hive::parse_hive_total_byte_size;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlueCatalogConfig {
@@ -170,7 +174,38 @@ impl AsyncSchemaProvider for GlueSchema {
             .ok_or_else(|| DataFusionError::Internal("location not existed".to_string()))?;
         let table_format = deduce_table_format(&glue_table_properties)?;
         let (hive_storage_info, hive_partitions) = if table_format == TableFormat::Hive {
-            let hive_storage_info = HiveStorageInfo::try_new_from_glue_table(&glue_table)?;
+            let table_schema = GlueTableSchemaBuilder::new(&glue_table).build()?;
+            let mut table_statistics = Statistics::new_unknown(table_schema.table_schema());
+            if metadata_table_type.is_none() {
+                if let Some(num_rows) = parse_hive_num_rows(&glue_table_properties)
+                {
+                    table_statistics.num_rows = Precision::Inexact(num_rows);
+                }
+                if let Some(total_byte_size) = parse_hive_total_byte_size(&glue_table_properties)
+                {
+                    table_statistics.total_byte_size = Precision::Inexact(total_byte_size);
+                }
+                // start to fetch column statistics
+                match load_glue_columns_statistics(
+                    &self.glue_client,
+                    &self.schema_name,
+                    table_name.as_str(),
+                    &table_schema,
+                )
+                .await
+                {
+                    Ok(column_statistics) => table_statistics.column_statistics = column_statistics,
+                    Err(error) => eprintln!(
+                        "Warning: failed to load Glue column statistics for {}.{}: {}",
+                        self.schema_name, table_name, error
+                    ),
+                }
+            }
+            let hive_storage_info = HiveStorageInfo::try_new_from_glue_table(
+                &glue_table,
+                table_schema,
+                table_statistics,
+            )?;
             let hive_partitions = if !hive_storage_info
                 .table_schema
                 .table_partition_cols()
