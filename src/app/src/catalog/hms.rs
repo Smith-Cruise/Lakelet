@@ -1,3 +1,4 @@
+use crate::catalog::table_format::hive::parse_statistics_from_table_properties;
 use crate::catalog::{CatalogConfig, LakeletCatalogProvider};
 use crate::context::LakeletContext;
 use crate::table_format::TableFormat;
@@ -10,7 +11,6 @@ use crate::table_format::table_provider_factory::{
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
 use datafusion::common::TableReference;
-use datafusion::common::stats::Precision;
 use datafusion::common::{Result, Statistics};
 use datafusion::error::DataFusionError;
 use hive_metastore::{
@@ -26,7 +26,6 @@ use std::ops::Deref;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 use volo_thrift::MaybeException;
-use crate::catalog::table_format::hive::parse_statistics_from_table_properties;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HMSCatalogConfig {
@@ -245,7 +244,10 @@ impl AsyncSchemaProvider for HMSSchema {
             let table_schema = HMSTableSchemaBuilder::new(&hms_table).build()?;
             let mut table_statistics = Statistics::new_unknown(table_schema.table_schema());
             if metadata_table_type.is_none() {
-                parse_statistics_from_table_properties(&mut table_statistics, &hms_table_properties);
+                parse_statistics_from_table_properties(
+                    &mut table_statistics,
+                    &hms_table_properties,
+                );
             }
             let hive_storage_info = HiveStorageInfo::try_new_from_hms_table(
                 table_schema,

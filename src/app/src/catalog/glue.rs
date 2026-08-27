@@ -14,7 +14,6 @@ use aws_config::Region;
 use aws_sdk_glue::Client;
 use aws_sdk_glue::config::Credentials;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
-use datafusion::common::stats::Precision;
 use datafusion::common::{Result, Statistics, TableReference};
 use datafusion::error::DataFusionError;
 use lakelet_storage::storage::Storage;

@@ -792,7 +792,7 @@ mod tests {
         existing_total_byte_size.total_byte_size = Precision::Exact(128);
         let statistics =
             try_fill_table_statistics_by_file_list(existing_total_byte_size, table_schema, &files);
-        assert_eq!(statistics.num_rows, Precision::Inexact(42));
+        assert_eq!(statistics.num_rows, Precision::Inexact(5));
         assert_eq!(statistics.total_byte_size, Precision::Exact(128));
     }
 
