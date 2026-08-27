@@ -99,7 +99,7 @@ impl HiveStorageInfo {
             }
         };
 
-        // valid table_schema && table_statistics is vaild
+        // validate that statistics cover every column of the table schema
         if table_statistics.column_statistics.len() != table_schema.table_schema().fields().len() {
             return Err(DataFusionError::Internal(format!(
                 "statistics column count mismatch: statistics={}, schema={}",
