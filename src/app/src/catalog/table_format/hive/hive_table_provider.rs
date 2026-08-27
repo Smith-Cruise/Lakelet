@@ -1,4 +1,3 @@
-use crate::table_format::hive::hive_utils::parse_hive_num_rows;
 use crate::data_file_format::parquet::ExtendedParquetFileReaderFactory;
 use crate::table_format::hive::HiveStorageInfo;
 use crate::table_format::hive::hive_file_utils::{list_files, list_files_by_directories};
@@ -155,7 +154,7 @@ impl TableProvider for HiveTableProvider {
         let statistics = try_fill_table_statistics_by_file_list(
             self.hive_storage_info.table_statistics.clone(),
             self.hive_storage_info.table_schema.table_schema().clone(),
-            &scan_file_list
+            &scan_file_list,
         );
         let file_group = FileGroup::new(scan_file_list);
 
@@ -234,7 +233,7 @@ fn build_csv_exec(
 fn try_fill_table_statistics_by_file_list(
     mut statistics: Statistics,
     table_schema: SchemaRef,
-    files: &[PartitionedFile]
+    files: &[PartitionedFile],
 ) -> Statistics {
     let total_size = files
         .iter()
@@ -745,7 +744,6 @@ mod tests {
     use datafusion::logical_expr::expr::InList;
     use datafusion::logical_expr::{Expr, Operator, binary_expr, col, lit};
     use datafusion::prelude::SessionContext;
-    use std::collections::HashMap;
 
     #[test]
     fn test_try_fill_table_statistics_estimates_rows_when_num_rows_missing() {
@@ -758,7 +756,7 @@ mod tests {
         let statistics = try_fill_table_statistics_by_file_list(
             Statistics::new_unknown(&table_schema),
             table_schema,
-            &files
+            &files,
         );
 
         assert_eq!(statistics.total_byte_size, Precision::Inexact(120));
@@ -785,21 +783,15 @@ mod tests {
 
         let mut existing_num_rows = Statistics::new_unknown(&table_schema);
         existing_num_rows.num_rows = Precision::Inexact(7);
-        let statistics = try_fill_table_statistics_by_file_list(
-            existing_num_rows,
-            table_schema.clone(),
-            &files
-        );
+        let statistics =
+            try_fill_table_statistics_by_file_list(existing_num_rows, table_schema.clone(), &files);
         assert_eq!(statistics.num_rows, Precision::Inexact(7));
         assert_eq!(statistics.total_byte_size, Precision::Inexact(64));
 
         let mut existing_total_byte_size = Statistics::new_unknown(&table_schema);
         existing_total_byte_size.total_byte_size = Precision::Exact(128);
-        let statistics = try_fill_table_statistics_by_file_list(
-            existing_total_byte_size,
-            table_schema,
-            &files
-        );
+        let statistics =
+            try_fill_table_statistics_by_file_list(existing_total_byte_size, table_schema, &files);
         assert_eq!(statistics.num_rows, Precision::Inexact(42));
         assert_eq!(statistics.total_byte_size, Precision::Exact(128));
     }

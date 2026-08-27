@@ -272,7 +272,6 @@ mod tests {
             table_schema,
             table_statistics,
             serde_properties: HashMap::new(),
-            table_properties: HashMap::new(),
         }
     }
 }

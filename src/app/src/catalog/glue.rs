@@ -1,5 +1,5 @@
-use crate::table_format::hive::parse_hive_num_rows;
 use crate::catalog::glue_statistics::load_glue_columns_statistics;
+use crate::catalog::table_format::hive::parse_statistics_from_table_properties;
 use crate::catalog::{CatalogConfig, LakeletCatalogProvider};
 use crate::context::LakeletContext;
 use crate::table_format::TableFormat;
@@ -22,7 +22,6 @@ use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
-use crate::catalog::table_format::hive::parse_hive_total_byte_size;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlueCatalogConfig {
@@ -177,14 +176,10 @@ impl AsyncSchemaProvider for GlueSchema {
             let table_schema = GlueTableSchemaBuilder::new(&glue_table).build()?;
             let mut table_statistics = Statistics::new_unknown(table_schema.table_schema());
             if metadata_table_type.is_none() {
-                if let Some(num_rows) = parse_hive_num_rows(&glue_table_properties)
-                {
-                    table_statistics.num_rows = Precision::Inexact(num_rows);
-                }
-                if let Some(total_byte_size) = parse_hive_total_byte_size(&glue_table_properties)
-                {
-                    table_statistics.total_byte_size = Precision::Inexact(total_byte_size);
-                }
+                parse_statistics_from_table_properties(
+                    &mut table_statistics,
+                    &glue_table_properties,
+                );
                 // start to fetch column statistics
                 match load_glue_columns_statistics(
                     &self.glue_client,
@@ -202,9 +197,9 @@ impl AsyncSchemaProvider for GlueSchema {
                 }
             }
             let hive_storage_info = HiveStorageInfo::try_new_from_glue_table(
-                &glue_table,
                 table_schema,
                 table_statistics,
+                &glue_table,
             )?;
             let hive_partitions = if !hive_storage_info
                 .table_schema

@@ -17,11 +17,14 @@ pub struct HiveStorageInfo {
     pub table_schema: TableSchema,
     pub table_statistics: Statistics,
     pub serde_properties: HashMap<String, String>,
-    pub table_properties: HashMap<String, String>,
 }
 
 impl HiveStorageInfo {
-    pub fn try_new_from_hms_table(table: &HMSTable, table_schema: TableSchema, table_statistics: Statistics) -> Result<Self> {
+    pub fn try_new_from_hms_table(
+        table_schema: TableSchema,
+        table_statistics: Statistics,
+        table: &HMSTable,
+    ) -> Result<Self> {
         let sd = table.sd.as_ref().ok_or_else(|| {
             DataFusionError::Internal("Storage descriptor not existed".to_string())
         })?;
@@ -35,29 +38,19 @@ impl HiveStorageInfo {
                     .collect()
             })
             .unwrap_or_default();
-        let table_properties: HashMap<String, String> = table
-            .parameters
-            .as_ref()
-            .map(|p| {
-                p.iter()
-                    .map(|(k, v)| (k.to_string(), v.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
 
         Self::try_new(
             sd.input_format.as_deref(),
             table_schema,
             table_statistics,
             serde_properties,
-            table_properties,
         )
     }
 
     pub fn try_new_from_glue_table(
-        table: &GlueTable,
         table_schema: TableSchema,
         table_statistics: Statistics,
+        table: &GlueTable,
     ) -> Result<Self> {
         let sd = table.storage_descriptor.as_ref().ok_or_else(|| {
             DataFusionError::Internal("Storage descriptor not existed".to_string())
@@ -67,15 +60,12 @@ impl HiveStorageInfo {
             .and_then(|s| s.parameters())
             .cloned()
             .unwrap_or_default();
-        let table_properties: HashMap<String, String> =
-            table.parameters.as_ref().cloned().unwrap_or_default();
 
         Self::try_new(
             sd.input_format(),
             table_schema,
             table_statistics,
             serde_properties,
-            table_properties,
         )
     }
 
@@ -99,7 +89,6 @@ impl HiveStorageInfo {
         table_schema: TableSchema,
         table_statistics: Statistics,
         serde_properties: HashMap<String, String>,
-        table_properties: HashMap<String, String>,
     ) -> Result<Self> {
         let input_format = match input_format {
             Some(input_format) => Self::try_get_input_format(input_format)?,
@@ -123,7 +112,6 @@ impl HiveStorageInfo {
             table_schema,
             table_statistics,
             serde_properties,
-            table_properties,
         })
     }
 }
@@ -158,7 +146,8 @@ mod tests {
 
         let table_schema = HMSTableSchemaBuilder::new(&table).build().unwrap();
         let table_statistics = Statistics::new_unknown(table_schema.table_schema());
-        let info = HiveStorageInfo::try_new_from_hms_table(&table, table_schema, table_statistics).unwrap();
+        let info = HiveStorageInfo::try_new_from_hms_table(table_schema, table_statistics, &table)
+            .unwrap();
 
         assert_eq!(info.table_statistics.num_rows, Precision::Absent);
         assert_eq!(info.table_statistics.total_byte_size, Precision::Absent);
