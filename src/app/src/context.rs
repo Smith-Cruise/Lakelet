@@ -1,3 +1,4 @@
+use crate::catalog::statistics::StatisticsManager;
 use crate::catalog::{CatalogConfigs, CatalogManager};
 use datafusion::common::Result;
 use datafusion::error::DataFusionError;
@@ -75,6 +76,7 @@ fn parse_memory_size(size: &str) -> std::result::Result<usize, String> {
 pub struct LakeletContext {
     pub server_config: ServerConfig,
     pub catalog_manager: Arc<CatalogManager>,
+    pub statistics_manager: Arc<StatisticsManager>,
     pub runtime_manager: Arc<RuntimeManager>,
     pub default_catalog: Option<String>,
     pub default_schema: Option<String>,
@@ -85,6 +87,7 @@ impl Default for LakeletContext {
         Self {
             server_config: ServerConfig::default(),
             catalog_manager: Arc::new(CatalogManager::new()),
+            statistics_manager: Arc::new(StatisticsManager::default()),
             runtime_manager: Arc::new(RuntimeManager::default()),
             default_catalog: None,
             default_schema: None,
@@ -105,9 +108,11 @@ impl LakeletContext {
         let mut catalog_manager = CatalogManager::new();
         catalog_manager.load_catalogs(&lakelet_config.catalog.unwrap_or_default())?;
         let server_config = lakelet_config.server_config.unwrap_or_default();
+        // todo simplify code, try to reuse LakeletContext::default()
         Ok(Self {
             server_config,
             catalog_manager: Arc::new(catalog_manager),
+            statistics_manager: Arc::new(StatisticsManager::default()),
             runtime_manager: Arc::new(RuntimeManager::default()),
             default_catalog: None,
             default_schema: None,

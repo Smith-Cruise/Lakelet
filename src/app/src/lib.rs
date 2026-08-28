@@ -4,6 +4,7 @@ pub mod sql;
 
 pub(crate) mod catalog;
 
+pub use catalog::statistics::StatisticsManager;
 pub use context::LakeletContext;
 
 pub(crate) use catalog::data_file_format;

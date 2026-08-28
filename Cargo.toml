@@ -35,6 +35,7 @@ deltalake = { git = "https://github.com/delta-io/delta.rs", rev = "84fad0b1bd861
 paimon = { version = "0.3.0", features = ["storage-s3", "storage-oss", "storage-hdfs"] }
 paimon-datafusion = "0.3.0"
 mimalloc = { version = "0.1", default-features = false }
+moka = { version = "0.12.16", features = ["sync"] }
 lakelet-app = { path = "src/app" }
 lakelet-storage = {path = "src/storage"}
 lakelet-common = {path = "src/common"}

@@ -1,7 +1,7 @@
 mod show;
 mod r#use;
 
-use crate::catalog::{CatalogManager, INTERNAL_CATALOG, LakeletCatalogProviderList};
+use crate::catalog::{INTERNAL_CATALOG, LakeletCatalogProviderList};
 use crate::context::LakeletContext;
 use crate::parser::ExtendedParser;
 use crate::statements::ExtendedStatement;
@@ -16,7 +16,6 @@ use datafusion::execution::runtime_env::RuntimeEnv;
 use datafusion::logical_expr::ExplainFormat;
 use datafusion::logical_expr::sqlparser::ast::Statement;
 use datafusion::prelude::{SessionConfig, SessionContext};
-use lakelet_common::runtime::RuntimeManager;
 use std::sync::Arc;
 
 pub struct ExtendedSessionContext {
@@ -30,13 +29,7 @@ pub struct ExtendedSessionContext {
 
 impl Default for ExtendedSessionContext {
     fn default() -> Self {
-        let lakelet_context = Arc::new(LakeletContext {
-            server_config: Default::default(),
-            catalog_manager: Arc::new(CatalogManager::default()),
-            runtime_manager: Arc::new(RuntimeManager::default()),
-            default_catalog: None,
-            default_schema: None,
-        });
+        let lakelet_context = Arc::new(LakeletContext::default());
         let runtime_env = Arc::new(RuntimeEnv::default());
         let catalog_provider_list =
             Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone()));

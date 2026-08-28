@@ -1,10 +1,14 @@
+use super::{LoadedStatistics, TableStatisticsLoader, TableStatisticsRequest};
+use crate::catalog::table_format::hive::parse_statistics_from_table_properties;
+use async_trait::async_trait;
 use aws_sdk_glue::Client;
+use aws_sdk_glue::operation::get_column_statistics_for_table::GetColumnStatisticsForTableOutput;
 use aws_sdk_glue::types::{
     ColumnStatistics as GlueColumnStatistics, ColumnStatisticsType, DecimalNumber,
 };
 use datafusion::arrow::datatypes::{DataType, Field, TimeUnit};
-use datafusion::common::ScalarValue;
 use datafusion::common::stats::{ColumnStatistics, Precision};
+use datafusion::common::{ScalarValue, Statistics, TableReference};
 use datafusion::datasource::table_schema::TableSchema;
 use futures::{StreamExt, stream};
 use std::collections::HashMap;
@@ -12,14 +16,51 @@ use std::collections::HashMap;
 const MAX_COLUMNS_PER_REQUEST: usize = 100;
 const MAX_CONCURRENT_REQUESTS: usize = 4;
 
+pub(crate) struct GlueTableStatisticsLoader<'a> {
+    client: &'a Client,
+}
+
+impl<'a> GlueTableStatisticsLoader<'a> {
+    pub fn new(client: &'a Client) -> Self {
+        Self { client }
+    }
+}
+
+#[async_trait]
+impl TableStatisticsLoader for GlueTableStatisticsLoader<'_> {
+    async fn load(&self, request: TableStatisticsRequest<'_>) -> LoadedStatistics {
+        let mut statistics = Statistics::new_unknown(request.table_schema.table_schema());
+        parse_statistics_from_table_properties(&mut statistics, request.table_properties);
+
+        // for partitioned table, we don't support collect column statistics
+        if request.table_schema.table_partition_cols().is_empty() {
+            let TableReference::Full { schema, table, .. } = request.table_reference else {
+                unreachable!("table statistics require a full table reference")
+            };
+            let loaded =
+                load_glue_columns_statistics(self.client, schema, table, request.table_schema)
+                    .await;
+            statistics.column_statistics = loaded.column_statistics;
+            return LoadedStatistics::new(statistics, loaded.complete);
+        }
+
+        LoadedStatistics::new(statistics, true)
+    }
+}
+
+struct LoadedGlueColumnStatistics {
+    column_statistics: Vec<ColumnStatistics>,
+    complete: bool,
+}
+
 /// Statistics are best-effort: failed requests and columns without statistics
 /// (e.g. tables that were never analyzed) silently stay unknown.
-pub async fn load_glue_columns_statistics(
+async fn load_glue_columns_statistics(
     client: &Client,
     schema_name: &str,
     table_name: &str,
     table_schema: &TableSchema,
-) -> Vec<ColumnStatistics> {
+) -> LoadedGlueColumnStatistics {
     let column_names: Vec<_> = table_schema
         .file_schema()
         .fields()
@@ -27,12 +68,10 @@ pub async fn load_glue_columns_statistics(
         .map(|field| field.name().to_string())
         .collect();
     if column_names.is_empty() {
-        return table_schema
-            .table_schema()
-            .fields()
-            .iter()
-            .map(|_| ColumnStatistics::new_unknown())
-            .collect();
+        return LoadedGlueColumnStatistics {
+            column_statistics: unknown_column_statistics(table_schema),
+            complete: true,
+        };
     }
 
     let column_batches = batch_column_names(column_names);
@@ -57,13 +96,37 @@ pub async fn load_glue_columns_statistics(
         .collect()
         .await;
 
+    collect_glue_columns_statistics(table_schema, responses)
+}
+
+fn collect_glue_columns_statistics(
+    table_schema: &TableSchema,
+    responses: Vec<Option<GetColumnStatisticsForTableOutput>>,
+) -> LoadedGlueColumnStatistics {
+    let complete = responses.iter().all(|response| {
+        response
+            .as_ref()
+            .is_some_and(|response| response.errors().is_empty())
+    });
     let glue_statistics: Vec<_> = responses
         .into_iter()
         .flatten()
         .flat_map(|response| response.column_statistics_list().to_vec())
         .collect();
 
-    convert_glue_columns_statistics(table_schema, &glue_statistics)
+    LoadedGlueColumnStatistics {
+        column_statistics: convert_glue_columns_statistics(table_schema, &glue_statistics),
+        complete,
+    }
+}
+
+fn unknown_column_statistics(table_schema: &TableSchema) -> Vec<ColumnStatistics> {
+    table_schema
+        .table_schema()
+        .fields()
+        .iter()
+        .map(|_| ColumnStatistics::new_unknown())
+        .collect()
 }
 
 fn batch_column_names(column_names: Vec<String>) -> Vec<Vec<String>> {
@@ -370,7 +433,7 @@ mod tests {
     use super::*;
     use aws_sdk_glue::primitives::{Blob, DateTime};
     use aws_sdk_glue::types::{
-        BooleanColumnStatisticsData, ColumnStatisticsData, DateColumnStatisticsData,
+        BooleanColumnStatisticsData, ColumnError, ColumnStatisticsData, DateColumnStatisticsData,
         DecimalColumnStatisticsData, DoubleColumnStatisticsData, LongColumnStatisticsData,
         StringColumnStatisticsData,
     };
@@ -626,5 +689,109 @@ mod tests {
             batches.iter().map(Vec::len).collect::<Vec<_>>(),
             [100, 100, 1]
         );
+    }
+
+    #[test]
+    fn successful_glue_responses_are_complete() {
+        let table_schema = TableSchema::new(
+            std::sync::Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, true)])),
+            vec![],
+        );
+        let statistics = glue_statistics(
+            "id",
+            "bigint",
+            ColumnStatisticsData::builder()
+                .r#type(ColumnStatisticsType::Long)
+                .long_column_statistics_data(
+                    LongColumnStatisticsData::builder()
+                        .minimum_value(1)
+                        .maximum_value(10)
+                        .number_of_nulls(0)
+                        .number_of_distinct_values(10)
+                        .build(),
+                )
+                .build()
+                .unwrap(),
+        );
+        let response = GetColumnStatisticsForTableOutput::builder()
+            .column_statistics_list(statistics)
+            .build();
+
+        let loaded = collect_glue_columns_statistics(&table_schema, vec![Some(response)]);
+
+        assert!(loaded.complete);
+        assert_eq!(
+            loaded.column_statistics[0].distinct_count,
+            Precision::Inexact(10)
+        );
+    }
+
+    #[test]
+    fn successful_empty_glue_response_is_complete() {
+        let table_schema = TableSchema::new(
+            std::sync::Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, true)])),
+            vec![],
+        );
+        let response = GetColumnStatisticsForTableOutput::builder().build();
+
+        let loaded = collect_glue_columns_statistics(&table_schema, vec![Some(response)]);
+
+        assert!(loaded.complete);
+        assert_eq!(loaded.column_statistics[0], ColumnStatistics::new_unknown());
+    }
+
+    #[test]
+    fn failed_glue_batches_keep_partial_statistics_but_are_not_complete() {
+        let table_schema = TableSchema::new(
+            std::sync::Arc::new(Schema::new(vec![
+                Field::new("id", DataType::Int64, true),
+                Field::new("name", DataType::Utf8, true),
+            ])),
+            vec![],
+        );
+        let statistics = glue_statistics(
+            "id",
+            "bigint",
+            ColumnStatisticsData::builder()
+                .r#type(ColumnStatisticsType::Long)
+                .long_column_statistics_data(
+                    LongColumnStatisticsData::builder()
+                        .minimum_value(1)
+                        .maximum_value(10)
+                        .number_of_nulls(0)
+                        .number_of_distinct_values(10)
+                        .build(),
+                )
+                .build()
+                .unwrap(),
+        );
+        let response = GetColumnStatisticsForTableOutput::builder()
+            .column_statistics_list(statistics)
+            .build();
+
+        let loaded = collect_glue_columns_statistics(&table_schema, vec![Some(response), None]);
+
+        assert!(!loaded.complete);
+        assert_eq!(
+            loaded.column_statistics[0].distinct_count,
+            Precision::Inexact(10)
+        );
+        assert_eq!(loaded.column_statistics[1], ColumnStatistics::new_unknown());
+    }
+
+    #[test]
+    fn per_column_glue_errors_are_not_complete() {
+        let table_schema = TableSchema::new(
+            std::sync::Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, true)])),
+            vec![],
+        );
+        let response = GetColumnStatisticsForTableOutput::builder()
+            .errors(ColumnError::builder().column_name("id").build())
+            .build();
+
+        let loaded = collect_glue_columns_statistics(&table_schema, vec![Some(response)]);
+
+        assert!(!loaded.complete);
+        assert_eq!(loaded.column_statistics[0], ColumnStatistics::new_unknown());
     }
 }

@@ -20,6 +20,7 @@ Agents should follow below rules:
 * If config items are modified, please note that the `@docs/` needs to be updated.
 * Keep the PR descriptions as concise as possible.
 * After change the code, don't commit it by yourself, unless user required it.
+* When writing unit tests, first check if a similar test case already exists; if so, simply expand its scope to avoid unnecessary redundancy.
 
 ### Pull request checklist
 Agents should finish below checklist before pull request.

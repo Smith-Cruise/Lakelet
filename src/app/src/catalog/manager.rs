@@ -1,3 +1,4 @@
+use crate::catalog::statistics::StatisticsManager;
 use crate::context::LakeletContext;
 use crate::glue_catalog::{GlueCatalog, GlueCatalogConfig};
 use crate::hms_catalog::{HMSCatalog, HMSCatalogConfig};
@@ -108,6 +109,7 @@ impl CatalogManager {
         let lakelet_context = Arc::new(LakeletContext {
             server_config: Default::default(),
             catalog_manager: Arc::new(self.clone()),
+            statistics_manager: Arc::new(StatisticsManager::default()),
             runtime_manager: Arc::new(RuntimeManager::default()),
             default_catalog: None,
             default_schema: None,
