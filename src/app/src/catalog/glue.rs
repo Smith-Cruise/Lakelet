@@ -1,5 +1,5 @@
-use crate::catalog::glue_statistics::load_glue_columns_statistics;
-use crate::catalog::table_format::hive::parse_statistics_from_table_properties;
+use crate::catalog::statistics::TableStatisticsRequest;
+use crate::catalog::statistics::glue::GlueTableStatisticsLoader;
 use crate::catalog::{CatalogConfig, LakeletCatalogProvider};
 use crate::context::LakeletContext;
 use crate::table_format::TableFormat;
@@ -86,8 +86,9 @@ impl GlueCatalog {
 #[async_trait]
 impl AsyncCatalogProvider for GlueCatalog {
     async fn schema(&self, schema_name: &str) -> Result<Option<Arc<dyn AsyncSchemaProvider>>> {
+        let glue_client = self.client().await;
         Ok(Some(Arc::new(GlueSchema::new(
-            self.client().await,
+            glue_client,
             self.lakelet_context.clone(),
             self.config.clone(),
             schema_name.to_string(),
@@ -173,25 +174,22 @@ impl AsyncSchemaProvider for GlueSchema {
         let table_format = deduce_table_format(&glue_table_properties)?;
         let (hive_storage_info, hive_partitions) = if table_format == TableFormat::Hive {
             let table_schema = GlueTableSchemaBuilder::new(&glue_table).build()?;
-            let mut table_statistics = Statistics::new_unknown(table_schema.table_schema());
-            if metadata_table_type.is_none() {
-                parse_statistics_from_table_properties(
-                    &mut table_statistics,
-                    &glue_table_properties,
-                );
-                // Glue stores column statistics for partitioned tables at the
-                // partition level, so a table-level fetch only makes sense for
-                // unpartitioned tables.
-                if table_schema.table_partition_cols().is_empty() {
-                    table_statistics.column_statistics = load_glue_columns_statistics(
-                        &self.glue_client,
-                        &self.schema_name,
-                        table_name.as_str(),
-                        &table_schema,
+            let table_statistics = if metadata_table_type.is_none() {
+                let statistics_loader = GlueTableStatisticsLoader::new(&self.glue_client);
+                self.lakelet_context
+                    .statistics_manager
+                    .load(
+                        TableStatisticsRequest::new(
+                            &table_reference,
+                            &table_schema,
+                            &glue_table_properties,
+                        ),
+                        &statistics_loader,
                     )
-                    .await;
-                }
-            }
+                    .await?
+            } else {
+                Statistics::new_unknown(table_schema.table_schema())
+            };
             let hive_storage_info = HiveStorageInfo::try_new_from_glue_table(
                 table_schema,
                 table_statistics,

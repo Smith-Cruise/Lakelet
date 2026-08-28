@@ -14,7 +14,7 @@ flight-sql-server-port = 32010
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `memory-limit` | String | No | Unlimited | Caps the memory available to the query engine. |
+| `memory-limit` | String | No | 80% of effective total memory | Caps the memory available to the query engine. |
 | `flight-sql-server-port` | Integer | No | 32010 | Port the Arrow Flight SQL server started by `--flight-sql-server` listens on. |
 
 The `memory-limit` value is an integer with an optional, case-insensitive unit. With no unit, the value is treated as bytes.
@@ -26,6 +26,10 @@ The `memory-limit` value is an integer with an optional, case-insensitive unit. 
 | `m`, `mb` | Mebibytes |
 | `g`, `gb` | Gibibytes |
 | `t`, `tb` | Tebibytes |
+
+When `memory-limit` is omitted, Lakelet calculates it once at startup as 80%
+of the effective total memory. If Lakelet cannot determine a
+valid capacity, startup fails and `memory-limit` must be configured explicitly.
 
 ## Arrow Flight SQL server
 

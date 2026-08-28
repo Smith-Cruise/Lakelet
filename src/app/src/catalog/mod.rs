@@ -1,10 +1,10 @@
 pub(crate) mod data_file_format;
 pub(crate) mod glue;
-mod glue_statistics;
 pub(crate) mod hms;
 pub(crate) mod internal;
 pub(crate) mod manager;
 pub(crate) mod paimon_fs;
+pub(crate) mod statistics;
 pub(crate) mod table_definition_builder;
 pub(crate) mod table_format;
 
