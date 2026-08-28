@@ -1,12 +1,19 @@
 use super::{TableStatisticsLoader, TableStatisticsRequest};
+use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::{DataFusionError, Result, Statistics, TableReference};
 use moka::sync::Cache;
 use std::time::Duration;
 
 const DEFAULT_STATISTICS_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 
+#[derive(Clone)]
+struct CachedStatistics {
+    table_schema: SchemaRef,
+    statistics: Statistics,
+}
+
 pub struct StatisticsManager {
-    cache: Cache<TableReference, Statistics>,
+    cache: Cache<TableReference, CachedStatistics>,
 }
 
 impl Default for StatisticsManager {
@@ -33,14 +40,23 @@ impl StatisticsManager {
             ));
         }
 
-        if let Some(statistics) = self.cache.get(request.table_reference) {
-            return Ok(statistics);
+        if let Some(cached) = self.cache.get(request.table_reference) {
+            if cached.table_schema.as_ref() == request.table_schema.table_schema().as_ref() {
+                return Ok(cached.statistics);
+            }
+            self.cache.invalidate(request.table_reference);
         }
 
         let cache_key = request.table_reference.clone();
         let loaded = loader.load(request).await;
         if loaded.cacheable {
-            self.cache.insert(cache_key, loaded.statistics.clone());
+            self.cache.insert(
+                cache_key,
+                CachedStatistics {
+                    table_schema: request.table_schema.table_schema().clone(),
+                    statistics: loaded.statistics.clone(),
+                },
+            );
         }
         Ok(loaded.statistics)
     }
@@ -90,19 +106,16 @@ mod tests {
         }
     }
 
-    fn table_schema() -> TableSchema {
-        TableSchema::new(
-            Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, true)])),
-            vec![],
-        )
+    fn make_table_schema(fields: Vec<Field>) -> TableSchema {
+        TableSchema::new(Arc::new(Schema::new(fields)), vec![])
     }
 
     #[tokio::test]
-    async fn reuses_cached_statistics_for_the_same_full_table_reference() {
+    async fn reuses_cached_statistics_only_for_matching_schema() {
         let manager = StatisticsManager::new(Duration::from_secs(60));
         let loader = FakeLoader::new(true, 10);
         let table_reference = TableReference::full("catalog", "schema", "table");
-        let table_schema = table_schema();
+        let table_schema = make_table_schema(vec![Field::new("id", DataType::Int64, true)]);
         let properties = HashMap::new();
         let request = TableStatisticsRequest::new(&table_reference, &table_schema, &properties);
 
@@ -111,6 +124,32 @@ mod tests {
 
         assert_eq!(first, second);
         assert_eq!(loader.calls.load(Ordering::SeqCst), 1);
+
+        let renamed_schema =
+            make_table_schema(vec![Field::new("renamed_id", DataType::Int64, true)]);
+        let renamed = manager
+            .load(
+                TableStatisticsRequest::new(&table_reference, &renamed_schema, &properties),
+                &loader,
+            )
+            .await
+            .unwrap();
+        assert_eq!(renamed.column_statistics.len(), 1);
+        assert_eq!(loader.calls.load(Ordering::SeqCst), 2);
+
+        let expanded_schema = make_table_schema(vec![
+            Field::new("renamed_id", DataType::Int64, true),
+            Field::new("name", DataType::Utf8, true),
+        ]);
+        let expanded = manager
+            .load(
+                TableStatisticsRequest::new(&table_reference, &expanded_schema, &properties),
+                &loader,
+            )
+            .await
+            .unwrap();
+        assert_eq!(expanded.column_statistics.len(), 2);
+        assert_eq!(loader.calls.load(Ordering::SeqCst), 3);
     }
 
     #[tokio::test]
@@ -118,7 +157,7 @@ mod tests {
         let manager = StatisticsManager::new(Duration::from_secs(60));
         let first_loader = FakeLoader::new(true, 10);
         let second_loader = FakeLoader::new(true, 20);
-        let table_schema = table_schema();
+        let table_schema = make_table_schema(vec![Field::new("id", DataType::Int64, true)]);
         let properties = HashMap::new();
         let first_table = TableReference::full("first", "schema", "table");
         let second_table = TableReference::full("second", "schema", "table");
@@ -149,7 +188,7 @@ mod tests {
         let manager = StatisticsManager::new(Duration::from_millis(1));
         let loader = FakeLoader::new(true, 10);
         let table_reference = TableReference::full("catalog", "schema", "table");
-        let table_schema = table_schema();
+        let table_schema = make_table_schema(vec![Field::new("id", DataType::Int64, true)]);
         let properties = HashMap::new();
         let request = TableStatisticsRequest::new(&table_reference, &table_schema, &properties);
 
@@ -165,7 +204,7 @@ mod tests {
         let manager = StatisticsManager::new(Duration::from_secs(60));
         let loader = FakeLoader::new(false, 10);
         let table_reference = TableReference::full("catalog", "schema", "table");
-        let table_schema = table_schema();
+        let table_schema = make_table_schema(vec![Field::new("id", DataType::Int64, true)]);
         let properties = HashMap::new();
         let request = TableStatisticsRequest::new(&table_reference, &table_schema, &properties);
 
@@ -180,7 +219,7 @@ mod tests {
         let manager = StatisticsManager::default();
         let loader = FakeLoader::new(true, 10);
         let table_reference = TableReference::bare("table");
-        let table_schema = table_schema();
+        let table_schema = make_table_schema(vec![Field::new("id", DataType::Int64, true)]);
         let properties = HashMap::new();
         let request = TableStatisticsRequest {
             table_reference: &table_reference,
