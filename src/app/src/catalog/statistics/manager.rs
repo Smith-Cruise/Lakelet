@@ -54,7 +54,6 @@ mod tests {
     use datafusion::arrow::datatypes::{DataType, Field, Schema};
     use datafusion::common::stats::Precision;
     use datafusion::datasource::table_schema::TableSchema;
-    use futures::join;
     use std::collections::HashMap;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};

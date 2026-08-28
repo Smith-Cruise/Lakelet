@@ -7,9 +7,10 @@
 # ---------------------------------------------------------------------------
 [server]
 # Optional. Caps the query engine memory usage.
+# If omitted, defaults to 80% of the effective total system memory.
 # Accepts a number with an optional unit suffix (case-insensitive):
 # b, kb, mb, gb, tb. A bare number is treated as bytes. Example: "4GB".
-memory-limit = "4GB"
+# memory-limit = "4GB"
 # Optional, default 32010. Port the Arrow Flight SQL server listens on when
 # starting with `--flight-sql-server`.
 # flight-sql-server-port = 32010

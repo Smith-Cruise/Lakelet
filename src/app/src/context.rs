@@ -6,6 +6,11 @@ use lakelet_common::runtime::RuntimeManager;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::Arc;
+use sysinfo::System;
+
+const DEFAULT_MEMORY_LIMIT_PERCENT: u64 = 80;
+const MEMORY_LIMIT_CONFIG_HINT: &str =
+    "set 'memory-limit' explicitly under [server] in the configuration file";
 
 #[derive(Serialize, Deserialize)]
 pub struct LakeletConfig {
@@ -35,6 +40,77 @@ impl Default for ServerConfig {
             flight_sql_server_port: DEFAULT_FLIGHT_SQL_SERVER_PORT,
         }
     }
+}
+
+impl ServerConfig {
+    pub fn resolve_memory_limit(&self) -> Result<usize> {
+        if let Some(memory_limit) = self.memory_limit {
+            return Ok(memory_limit);
+        }
+
+        let system = System::new_all();
+        let physical_total_memory = Some(system.total_memory());
+        let cgroup_memory_limit = current_process_cgroup_memory_limit(&system)?;
+        calculate_memory_limit(None, physical_total_memory, cgroup_memory_limit)
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn current_process_cgroup_memory_limit(system: &System) -> Result<Option<u64>> {
+    let pid = sysinfo::get_current_pid().map_err(|error| {
+        DataFusionError::Configuration(format!(
+            "Failed to identify the current process while determining the default memory limit: {error}; {MEMORY_LIMIT_CONFIG_HINT}"
+        ))
+    })?;
+    let process = system.process(pid).ok_or_else(|| {
+        DataFusionError::Configuration(format!(
+            "Failed to inspect the current process while determining the default memory limit; {MEMORY_LIMIT_CONFIG_HINT}"
+        ))
+    })?;
+    Ok(process.cgroup_limits().map(|limits| limits.total_memory))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn current_process_cgroup_memory_limit(_system: &System) -> Result<Option<u64>> {
+    Ok(None)
+}
+
+fn calculate_memory_limit(
+    configured_memory_limit: Option<usize>,
+    physical_total_memory: Option<u64>,
+    cgroup_memory_limit: Option<u64>,
+) -> Result<usize> {
+    if let Some(memory_limit) = configured_memory_limit {
+        return Ok(memory_limit);
+    }
+
+    let physical_total_memory = physical_total_memory.filter(|memory| *memory > 0).ok_or_else(|| {
+        DataFusionError::Configuration(format!(
+            "Physical memory is unavailable while determining the default memory limit; {MEMORY_LIMIT_CONFIG_HINT}"
+        ))
+    })?;
+    let effective_total_memory = match cgroup_memory_limit {
+        Some(0) => {
+            return Err(DataFusionError::Configuration(format!(
+                "The cgroup memory limit is invalid while determining the default memory limit; {MEMORY_LIMIT_CONFIG_HINT}"
+            )));
+        }
+        Some(cgroup_memory_limit) => physical_total_memory.min(cgroup_memory_limit),
+        None => physical_total_memory,
+    };
+    let memory_limit =
+        u128::from(effective_total_memory) * u128::from(DEFAULT_MEMORY_LIMIT_PERCENT) / 100;
+    if memory_limit == 0 {
+        return Err(DataFusionError::Configuration(format!(
+            "The detected memory capacity is too small to calculate the default memory limit; {MEMORY_LIMIT_CONFIG_HINT}"
+        )));
+    }
+
+    usize::try_from(memory_limit).map_err(|_| {
+        DataFusionError::Configuration(format!(
+            "The calculated default memory limit cannot be represented on this platform; {MEMORY_LIMIT_CONFIG_HINT}"
+        ))
+    })
 }
 
 fn deserialize_memory_size<'de, D>(deserializer: D) -> std::result::Result<Option<usize>, D::Error>
@@ -139,6 +215,43 @@ mod tests {
                 config.server_config.unwrap().memory_limit,
                 Some(4 * 1024 * 1024 * 1024)
             );
+        }
+    }
+
+    #[test]
+    fn calculate_default_memory_limit_from_effective_total_memory() {
+        const GIB: u64 = 1024 * 1024 * 1024;
+
+        for (physical, cgroup, expected_total) in [
+            (16 * GIB, None, 16 * GIB),
+            (64 * GIB, Some(8 * GIB), 8 * GIB),
+            (8 * GIB, Some(64 * GIB), 8 * GIB),
+        ] {
+            assert_eq!(
+                calculate_memory_limit(None, Some(physical), cgroup).unwrap(),
+                usize::try_from(expected_total * 80 / 100).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn configured_memory_limit_takes_priority() {
+        assert_eq!(
+            calculate_memory_limit(Some(123), None, Some(0)).unwrap(),
+            123
+        );
+    }
+
+    #[test]
+    fn invalid_memory_detection_requires_explicit_configuration() {
+        for result in [
+            calculate_memory_limit(None, None, None),
+            calculate_memory_limit(None, Some(0), None),
+            calculate_memory_limit(None, Some(1), None),
+            calculate_memory_limit(None, Some(1024), Some(0)),
+        ] {
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains("set 'memory-limit' explicitly"));
         }
     }
 

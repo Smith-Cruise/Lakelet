@@ -81,6 +81,8 @@ pub fn run() -> Result<()> {
     lakelet_context.default_schema = args.default_schema.clone();
     let lakelet_context = Arc::new(lakelet_context);
     let cpu_handle = lakelet_context.runtime_manager.cpu_handle();
+    // Keep an owner outside the async context so RuntimeManager is dropped
+    // after block_on returns, not from within its own Tokio runtime.
     cpu_handle.block_on(async_run(lakelet_context.clone(), args))
 }
 
@@ -88,10 +90,8 @@ async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> R
     let instrumented_registry = Arc::new(
         InstrumentedObjectStoreRegistry::new().with_profile_mode(args.object_store_profiling),
     );
-    let mut runtime_env_builder = RuntimeEnvBuilder::new();
-    if let Some(memory_limit) = lakelet_context.server_config.memory_limit {
-        runtime_env_builder = runtime_env_builder.with_memory_limit(memory_limit, 1.0);
-    }
+    let memory_limit = lakelet_context.server_config.resolve_memory_limit()?;
+    let runtime_env_builder = RuntimeEnvBuilder::new().with_memory_limit(memory_limit, 1.0);
     let runtime_env = runtime_env_builder
         .with_object_list_cache_limit(5 * 1024 * 1024) // 5MB
         .with_object_list_cache_ttl(Some(Duration::from_hours(1))) // 1 hour cache
