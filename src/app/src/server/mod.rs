@@ -32,10 +32,14 @@ fn bind_error(port: u16, config_key: &str, e: &std::io::Error) -> DataFusionErro
 }
 
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(about, long_about = None)]
 struct LakeletArgs {
-    #[clap(long, help = "Specify config path")]
-    config: String,
+    #[clap(
+        long,
+        help = "Specify config path",
+        required_unless_present = "version"
+    )]
+    config: Option<String>,
 
     #[clap(
         long,
@@ -72,11 +76,22 @@ struct LakeletArgs {
         conflicts_with_all = ["command", "file"]
     )]
     flight_sql_server: bool,
+
+    #[clap(
+        short = 'V',
+        long,
+        help = "Print the commit this binary was built from, then exit."
+    )]
+    version: bool,
 }
 
 pub fn run() -> Result<()> {
     let args = LakeletArgs::parse();
-    let mut lakelet_context = LakeletContext::new(Some(args.config.as_str()))?;
+    if args.version {
+        println!("{}", crate::version::BUILD_INFO);
+        return Ok(());
+    }
+    let mut lakelet_context = LakeletContext::new(args.config.as_deref())?;
     lakelet_context.default_catalog = args.default_catalog.clone();
     lakelet_context.default_schema = args.default_schema.clone();
     let lakelet_context = Arc::new(lakelet_context);
@@ -172,7 +187,7 @@ mod tests {
             args.command.as_deref(),
             Some("show catalogs; show variables;")
         );
-        assert_eq!(args.config, "config.toml");
+        assert_eq!(args.config.as_deref(), Some("config.toml"));
     }
 
     #[test]

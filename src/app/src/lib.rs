@@ -1,6 +1,7 @@
 pub mod context;
 pub mod server;
 pub mod sql;
+pub mod version;
 
 pub(crate) mod catalog;
 

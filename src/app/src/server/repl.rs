@@ -13,11 +13,6 @@ use std::fs;
 use std::time::Instant;
 use tokio::signal;
 
-fn print_banner() {
-    println!("Lakelet v{}", env!("CARGO_PKG_VERSION"));
-    println!("Enter SQL ending with ';'. Type 'quit;' to disconnect.\n");
-}
-
 /// run and execute SQL statements and commands against a context with the given print options
 pub async fn exec_from_repl(ctx: &ExtendedSessionContext, print_options: &PrintOptions) {
     let mut rl = Editor::new().expect("created editor");
@@ -28,7 +23,7 @@ pub async fn exec_from_repl(ctx: &ExtendedSessionContext, print_options: &PrintO
 
     let mut sql_buffer = String::new();
 
-    print_banner();
+    println!("Enter SQL ending with ';'. Type 'quit;' to disconnect.\n");
 
     loop {
         // 根据是否有未完成的语句选择提示符

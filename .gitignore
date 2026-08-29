@@ -31,11 +31,6 @@ target
 
 .DS_Store
 
-
-# Web UI frontend
-/web-ui/node_modules
-/web-ui/dist
-
 # MkDocs build output and local Python env
 /docs/site
 /docs/.venv

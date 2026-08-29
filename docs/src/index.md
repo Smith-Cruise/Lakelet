@@ -7,90 +7,121 @@ hide:
 
 <div class="ll-home" markdown>
 
-# Focused on Data Lake Queries
-
-One binary that speaks Iceberg, Delta Lake, Paimon, and Hive.
-Point it at your catalog and start writing SQL — no Spark, no JVM, no cluster.
+# Speed Up Data Lake Queries
 
 ```sh
 curl -fsSL https://lakelet.dev/install.sh | sh
 ```
 
-Linux and macOS. For Windows, grab a build from
+Shell only support for Linux and macOS. For Windows, you have to grab a build from
 [releases/nightly](https://github.com/Smith-Cruise/Lakelet/releases/tag/nightly).
 
-[Get started](getting-started.md){ .md-button .md-button--primary }
-[View on GitHub](https://github.com/Smith-Cruise/Lakelet){ .md-button }
+[Getting Started](getting-started.md){ .md-button .md-button--primary }
 
-## Catalogs
+## Two ways to query
 
-Bring the catalog you already run.
+<div class="ll-query-modes" markdown>
 
-<div class="grid cards" markdown>
+<div class="ll-query-mode" markdown>
 
--   :lucide-database:{ .lg .middle } __Hive Metastore__
+<div class="ll-query-mode__copy" markdown>
 
-    ---
+<div class="ll-query-mode__identity">
+  <span class="ll-query-mode__icon" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="4 17 10 11 4 5"></polyline>
+      <line x1="12" x2="20" y1="19" y2="19"></line>
+    </svg>
+  </span>
+  <span class="ll-query-mode__kicker">TERMINAL</span>
+</div>
 
-    The classic metadata service of the big data ecosystem.
+### CLI
 
-    [:lucide-arrow-right: HMS](catalogs/hms.md)
+Query lake tables directly from your terminal.
 
--   :lucide-cloud:{ .lg .middle } __AWS Glue__
-
-    ---
-
-    Amazon's fully managed data catalog.
-
-    [:lucide-arrow-right: Glue](catalogs/glue.md)
-
--   :lucide-folder-tree:{ .lg .middle } __Paimon Filesystem__
-
-    ---
-
-    A Paimon warehouse directory, no metastore service needed.
-
-    [:lucide-arrow-right: Paimon FileSystem](catalogs/paimon-filesystem.md)
+[CLI quick start :lucide-arrow-right:](getting-started.md#start-lakelet-cli){ .ll-query-link }
 
 </div>
 
-## Table formats
+</div>
 
-One engine, four open table formats.
+<div class="ll-query-mode" markdown>
 
-<div class="grid cards" markdown>
+<div class="ll-query-mode__copy" markdown>
 
--   :lucide-mountain-snow:{ .lg .middle } __Iceberg__
+<div class="ll-query-mode__identity">
+  <span class="ll-query-mode__icon" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect width="20" height="8" x="2" y="2" rx="2" ry="2"></rect>
+      <rect width="20" height="8" x="2" y="14" rx="2" ry="2"></rect>
+      <line x1="6" x2="6.01" y1="6" y2="6"></line>
+      <line x1="6" x2="6.01" y1="18" y2="18"></line>
+    </svg>
+  </span>
+  <span class="ll-query-mode__kicker">SERVER</span>
+</div>
 
-    ---
+### Flight SQL Server
 
-    An open table format for large-scale analytics.
+Serve Arrow-native query results to ADBC clients and applications.
 
-    [:lucide-arrow-right: Iceberg](table-formats/iceberg.md)
+[Flight SQL Server guide :lucide-arrow-right:](getting-started.md#arrow-flight-sql-server){ .ll-query-link }
 
--   :lucide-triangle:{ .lg .middle } __Delta Lake__
+</div>
 
-    ---
+</div>
 
-    An open table format from the Databricks ecosystem.
+</div>
 
-    [:lucide-arrow-right: Delta Lake](table-formats/delta-lake.md)
+## One engine across your lake
 
--   :lucide-layers:{ .lg .middle } __Paimon__
+<div class="ll-lake-architecture" markdown>
 
-    ---
+<div class="ll-architecture-group ll-architecture-catalogs" markdown>
+<span class="ll-architecture-label">CATALOGS</span>
+<div class="ll-architecture-nodes" markdown>
+<div class="ll-architecture-node ll-architecture-node--catalog">
+<img class="ll-catalog-logo" src="assets/logos/aws-glue.png" alt="AWS Glue">
+</div>
+<div class="ll-architecture-node ll-architecture-node--catalog">
+<img class="ll-catalog-logo" src="assets/logos/hive.svg" alt="Apache Hive Metastore">
+</div>
+</div>
 
-    A lake format built for streaming and batch alike.
+</div>
 
-    [:lucide-arrow-right: Paimon](table-formats/paimon.md)
+<div class="ll-architecture-arrow ll-architecture-arrow--down" aria-hidden="true" markdown>
+<i></i>
+</div>
 
--   :lucide-hexagon:{ .lg .middle } __Hive__
+<div class="ll-architecture-engine" markdown>
+<strong>Lakelet</strong>
 
-    ---
+</div>
 
-    The classic table layout of the Hadoop era.
+<div class="ll-architecture-arrow ll-architecture-arrow--down" aria-hidden="true" markdown>
+<i></i>
+</div>
 
-    [:lucide-arrow-right: Hive](table-formats/hive.md)
+<div class="ll-architecture-group ll-architecture-formats" markdown>
+<span class="ll-architecture-label">TABLE FORMATS</span>
+<div class="ll-architecture-nodes" markdown>
+<div class="ll-architecture-node">
+<img class="ll-format-logo ll-format-logo--glyph" src="assets/logos/iceberg-icon.png" alt="Apache Iceberg">
+</div>
+<div class="ll-architecture-node">
+<img class="ll-format-logo ll-format-logo--glyph" src="assets/logos/delta-lake-icon.png" alt="Delta Lake">
+</div>
+<div class="ll-architecture-node">
+<img class="ll-format-logo ll-format-logo--glyph" src="assets/logos/paimon-icon.svg" alt="Apache Paimon">
+</div>
+<div class="ll-architecture-node ll-architecture-node--hive">
+<img class="ll-format-logo" src="assets/logos/hive.svg" alt="Apache Hive">
+</div>
+</div>
+
+</div>
 
 </div>
 
