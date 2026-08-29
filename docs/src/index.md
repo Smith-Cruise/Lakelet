@@ -10,7 +10,7 @@ hide:
 # Speed Up Data Lake Queries
 
 ```sh
-curl https://lakelet.dev/install.sh | sh
+curl -fsSL https://lakelet.dev/install.sh | sh
 ```
 
 Shell only support for Linux and macOS. For Windows, you have to grab a build from

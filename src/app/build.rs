@@ -35,17 +35,10 @@ fn main() {
 /// state alone, and normal recompilation of `src/**` is unaffected.
 fn emit_rerun_triggers() {
     let head_ref = git(&["rev-parse", "--symbolic-full-name", "HEAD"]);
-    let mut paths = vec!["HEAD".to_string(), "packed-refs".to_string()];
-    // Detached HEAD reports the raw sha instead of a ref name; there is no
-    // ref file to watch in that case.
-    if let Some(head_ref) = head_ref.filter(|r| r.starts_with("refs/")) {
-        paths.push(head_ref);
-    }
-
-    for path in paths {
+    for path in ["HEAD", "packed-refs"] {
         // `--git-path` resolves against the real git dir, so linked worktrees
         // (where .git is a file) point at the right place.
-        let Some(resolved) = git(&["rev-parse", "--git-path", &path]) else {
+        let Some(resolved) = git(&["rev-parse", "--git-path", path]) else {
             continue;
         };
         // A path that does not exist is treated by cargo as perpetually
@@ -54,6 +47,27 @@ fn emit_rerun_triggers() {
         if PathBuf::from(&resolved).exists() {
             println!("cargo:rerun-if-changed={resolved}");
         }
+    }
+
+    // Detached HEAD reports the raw sha instead of a ref name; there is no
+    // ref file to watch in that case.
+    let Some(head_ref) = head_ref.filter(|r| r.starts_with("refs/")) else {
+        return;
+    };
+    let Some(resolved) = git(&["rev-parse", "--git-path", &head_ref]) else {
+        return;
+    };
+    let resolved = PathBuf::from(resolved);
+    if resolved.exists() {
+        println!("cargo:rerun-if-changed={}", resolved.display());
+        return;
+    }
+
+    // A branch that exists only in packed-refs has no loose ref file yet.
+    // Watch the nearest existing parent so creating the loose ref on the next
+    // commit reruns this script and refreshes the embedded provenance.
+    if let Some(parent) = resolved.ancestors().skip(1).find(|path| path.exists()) {
+        println!("cargo:rerun-if-changed={}", parent.display());
     }
 }
 
