@@ -99,7 +99,8 @@ if [ ! -e "$INSTALL_DIR/config_demo.toml" ]; then
     install -m 644 "$tmpdir/config_demo.toml" "$INSTALL_DIR/config_demo.toml"
 fi
 
-info "Installed $("$dest" --version) to $dest"
+info "Installed to $dest"
+info "$("$dest" --version)"
 info "Get started:"
 printf '      %s\n' \
     "cp config_demo.toml config.toml   # then edit it for your catalog" \

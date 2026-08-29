@@ -53,12 +53,13 @@ body[data-md-color-scheme="slate"]:has(.ll-home) .md-main {
 }
 
 .md-typeset .ll-home h1 {
+  max-width: 24em;
   margin-bottom: 1rem;
   font-size: clamp(2.2rem, 1.4rem + 3vw, 3.2rem);
   font-weight: 700;
-  line-height: 1.12;
-  letter-spacing: -0.03em;
-  max-width: 24em;
+  line-height: 1.04;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
   background: linear-gradient(
     92deg,
     var(--md-default-fg-color) 30%,
@@ -68,14 +69,6 @@ body[data-md-color-scheme="slate"]:has(.ll-home) .md-main {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: var(--md-default-fg-color); /* fallback if clip unsupported */
-}
-
-/* Lead paragraph (the one right after the h1). */
-.md-typeset .ll-home h1 + p {
-  max-width: 36rem;
-  font-size: 0.9rem;
-  line-height: 1.7;
-  color: var(--md-default-fg-color--light);
 }
 
 /* Install command: terminal-style card. */
@@ -107,6 +100,15 @@ body[data-md-color-scheme="slate"]:has(.ll-home) .md-main {
 
 .md-typeset .ll-home > .highlight pre > code {
   padding: 0.9rem 3rem 0.9rem 1rem; /* right padding keeps text clear of the copy button */
+}
+
+/* Keep the shell prompt visual only, so the copied command remains runnable. */
+.md-typeset .ll-home > .highlight pre > code::before {
+  margin-right: 0.55rem;
+  color: var(--md-accent-fg-color);
+  content: "$";
+  font-weight: 700;
+  user-select: none;
 }
 
 /* Copy button: vertically centered in the code row, with visible feedback. */
@@ -194,18 +196,321 @@ body[data-md-color-scheme="slate"]:has(.ll-home) .md-main {
   color: var(--md-default-fg-color--light);
 }
 
-/* Cards -------------------------------------------------------------------- */
+/* CLI and Flight SQL ------------------------------------------------------- */
 
-/* Tint the leading icon of each card with the accent color. */
-.md-typeset .ll-home .grid.cards .lg.middle {
-  color: var(--md-accent-fg-color);
+.md-typeset .ll-query-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-top: 1.4rem;
 }
 
-/* Slightly lift cards off the page in dark mode, where borders alone sink. */
-body[data-md-color-scheme="slate"] .md-typeset .ll-home .grid.cards > ul > li {
+.md-typeset .ll-query-mode {
+  display: flex;
+  min-height: 10.5rem;
+  flex-direction: column;
+  padding: 1.1rem;
+  background: var(--md-default-bg-color);
+  border: 0.05rem solid var(--md-default-fg-color--lightest);
+  border-radius: 0.55rem;
+  box-shadow: var(--md-shadow-z1);
+}
+
+body[data-md-color-scheme="slate"] .md-typeset .ll-query-mode {
+  background: color-mix(
+    in srgb,
+    var(--md-default-fg-color) 3%,
+    var(--md-default-bg-color)
+  );
+}
+
+.md-typeset .ll-query-mode__copy {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+
+.md-typeset .ll-query-mode__identity {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.md-typeset .ll-query-mode__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  color: var(--md-accent-fg-color);
+  background: color-mix(in srgb, var(--md-accent-fg-color) 12%, transparent);
+  border-radius: 0.45rem;
+}
+
+.md-typeset .ll-query-mode__icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.md-typeset .ll-query-mode__kicker {
+  color: var(--md-primary-fg-color);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.md-typeset .ll-query-mode__copy h3 {
+  margin: 0.7rem 0 0.45rem;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.md-typeset .ll-query-mode__copy p {
+  margin: 0;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+
+.md-typeset .ll-query-link {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: auto;
+  padding-top: 0.8rem;
+  color: var(--md-accent-fg-color);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.md-typeset .ll-query-link svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+/* Catalog and table-format architecture ------------------------------------ */
+
+.md-typeset .ll-lake-architecture {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  margin-top: 1.4rem;
+  padding: 1.5rem;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 50% 48%,
+      color-mix(in srgb, var(--md-primary-fg-color) 13%, transparent),
+      transparent 28%
+    ),
+    color-mix(in srgb, var(--md-default-fg-color) 2%, var(--md-default-bg-color));
+  border: 0.05rem solid var(--md-default-fg-color--lightest);
+  border-radius: 0.7rem;
+  box-shadow: var(--md-shadow-z1);
+}
+
+.md-typeset .ll-architecture-group {
+  width: 100%;
+  min-width: 0;
+}
+
+/* The Markdown-in-HTML extension may add transparent paragraph wrappers. */
+.md-typeset .ll-architecture-group > p,
+.md-typeset .ll-architecture-nodes > p,
+.md-typeset .ll-architecture-engine > p {
+  display: contents;
+}
+
+.md-typeset .ll-architecture-label {
+  display: block;
+  margin-bottom: 0.55rem;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+.md-typeset .ll-architecture-nodes {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.md-typeset .ll-architecture-node {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 0.25rem;
+  color: var(--md-default-fg-color);
+  background: transparent;
+  border: 0;
+}
+
+.md-typeset .ll-architecture-catalogs {
+  width: min(100%, 22rem);
+}
+
+.md-typeset .ll-architecture-catalogs .ll-architecture-nodes {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.md-typeset .ll-architecture-node--catalog {
+  min-height: 4rem;
+}
+
+.md-typeset .ll-catalog-logo {
+  width: 3.35rem;
+  height: 3.35rem;
+  object-fit: contain;
+}
+
+.md-typeset .ll-architecture-engine {
+  display: flex;
+  width: min(100%, 18rem);
+  min-height: 5rem;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  flex-direction: column;
+  text-align: center;
+  background: var(--md-default-bg-color);
+  border: 0.08rem solid
+    color-mix(in srgb, var(--md-primary-fg-color) 55%, var(--md-default-bg-color));
+  border-radius: 0.65rem;
+  box-shadow:
+    0 0 0 0.35rem color-mix(in srgb, var(--md-primary-fg-color) 5%, transparent),
+    0 0.5rem 2rem color-mix(in srgb, var(--md-primary-fg-color) 17%, transparent);
+}
+
+.md-typeset .ll-architecture-engine > strong {
+  margin: 0;
+  font-size: 1.4rem;
+  line-height: 1.15;
+}
+
+.md-typeset .ll-architecture-arrow {
+  color: var(--md-primary-fg-color);
+}
+
+.md-typeset .ll-architecture-arrow i {
+  position: relative;
+  display: block;
+  background: currentColor;
+}
+
+.md-typeset .ll-architecture-arrow i::after {
+  position: absolute;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-top: 0.1rem solid currentColor;
+  border-right: 0.1rem solid currentColor;
+  content: "";
+}
+
+.md-typeset .ll-architecture-arrow--down {
+  width: 5rem;
+  margin: 0.55rem auto;
+  transform: none;
+}
+
+.md-typeset .ll-architecture-arrow--down i {
+  width: 0.08rem;
+  height: 2.2rem;
+  margin: 0.25rem auto 0;
+}
+
+.md-typeset .ll-architecture-arrow--down i::after {
+  bottom: 0;
+  left: 50%;
+  transform: translate(-50%, 0.05rem) rotate(135deg);
+}
+
+.md-typeset .ll-architecture-formats {
+  width: min(100%, 40rem);
+  margin: 0;
+  padding: 0.85rem;
+  background: color-mix(in srgb, var(--md-default-fg-color) 2%, transparent);
+  border: 0.05rem solid var(--md-default-fg-color--lightest);
+  border-radius: 0.55rem;
+}
+
+.md-typeset .ll-architecture-formats .ll-architecture-nodes {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.md-typeset .ll-architecture-formats .ll-architecture-node {
+  min-height: 4rem;
+  justify-content: center;
+  padding: 0.35rem;
+  flex-direction: column;
+  gap: 0.35rem;
+  text-align: center;
+  background: transparent;
+}
+
+.md-typeset .ll-architecture-formats .ll-architecture-node strong {
+  color: #202020;
+  font-size: 0.62rem;
+}
+
+.md-typeset .ll-format-logo {
+  width: min(100%, 7rem);
+  height: 2.5rem;
+  object-fit: contain;
+}
+
+.md-typeset .ll-format-logo--glyph {
+  width: 3.35rem;
+  height: 3.35rem;
+}
+
+.md-typeset .ll-architecture-node--hive .ll-format-logo {
+  width: 3.35rem;
+  height: 3.35rem;
+}
+
+body[data-md-color-scheme="slate"] .md-typeset .ll-lake-architecture,
+body[data-md-color-scheme="slate"] .md-typeset .ll-architecture-engine {
   background-color: color-mix(
     in srgb,
     var(--md-default-fg-color) 3%,
-    transparent
+    var(--md-default-bg-color)
   );
+}
+
+@media screen and (max-width: 48rem) {
+  .md-typeset .ll-query-modes {
+    grid-template-columns: 1fr;
+  }
+
+  .md-typeset .ll-query-mode {
+    min-height: 9.5rem;
+  }
+
+  .md-typeset .ll-lake-architecture {
+    padding: 1rem;
+  }
+
+  .md-typeset .ll-architecture-engine {
+    min-height: 5rem;
+  }
+
+  .md-typeset .ll-architecture-arrow--down {
+    margin: 0.6rem auto;
+    transform: none;
+  }
+
+  .md-typeset .ll-architecture-formats {
+    width: auto;
+    margin: 0;
+  }
+
+  .md-typeset .ll-architecture-formats .ll-architecture-nodes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
