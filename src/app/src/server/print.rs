@@ -4,18 +4,94 @@ use comfy_table::{Cell, ContentArrangement, Table};
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::arrow::record_batch::RecordBatch;
 use datafusion::arrow::util::display::{ArrayFormatter, FormatOptions as ArrowFormatOptions};
-use datafusion::common::Result;
+use datafusion::common::{DataFusionError, Result};
 use datafusion::config::FormatOptions;
-use datafusion_cli::object_storage::instrumented::{InstrumentedObjectStoreMode, RequestSummaries};
-use datafusion_cli::print_options::{MaxRows, PrintOptions};
+use datafusion::physical_plan::RecordBatchStream;
+use datafusion_cli::print_format::PrintFormat;
+use datafusion_cli::print_options::MaxRows;
+use futures::StreamExt;
 use std::io::{self, Write};
+use std::pin::Pin;
 use std::time::Instant;
 
-const OBJECT_STORE_PROFILING_HEADER: &str = "Object Store Profiling";
+#[derive(Debug, Clone)]
+pub struct PrintOptions {
+    pub format: PrintFormat,
+    pub quiet: bool,
+    pub maxrows: MaxRows,
+}
 
-/// Print result batches followed by the execution footer (and object store
-/// profiling when enabled). Replaces `PrintOptions::print_batches` for the
-/// interactive REPL so wide tables can adapt to the terminal width.
+impl PrintOptions {
+    pub fn print_batches(
+        &self,
+        schema: SchemaRef,
+        batches: &[RecordBatch],
+        query_start_time: Instant,
+        row_count: usize,
+        format_options: &FormatOptions,
+    ) -> Result<()> {
+        let stdout = io::stdout();
+        let mut writer = stdout.lock();
+
+        self.format.print_batches(
+            &mut writer,
+            schema,
+            batches,
+            self.maxrows,
+            true,
+            format_options,
+        )?;
+
+        let details = execution_details(
+            row_count,
+            if self.format == PrintFormat::Table {
+                self.maxrows
+            } else {
+                MaxRows::Unlimited
+            },
+            query_start_time,
+        );
+        write_footer(&mut writer, self, &details)
+    }
+
+    pub async fn print_stream(
+        &self,
+        mut stream: Pin<Box<dyn RecordBatchStream>>,
+        query_start_time: Instant,
+        format_options: &FormatOptions,
+    ) -> Result<()> {
+        if self.format == PrintFormat::Table {
+            return Err(DataFusionError::External(
+                "PrintFormat::Table is not implemented".to_string().into(),
+            ));
+        }
+
+        let stdout = io::stdout();
+        let mut writer = stdout.lock();
+        let mut row_count = 0_usize;
+        let mut with_header = true;
+
+        while let Some(batch) = stream.next().await {
+            let batch = batch?;
+            row_count += batch.num_rows();
+            self.format.print_batches(
+                &mut writer,
+                batch.schema(),
+                &[batch],
+                MaxRows::Unlimited,
+                with_header,
+                format_options,
+            )?;
+            with_header = false;
+        }
+
+        let details = execution_details(row_count, MaxRows::Unlimited, query_start_time);
+        write_footer(&mut writer, self, &details)
+    }
+}
+
+/// Print result batches followed by the execution footer. The interactive
+/// REPL uses this path so wide tables can adapt to the terminal width.
 pub fn print_results(
     print_options: &PrintOptions,
     schema: SchemaRef,
@@ -115,7 +191,6 @@ fn execution_details(row_count: usize, maxrows: MaxRows, query_start_time: Insta
     )
 }
 
-// Byte-identical replica of datafusion-cli's `PrintOptions::write_output`.
 fn write_footer<W: Write>(
     writer: &mut W,
     print_options: &PrintOptions,
@@ -123,28 +198,6 @@ fn write_footer<W: Write>(
 ) -> Result<()> {
     if !print_options.quiet {
         writeln!(writer, "{formatted_exec_details}")?;
-
-        let instrument_mode = print_options.instrumented_registry.instrument_mode();
-        if instrument_mode != InstrumentedObjectStoreMode::Disabled {
-            writeln!(writer, "{OBJECT_STORE_PROFILING_HEADER}")?;
-            for store in print_options.instrumented_registry.stores() {
-                let requests = store.take_requests();
-
-                if !requests.is_empty() {
-                    writeln!(writer, "{store}")?;
-                    if instrument_mode == InstrumentedObjectStoreMode::Trace {
-                        for req in requests.iter() {
-                            writeln!(writer, "{req}")?;
-                        }
-                        writeln!(writer)?;
-                    }
-
-                    writeln!(writer, "Summaries:")?;
-                    let summaries = RequestSummaries::new(&requests);
-                    writeln!(writer, "{summaries}")?;
-                }
-            }
-        }
     }
 
     Ok(())

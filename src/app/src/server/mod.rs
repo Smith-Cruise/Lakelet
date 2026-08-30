@@ -5,16 +5,15 @@ pub mod repl;
 
 use crate::catalog::LakeletCatalogProviderList;
 use crate::context::LakeletContext;
+use crate::server::print::PrintOptions;
 use crate::sql::session::ExtendedSessionContext;
 use clap::Parser;
 use datafusion::common::error::Result;
 use datafusion::error::DataFusionError;
+use datafusion::execution::object_store::DefaultObjectStoreRegistry;
 use datafusion::execution::runtime_env::RuntimeEnvBuilder;
-use datafusion_cli::object_storage::instrumented::{
-    InstrumentedObjectStoreMode, InstrumentedObjectStoreRegistry,
-};
 use datafusion_cli::print_format::PrintFormat;
-use datafusion_cli::print_options::{MaxRows, PrintOptions};
+use datafusion_cli::print_options::MaxRows;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -40,13 +39,6 @@ struct LakeletArgs {
         required_unless_present = "version"
     )]
     config: Option<String>,
-
-    #[clap(
-        long,
-        help = "Specify the default object_store_profiling mode, defaults to 'disabled'.\n[possible values: disabled, summary, trace]",
-        default_value_t = InstrumentedObjectStoreMode::Disabled
-    )]
-    object_store_profiling: InstrumentedObjectStoreMode,
 
     #[clap(long, help = "Specify the default catalog name")]
     default_catalog: Option<String>,
@@ -102,15 +94,12 @@ pub fn run() -> Result<()> {
 }
 
 async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> Result<()> {
-    let instrumented_registry = Arc::new(
-        InstrumentedObjectStoreRegistry::new().with_profile_mode(args.object_store_profiling),
-    );
     let memory_limit = lakelet_context.server_config.resolve_memory_limit()?;
     let runtime_env_builder = RuntimeEnvBuilder::new().with_memory_limit(memory_limit, 1.0);
     let runtime_env = runtime_env_builder
         .with_object_list_cache_limit(5 * 1024 * 1024) // 5MB
         .with_object_list_cache_ttl(Some(Duration::from_hours(1))) // 1 hour cache
-        .with_object_store_registry(instrumented_registry.clone())
+        .with_object_store_registry(Arc::new(DefaultObjectStoreRegistry::new()))
         .build_arc()?;
 
     // One catalog provider list per process: it caches catalog providers and
@@ -127,8 +116,6 @@ async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> R
         format: PrintFormat::Table,
         quiet: false,
         maxrows: MaxRows::Unlimited,
-        color: true,
-        instrumented_registry: instrumented_registry.clone(),
     };
     let session_context =
         ExtendedSessionContext::new(catalog_provider_list, lakelet_context, runtime_env);

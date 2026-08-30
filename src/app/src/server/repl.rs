@@ -1,11 +1,11 @@
 use super::cli_helper::LakeletCliHelper;
 use super::print;
+use super::print::PrintOptions;
 use crate::parser::ExtendedParser;
 use crate::sql::session::ExtendedSessionContext;
 use crate::statements::ExtendedStatement;
 use datafusion::common::Result;
 use datafusion_cli::print_format::PrintFormat;
-use datafusion_cli::print_options::PrintOptions;
 use futures::StreamExt;
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
