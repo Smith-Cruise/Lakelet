@@ -403,9 +403,17 @@ fn build_parquet_exec(
         reader_options,
     ));
 
-    let source = ParquetSource::new(table_schema)
+    // `with_table_parquet_options` does not pick the hint up on its own, and
+    // without it every cold footer read costs two round trips: an 8 byte probe
+    // for the metadata length, then the metadata itself.
+    let metadata_size_hint = parquet_options.global.metadata_size_hint;
+
+    let mut source = ParquetSource::new(table_schema)
         .with_table_parquet_options(parquet_options)
         .with_parquet_file_reader_factory(parquet_file_reader_factory);
+    if let Some(hint) = metadata_size_hint {
+        source = source.with_metadata_size_hint(hint);
+    }
 
     let mut builder =
         FileScanConfigBuilder::new(store_url, Arc::new(source)).with_file_group(file_group);
