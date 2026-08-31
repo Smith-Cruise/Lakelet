@@ -1,4 +1,6 @@
-use crate::data_file_format::parquet::ExtendedParquetFileReaderFactory;
+use crate::data_file_format::parquet::{
+    ExtendedParquetFileReaderFactory, ExtendedParquetReaderOptions,
+};
 use crate::table_format::hive::HiveStorageInfo;
 use crate::table_format::hive::hive_file_utils::{list_files, list_files_by_directories};
 use crate::table_format::hive::hive_partition::HivePartition;
@@ -392,9 +394,13 @@ fn build_parquet_exec(
 
     let store = state.runtime_env().object_store(&store_url)?;
 
+    let reader_options = ExtendedParquetReaderOptions {
+        metadata_cache: Some(state.runtime_env().cache_manager.get_file_metadata_cache()),
+    };
     let parquet_file_reader_factory = Arc::new(ExtendedParquetFileReaderFactory::new(
         store.clone(),
         io_handle,
+        reader_options,
     ));
 
     let source = ParquetSource::new(table_schema)

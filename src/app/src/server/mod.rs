@@ -97,6 +97,7 @@ async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> R
     let memory_limit = lakelet_context.server_config.resolve_memory_limit()?;
     let runtime_env_builder = RuntimeEnvBuilder::new().with_memory_limit(memory_limit, 1.0);
     let runtime_env = runtime_env_builder
+        .with_metadata_cache_limit(128 * 1024 * 1024) // 128MB parquet metadata cache
         .with_object_list_cache_limit(5 * 1024 * 1024) // 5MB
         .with_object_list_cache_ttl(Some(Duration::from_hours(1))) // 1 hour cache
         .with_object_store_registry(Arc::new(DefaultObjectStoreRegistry::new()))

@@ -1,21 +1,50 @@
+use bytes::Bytes;
 use datafusion::datasource::listing::PartitionedFile;
-use datafusion::datasource::physical_plan::parquet::ParquetFileReader;
+use datafusion::datasource::physical_plan::parquet::metadata::DFParquetMetadata;
 use datafusion::datasource::physical_plan::{ParquetFileMetrics, ParquetFileReaderFactory};
+use datafusion::execution::cache::cache_manager::FileMetadataCache;
 use datafusion::object_store::ObjectStore;
+use datafusion::parquet::arrow::arrow_reader::ArrowReaderOptions;
 use datafusion::parquet::arrow::async_reader::{AsyncFileReader, ParquetObjectReader};
+use datafusion::parquet::errors::{ParquetError, Result as ParquetResult};
+use datafusion::parquet::file::metadata::{PageIndexPolicy, ParquetMetaData};
 use datafusion::physical_expr_common::metrics::ExecutionPlanMetricsSet;
+use futures::FutureExt;
+use futures::future::BoxFuture;
+use std::ops::Range;
 use std::sync::Arc;
 use tokio::runtime::Handle;
+
+/// Tunables for the readers handed out by [`ExtendedParquetFileReaderFactory`].
+///
+/// Kept as a struct rather than positional arguments so that upcoming knobs
+/// (IO prefetch depth, prefetch byte budget, ...) do not churn every call site.
+#[derive(Debug, Clone, Default)]
+pub struct ExtendedParquetReaderOptions {
+    /// Process-wide parquet metadata cache, normally
+    /// `state.runtime_env().cache_manager.get_file_metadata_cache()`.
+    /// `None` falls back to reading the footer on every scan.
+    pub metadata_cache: Option<Arc<dyn FileMetadataCache>>,
+}
 
 #[derive(Debug)]
 pub struct ExtendedParquetFileReaderFactory {
     io_handle: Handle,
     store: Arc<dyn ObjectStore>,
+    options: ExtendedParquetReaderOptions,
 }
 
 impl ExtendedParquetFileReaderFactory {
-    pub fn new(store: Arc<dyn ObjectStore>, io_handle: Handle) -> Self {
-        Self { store, io_handle }
+    pub fn new(
+        store: Arc<dyn ObjectStore>,
+        io_handle: Handle,
+        options: ExtendedParquetReaderOptions,
+    ) -> Self {
+        Self {
+            store,
+            io_handle,
+            options,
+        }
     }
 }
 
@@ -38,14 +67,131 @@ impl ParquetFileReaderFactory for ExtendedParquetFileReaderFactory {
                 .with_file_size(partitioned_file.object_meta.size)
                 .with_runtime(self.io_handle.clone());
 
+        // `get_metadata` below bypasses `inner` and passes the hint to
+        // `DFParquetMetadata` instead, but keep `inner` consistently configured.
         if let Some(hint) = metadata_size_hint {
             inner = inner.with_footer_size_hint(hint)
         };
 
-        Ok(Box::new(ParquetFileReader {
-            inner,
+        Ok(Box::new(ExtendedParquetFileReader {
             file_metrics,
+            inner,
+            store: Arc::clone(&self.store),
             partitioned_file,
+            io_handle: self.io_handle.clone(),
+            options: self.options.clone(),
+            metadata_size_hint,
         }))
+    }
+}
+
+/// Reads a parquet file from object storage, keeping every byte of IO on the
+/// dedicated IO runtime and serving the file metadata from a
+/// [`FileMetadataCache`] when one is configured.
+struct ExtendedParquetFileReader {
+    file_metrics: ParquetFileMetrics,
+    /// Data reader, already bound to the IO runtime via
+    /// [`ParquetObjectReader::with_runtime`].
+    inner: ParquetObjectReader,
+    store: Arc<dyn ObjectStore>,
+    partitioned_file: PartitionedFile,
+    io_handle: Handle,
+    options: ExtendedParquetReaderOptions,
+    metadata_size_hint: Option<usize>,
+}
+
+impl ExtendedParquetFileReader {
+    /// Single funnel for all data IO: both `AsyncFileReader` byte entry points
+    /// route through here, so prefetching only ever needs to hook this one spot.
+    ///
+    /// A one-element request is equivalent to `ObjectStore::get_range`, since
+    /// `get_ranges` coalesces into a single fetch in that case.
+    fn fetch_ranges(
+        &mut self,
+        ranges: Vec<Range<u64>>,
+    ) -> BoxFuture<'_, ParquetResult<Vec<Bytes>>> {
+        let total: u64 = ranges.iter().map(|r| r.end - r.start).sum();
+        self.file_metrics.bytes_scanned.add(total as usize);
+        self.inner.get_byte_ranges(ranges)
+    }
+
+    /// Submits an IO task to the dedicated IO runtime. Shared by the metadata
+    /// fetch below and, later, by prefetch tasks.
+    fn spawn_on_io<F, T>(&self, future: F) -> BoxFuture<'static, ParquetResult<T>>
+    where
+        F: Future<Output = ParquetResult<T>> + Send + 'static,
+        T: Send + 'static,
+    {
+        let join_handle = self.io_handle.spawn(future);
+        async move {
+            join_handle.await.map_err(|e| {
+                ParquetError::General(format!("Parquet IO task failed to complete: {e}"))
+            })?
+        }
+        .boxed()
+    }
+}
+
+impl AsyncFileReader for ExtendedParquetFileReader {
+    fn get_bytes(&mut self, range: Range<u64>) -> BoxFuture<'_, ParquetResult<Bytes>> {
+        async move {
+            let mut bytes = self.fetch_ranges(vec![range]).await?;
+            // `get_byte_ranges` returns one buffer per requested range.
+            bytes.pop().ok_or_else(|| {
+                ParquetError::General("Parquet range request returned no data".to_string())
+            })
+        }
+        .boxed()
+    }
+
+    fn get_byte_ranges(
+        &mut self,
+        ranges: Vec<Range<u64>>,
+    ) -> BoxFuture<'_, ParquetResult<Vec<Bytes>>>
+    where
+        Self: Send,
+    {
+        self.fetch_ranges(ranges)
+    }
+
+    fn get_metadata<'a>(
+        &'a mut self,
+        options: Option<&'a ArrowReaderOptions>,
+    ) -> BoxFuture<'a, ParquetResult<Arc<ParquetMetaData>>> {
+        // `PageIndexPolicy` is `Copy`; read it out here so the spawned task does
+        // not borrow `options`.
+        let page_index_policy: Option<PageIndexPolicy> =
+            options.map(|options| options.column_index_policy());
+        let store = Arc::clone(&self.store);
+        let object_meta = self.partitioned_file.object_meta.clone();
+        let metadata_cache = self.options.metadata_cache.clone();
+        let metadata_size_hint = self.metadata_size_hint;
+
+        self.spawn_on_io(async move {
+            DFParquetMetadata::new(&store, &object_meta)
+                .with_file_metadata_cache(metadata_cache)
+                .with_metadata_size_hint(metadata_size_hint)
+                .with_page_index_policy(page_index_policy)
+                .fetch_metadata()
+                .await
+                .map_err(|e| {
+                    ParquetError::General(format!(
+                        "Failed to fetch metadata for file {}: {e}",
+                        object_meta.location,
+                    ))
+                })
+        })
+    }
+}
+
+impl Drop for ExtendedParquetFileReader {
+    fn drop(&mut self) {
+        self.file_metrics
+            .scan_efficiency_ratio
+            .add_part(self.file_metrics.bytes_scanned.value());
+        // Multiple readers may run, so set_total avoids adding the total multiple times.
+        self.file_metrics
+            .scan_efficiency_ratio
+            .set_total(self.partitioned_file.object_meta.size as usize);
     }
 }
