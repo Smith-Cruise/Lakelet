@@ -3,9 +3,11 @@ use datafusion::datasource::listing::PartitionedFile;
 use datafusion::datasource::physical_plan::parquet::metadata::DFParquetMetadata;
 use datafusion::datasource::physical_plan::{ParquetFileMetrics, ParquetFileReaderFactory};
 use datafusion::execution::cache::cache_manager::FileMetadataCache;
-use datafusion::object_store::ObjectStore;
+use datafusion::object_store::{
+    OBJECT_STORE_COALESCE_DEFAULT, ObjectStore, ObjectStoreExt, coalesce_ranges,
+};
 use datafusion::parquet::arrow::arrow_reader::ArrowReaderOptions;
-use datafusion::parquet::arrow::async_reader::{AsyncFileReader, ParquetObjectReader};
+use datafusion::parquet::arrow::async_reader::AsyncFileReader;
 use datafusion::parquet::errors::{ParquetError, Result as ParquetResult};
 use datafusion::parquet::file::metadata::{PageIndexPolicy, ParquetMetaData};
 use datafusion::physical_expr_common::metrics::ExecutionPlanMetricsSet;
@@ -61,21 +63,9 @@ impl ParquetFileReaderFactory for ExtendedParquetFileReaderFactory {
             partitioned_file.object_meta.location.as_ref(),
             metrics,
         );
-        let store = Arc::clone(&self.store);
-        let mut inner =
-            ParquetObjectReader::new(store, partitioned_file.object_meta.location.clone())
-                .with_file_size(partitioned_file.object_meta.size)
-                .with_runtime(self.io_handle.clone());
-
-        // `get_metadata` below bypasses `inner` and passes the hint to
-        // `DFParquetMetadata` instead, but keep `inner` consistently configured.
-        if let Some(hint) = metadata_size_hint {
-            inner = inner.with_footer_size_hint(hint)
-        };
 
         Ok(Box::new(ExtendedParquetFileReader {
             file_metrics,
-            inner,
             store: Arc::clone(&self.store),
             partitioned_file,
             io_handle: self.io_handle.clone(),
@@ -90,9 +80,6 @@ impl ParquetFileReaderFactory for ExtendedParquetFileReaderFactory {
 /// [`FileMetadataCache`] when one is configured.
 struct ExtendedParquetFileReader {
     file_metrics: ParquetFileMetrics,
-    /// Data reader, already bound to the IO runtime via
-    /// [`ParquetObjectReader::with_runtime`].
-    inner: ParquetObjectReader,
     store: Arc<dyn ObjectStore>,
     partitioned_file: PartitionedFile,
     io_handle: Handle,
@@ -104,15 +91,28 @@ impl ExtendedParquetFileReader {
     /// Single funnel for all data IO: both `AsyncFileReader` byte entry points
     /// route through here, so prefetching only ever needs to hook this one spot.
     ///
-    /// A one-element request is equivalent to `ObjectStore::get_range`, since
-    /// `get_ranges` coalesces into a single fetch in that case.
+    /// Ranges close to each other are merged into a single object store request,
+    /// which matters because the store backing this reader is an opendal store
+    /// that overrides `ObjectStore::get_ranges` with one read per range and so
+    /// loses the coalescing the `object_store` default implementation provides.
     fn fetch_ranges(
         &mut self,
         ranges: Vec<Range<u64>>,
-    ) -> BoxFuture<'_, ParquetResult<Vec<Bytes>>> {
+    ) -> BoxFuture<'static, ParquetResult<Vec<Bytes>>> {
         let total: u64 = ranges.iter().map(|r| r.end - r.start).sum();
         self.file_metrics.bytes_scanned.add(total as usize);
-        self.inner.get_byte_ranges(ranges)
+
+        let store = Arc::clone(&self.store);
+        let path = self.partitioned_file.object_meta.location.clone();
+        self.spawn_on_io(async move {
+            coalesce_ranges(
+                &ranges,
+                |range| store.get_range(&path, range),
+                OBJECT_STORE_COALESCE_DEFAULT,
+            )
+            .await
+            .map_err(ParquetError::from)
+        })
     }
 
     /// Submits an IO task to the dedicated IO runtime. Shared by the metadata
@@ -124,9 +124,15 @@ impl ExtendedParquetFileReader {
     {
         let join_handle = self.io_handle.spawn(future);
         async move {
-            join_handle.await.map_err(|e| {
-                ParquetError::General(format!("Parquet IO task failed to complete: {e}"))
-            })?
+            match join_handle.await {
+                Ok(res) => res,
+                // Surface a panicking IO task as a panic instead of hiding it
+                // behind an error, the same way `ParquetObjectReader` does.
+                Err(e) => match e.try_into_panic() {
+                    Ok(p) => std::panic::resume_unwind(p),
+                    Err(e) => Err(ParquetError::External(Box::new(e))),
+                },
+            }
         }
         .boxed()
     }
@@ -134,9 +140,10 @@ impl ExtendedParquetFileReader {
 
 impl AsyncFileReader for ExtendedParquetFileReader {
     fn get_bytes(&mut self, range: Range<u64>) -> BoxFuture<'_, ParquetResult<Bytes>> {
+        let fetch = self.fetch_ranges(vec![range]);
         async move {
-            let mut bytes = self.fetch_ranges(vec![range]).await?;
-            // `get_byte_ranges` returns one buffer per requested range.
+            let mut bytes = fetch.await?;
+            // `fetch_ranges` returns one buffer per requested range.
             bytes.pop().ok_or_else(|| {
                 ParquetError::General("Parquet range request returned no data".to_string())
             })
