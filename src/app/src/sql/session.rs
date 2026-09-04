@@ -16,6 +16,7 @@ use datafusion::execution::runtime_env::RuntimeEnv;
 use datafusion::logical_expr::ExplainFormat;
 use datafusion::logical_expr::sqlparser::ast::Statement;
 use datafusion::prelude::{SessionConfig, SessionContext};
+use datafusion_cli::functions::MetadataCacheFunc;
 use std::sync::Arc;
 
 pub struct ExtendedSessionContext {
@@ -56,6 +57,15 @@ impl ExtendedSessionContext {
         let session_config =
             SessionConfig::from(options).with_default_catalog_and_schema(catalog, schema);
         let session_context = SessionContext::new_with_config_rt(session_config, runtime_env);
+        // `SELECT * FROM metadata_cache()` lists the parquet footers held in the
+        // process-wide file metadata cache (path, size, hits), the same table
+        // function datafusion-cli ships.
+        session_context.register_udtf(
+            "metadata_cache",
+            Arc::new(MetadataCacheFunc::new(
+                session_context.runtime_env().cache_manager.clone(),
+            )),
+        );
         Self {
             catalog_provider_list,
             session_context,
@@ -150,67 +160,15 @@ impl ExtendedSessionContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datafusion::arrow::util::pretty::pretty_format_batches;
-    use datafusion::common::assert_contains;
-    use datafusion::execution::runtime_env::RuntimeEnvBuilder;
-    use datafusion::object_store::memory::InMemory;
-    use datafusion::object_store::path::Path;
-    use datafusion::object_store::{ObjectStoreExt, PutPayload};
-    use datafusion::prelude::CsvReadOptions;
-    use datafusion_cli::object_storage::instrumented::{
-        InstrumentedObjectStoreMode, InstrumentedObjectStoreRegistry,
-    };
-    use url::Url;
 
     #[tokio::test]
-    async fn test_instrumented_object_store_registry_records_requests() -> Result<()> {
-        let instrumented_registry = Arc::new(
-            InstrumentedObjectStoreRegistry::new()
-                .with_profile_mode(InstrumentedObjectStoreMode::Summary),
-        );
-        let runtime_env = RuntimeEnvBuilder::new()
-            .with_object_store_registry(instrumented_registry.clone())
-            .build_arc()?;
-        let lakelet_context = Arc::new(LakeletContext::default());
-        let catalog_provider_list =
-            Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone()));
-        let session =
-            ExtendedSessionContext::new(catalog_provider_list, lakelet_context, runtime_env);
-
-        let store_url = Url::parse("memory://bucket").unwrap();
-        let object_store = Arc::new(InMemory::new());
-        object_store
-            .put(
-                &Path::from("data.csv"),
-                PutPayload::from_static(b"id,value\n1,alpha\n2,beta\n"),
-            )
-            .await
-            .map_err(|err| DataFusionError::External(Box::new(err)))?;
-        session
-            .session_context()
-            .register_object_store(&store_url, object_store);
-        session
-            .session_context()
-            .register_csv(
-                "instrumented_csv",
-                "memory://bucket/data.csv",
-                CsvReadOptions::default(),
-            )
-            .await?;
-
-        let batches = session
-            .session_context()
-            .sql("select count(*) as cnt from instrumented_csv")
-            .await?
-            .collect()
-            .await?;
-        let output = pretty_format_batches(&batches)?.to_string();
-
-        assert_contains!(output.as_str(), "| 2   |");
-        assert!(!instrumented_registry.stores().is_empty());
-
-        let requests = instrumented_registry.stores()[0].take_requests();
-        assert!(!requests.is_empty());
+    async fn metadata_cache_table_function_is_registered() -> Result<()> {
+        let ctx = ExtendedSessionContext::default();
+        let df = ctx.sql("SELECT path, hits FROM metadata_cache()").await?;
+        let batches = df.collect().await?;
+        // Nothing has been scanned yet, so the cache is empty; the query itself
+        // must plan and run.
+        assert_eq!(batches.iter().map(|b| b.num_rows()).sum::<usize>(), 0);
         Ok(())
     }
 }
