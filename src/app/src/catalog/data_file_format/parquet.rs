@@ -19,8 +19,8 @@ use tokio::runtime::Handle;
 
 /// Tunables for the readers handed out by [`ExtendedParquetFileReaderFactory`].
 ///
-/// Kept as a struct rather than positional arguments so that upcoming knobs
-/// (IO prefetch depth, prefetch byte budget, ...) do not churn every call site.
+/// Kept as a struct rather than positional arguments so that adding a reader
+/// tunable later does not churn every call site.
 #[derive(Debug, Clone, Default)]
 pub struct ExtendedParquetReaderOptions {
     /// Process-wide parquet metadata cache, normally
@@ -89,7 +89,7 @@ struct ExtendedParquetFileReader {
 
 impl ExtendedParquetFileReader {
     /// Single funnel for all data IO: both `AsyncFileReader` byte entry points
-    /// route through here, so prefetching only ever needs to hook this one spot.
+    /// route through here.
     ///
     /// Ranges close to each other are merged into a single object store request,
     /// which matters because the store backing this reader is an opendal store
@@ -115,8 +115,8 @@ impl ExtendedParquetFileReader {
         })
     }
 
-    /// Submits an IO task to the dedicated IO runtime. Shared by the metadata
-    /// fetch below and, later, by prefetch tasks.
+    /// Submits an IO task to the dedicated IO runtime. Shared by the data fetch
+    /// above and the metadata fetch below.
     fn spawn_on_io<F, T>(&self, future: F) -> BoxFuture<'static, ParquetResult<T>>
     where
         F: Future<Output = ParquetResult<T>> + Send + 'static,
