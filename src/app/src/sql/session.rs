@@ -16,6 +16,7 @@ use datafusion::execution::runtime_env::RuntimeEnv;
 use datafusion::logical_expr::ExplainFormat;
 use datafusion::logical_expr::sqlparser::ast::Statement;
 use datafusion::prelude::{SessionConfig, SessionContext};
+use datafusion_cli::functions::MetadataCacheFunc;
 use std::sync::Arc;
 
 pub struct ExtendedSessionContext {
@@ -56,6 +57,15 @@ impl ExtendedSessionContext {
         let session_config =
             SessionConfig::from(options).with_default_catalog_and_schema(catalog, schema);
         let session_context = SessionContext::new_with_config_rt(session_config, runtime_env);
+        // `SELECT * FROM metadata_cache()` lists the parquet footers held in the
+        // process-wide file metadata cache (path, size, hits), the same table
+        // function datafusion-cli ships.
+        session_context.register_udtf(
+            "metadata_cache",
+            Arc::new(MetadataCacheFunc::new(
+                session_context.runtime_env().cache_manager.clone(),
+            )),
+        );
         Self {
             catalog_provider_list,
             session_context,
@@ -144,5 +154,21 @@ impl ExtendedSessionContext {
 
     pub fn session_context(&self) -> &SessionContext {
         &self.session_context
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn metadata_cache_table_function_is_registered() -> Result<()> {
+        let ctx = ExtendedSessionContext::default();
+        let df = ctx.sql("SELECT path, hits FROM metadata_cache()").await?;
+        let batches = df.collect().await?;
+        // Nothing has been scanned yet, so the cache is empty; the query itself
+        // must plan and run.
+        assert_eq!(batches.iter().map(|b| b.num_rows()).sum::<usize>(), 0);
+        Ok(())
     }
 }
