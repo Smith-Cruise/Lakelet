@@ -5,6 +5,7 @@ use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::catalog::{Session, TableProvider};
 use datafusion::common::{Result, TableReference};
 use datafusion::datasource::TableType;
+use datafusion::logical_expr::dml::InsertOp;
 use datafusion::logical_expr::{Expr, TableProviderFilterPushDown};
 use datafusion::physical_plan::ExecutionPlan;
 use paimon_datafusion::PaimonTableProvider;
@@ -70,5 +71,16 @@ impl TableProvider for LakeletPaimonTableProvider {
         filters: &[&Expr],
     ) -> Result<Vec<TableProviderFilterPushDown>> {
         self.inner_provider.supports_filters_pushdown(filters)
+    }
+
+    async fn insert_into(
+        &self,
+        state: &dyn Session,
+        input: Arc<dyn ExecutionPlan>,
+        insert_op: InsertOp,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        self.inner_provider
+            .insert_into(state, input, insert_op)
+            .await
     }
 }
