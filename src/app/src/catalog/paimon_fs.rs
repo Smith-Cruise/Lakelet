@@ -316,4 +316,81 @@ mod tests {
             "{error:?}"
         );
     }
+
+    #[tokio::test]
+    async fn test_paimon_fs_insert_and_read_back() {
+        use datafusion::arrow::array::{Int32Array, UInt64Array};
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let config = Arc::new(PaimonFSCatalogConfig {
+            name: "paimon_fs_1".to_string(),
+            warehouse: temp_dir.path().to_str().unwrap().to_string(),
+            storage: Storage::default(),
+        });
+        let lakelet_context = Arc::new(LakeletContext::default());
+        let catalog = PaimonFSCatalog::try_new(lakelet_context.clone(), config.clone()).unwrap();
+
+        let inner_catalog = catalog.inner_catalog.clone();
+        inner_catalog
+            .create_database("db1", false, HashMap::new())
+            .await
+            .unwrap();
+        let schema = paimon::spec::Schema::builder()
+            .column(
+                "id",
+                paimon::spec::DataType::Int(paimon::spec::IntType::new()),
+            )
+            .build()
+            .unwrap();
+        inner_catalog
+            .create_table(&Identifier::new("db1", "t1"), schema, false)
+            .await
+            .unwrap();
+
+        let schema_provider = PaimonFSSchema::new(lakelet_context, config, "db1");
+        let ctx = datafusion::prelude::SessionContext::new();
+
+        // INSERT goes through the Lakelet wrapper, which must forward to
+        // paimon-datafusion's sink; the result is a single row count.
+        let provider = schema_provider.table("t1").await.unwrap().unwrap();
+        ctx.register_table("t1", provider).unwrap();
+        let batches = ctx
+            .sql("INSERT INTO t1 VALUES (1), (2)")
+            .await
+            .unwrap()
+            .collect()
+            .await
+            .unwrap();
+        let count = batches[0]
+            .column(0)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .unwrap();
+        assert_eq!(count.value(0), 2);
+
+        // Lakelet rebuilds the provider per statement, so read back through a
+        // fresh one to make sure the commit is visible from the warehouse.
+        let provider = schema_provider.table("t1").await.unwrap().unwrap();
+        let batches = ctx
+            .read_table(provider)
+            .unwrap()
+            .sort(vec![datafusion::prelude::col("id").sort(true, true)])
+            .unwrap()
+            .collect()
+            .await
+            .unwrap();
+        let ids: Vec<i32> = batches
+            .iter()
+            .flat_map(|batch| {
+                batch
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<Int32Array>()
+                    .unwrap()
+                    .values()
+                    .to_vec()
+            })
+            .collect();
+        assert_eq!(ids, vec![1, 2]);
+    }
 }
