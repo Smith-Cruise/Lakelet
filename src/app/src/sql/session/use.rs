@@ -71,9 +71,10 @@ impl ExtendedSessionContext {
 
         if let Some(schema_name) = schema_name {
             if !self
-                .lakelet_context
-                .catalog_manager
-                .schema_exist(&catalog_name, &schema_name)
+                .catalog_provider_list
+                .get_catalog(&catalog_name)?
+                .unwrap()
+                .schema_exist(&schema_name)
                 .await?
             {
                 return Err(DataFusionError::Plan(format!(
