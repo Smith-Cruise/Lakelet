@@ -53,6 +53,11 @@ impl LakeletCatalogProviderList {
     pub fn get_catalog(&self, catalog_name: &str) -> Option<Arc<dyn LakeletCatalogProvider>> {
         self.catalogs.get(catalog_name).cloned()
     }
+
+    /// The names of every configured catalog, in no particular order.
+    pub fn catalog_names(&self) -> Vec<String> {
+        self.catalogs.keys().cloned().collect()
+    }
 }
 
 fn build_catalog_provider(

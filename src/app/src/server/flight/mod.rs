@@ -1,3 +1,4 @@
+mod metadata;
 mod sql_info;
 
 use crate::catalog::LakeletCatalogProviderList;
@@ -8,7 +9,8 @@ use arrow_flight::error::FlightError;
 use arrow_flight::flight_service_server::{FlightService, FlightServiceServer};
 use arrow_flight::sql::server::FlightSqlService;
 use arrow_flight::sql::{
-    CommandGetSqlInfo, CommandStatementQuery, ProstMessageExt, SqlInfo, TicketStatementQuery,
+    CommandGetCatalogs, CommandGetDbSchemas, CommandGetSqlInfo, CommandGetTableTypes,
+    CommandGetTables, CommandStatementQuery, ProstMessageExt, SqlInfo, TicketStatementQuery,
 };
 use arrow_flight::{
     FlightDescriptor, FlightEndpoint, FlightInfo, HandshakeRequest, HandshakeResponse, Ticket,
@@ -292,12 +294,120 @@ impl FlightSqlService for LakeletFlightSqlService {
     ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
         let builder = query.into_builder(&sql_info::SQL_INFO_DATA);
         let schema = builder.schema();
-        let batch = builder.build();
-        let stream = FlightDataEncoderBuilder::new()
-            .with_schema(schema)
-            .build(futures::stream::once(async { batch }))
-            .map_err(Status::from);
-        Ok(Response::new(Box::pin(stream)))
+        let batch = builder.build().map_err(Status::from)?;
+        Ok(metadata::single_batch_response(schema, batch))
+    }
+
+    async fn get_flight_info_catalogs(
+        &self,
+        query: CommandGetCatalogs,
+        request: Request<FlightDescriptor>,
+    ) -> Result<Response<FlightInfo>, Status> {
+        let flight_info = Self::flight_info(
+            &metadata::catalogs_schema(),
+            query.as_any().encode_to_vec(),
+            request.into_inner(),
+        )?;
+        Ok(Response::new(flight_info))
+    }
+
+    async fn do_get_catalogs(
+        &self,
+        _query: CommandGetCatalogs,
+        _request: Request<Ticket>,
+    ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
+        let batch = metadata::catalogs_batch(&self.catalog_provider_list)?;
+        Ok(metadata::single_batch_response(
+            metadata::catalogs_schema(),
+            batch,
+        ))
+    }
+
+    async fn get_flight_info_schemas(
+        &self,
+        query: CommandGetDbSchemas,
+        request: Request<FlightDescriptor>,
+    ) -> Result<Response<FlightInfo>, Status> {
+        // Reject an unsupported request here rather than at DoGet, so the
+        // client never holds a ticket it cannot redeem.
+        metadata::require_catalog(
+            &self.catalog_provider_list,
+            query.catalog.as_deref(),
+            "GetDbSchemas",
+        )?;
+        let flight_info = Self::flight_info(
+            &metadata::db_schemas_schema(),
+            query.as_any().encode_to_vec(),
+            request.into_inner(),
+        )?;
+        Ok(Response::new(flight_info))
+    }
+
+    async fn do_get_schemas(
+        &self,
+        query: CommandGetDbSchemas,
+        _request: Request<Ticket>,
+    ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
+        let batch = metadata::db_schemas_batch(&self.catalog_provider_list, &query).await?;
+        Ok(metadata::single_batch_response(
+            metadata::db_schemas_schema(),
+            batch,
+        ))
+    }
+
+    async fn get_flight_info_tables(
+        &self,
+        query: CommandGetTables,
+        request: Request<FlightDescriptor>,
+    ) -> Result<Response<FlightInfo>, Status> {
+        // `include_schema` especially must be refused here: the advertised
+        // schema has no table_schema column, so letting the request through
+        // would hand the client a FlightInfo that answers a different
+        // question than the one it asked.
+        metadata::validate_tables_request(&self.catalog_provider_list, &query)?;
+        let flight_info = Self::flight_info(
+            &metadata::tables_schema(),
+            query.as_any().encode_to_vec(),
+            request.into_inner(),
+        )?;
+        Ok(Response::new(flight_info))
+    }
+
+    async fn do_get_tables(
+        &self,
+        query: CommandGetTables,
+        _request: Request<Ticket>,
+    ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
+        let batch = metadata::tables_batch(&self.catalog_provider_list, &query).await?;
+        Ok(metadata::single_batch_response(
+            metadata::tables_schema(),
+            batch,
+        ))
+    }
+
+    async fn get_flight_info_table_types(
+        &self,
+        query: CommandGetTableTypes,
+        request: Request<FlightDescriptor>,
+    ) -> Result<Response<FlightInfo>, Status> {
+        let flight_info = Self::flight_info(
+            &metadata::table_types_schema(),
+            query.as_any().encode_to_vec(),
+            request.into_inner(),
+        )?;
+        Ok(Response::new(flight_info))
+    }
+
+    async fn do_get_table_types(
+        &self,
+        _query: CommandGetTableTypes,
+        _request: Request<Ticket>,
+    ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
+        let batch = metadata::table_types_batch()?;
+        Ok(metadata::single_batch_response(
+            metadata::table_types_schema(),
+            batch,
+        ))
     }
 
     // Sql-info is served from the static table in `sql_info`, so there is no
@@ -308,9 +418,12 @@ impl FlightSqlService for LakeletFlightSqlService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::catalog::{INFORMATION_SCHEMA_SHOW_VARIABLES, INTERNAL_CATALOG};
     use arrow_flight::sql::client::FlightSqlServiceClient;
-    use datafusion::arrow::array::{Int64Array, UInt32Array};
+    use datafusion::arrow::array::{Int64Array, StringArray, UInt32Array};
     use datafusion::arrow::datatypes::DataType;
+    use datafusion::arrow::record_batch::RecordBatch;
+    use datafusion::catalog::information_schema::INFORMATION_SCHEMA;
     use tonic::transport::Channel;
 
     async fn start_test_server() -> Result<FlightSqlServiceClient<Channel>> {
@@ -542,6 +655,91 @@ mod tests {
             .await
             .expect("result stream should decode");
         assert_eq!(batches[0].schema().field(0).data_type(), &DataType::Utf8);
+        Ok(())
+    }
+
+    async fn fetch_batches(
+        client: &mut FlightSqlServiceClient<Channel>,
+        flight_info: FlightInfo,
+    ) -> Vec<RecordBatch> {
+        let ticket = flight_info.endpoint[0]
+            .ticket
+            .clone()
+            .expect("endpoint should carry a ticket");
+        client
+            .do_get(ticket)
+            .await
+            .expect("do_get should stream results")
+            .try_collect()
+            .await
+            .expect("result stream should decode")
+    }
+
+    fn string_column(batch: &RecordBatch, column_name: &str) -> Vec<String> {
+        batch
+            .column_by_name(column_name)
+            .unwrap_or_else(|| panic!("batch should have a {column_name} column"))
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .expect("column should be Utf8")
+            .iter()
+            .flatten()
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn test_get_metadata_endpoints() -> Result<()> {
+        let mut client = start_test_server().await?;
+
+        // The default context registers the internal catalog and nothing else,
+        // so every listing below has exactly one known answer.
+        let flight_info = client
+            .get_catalogs()
+            .await
+            .expect("get_catalogs should succeed");
+        let batches = fetch_batches(&mut client, flight_info).await;
+        assert_eq!(
+            string_column(&batches[0], "catalog_name"),
+            vec![INTERNAL_CATALOG]
+        );
+
+        let flight_info = client
+            .get_db_schemas(CommandGetDbSchemas {
+                catalog: Some(INTERNAL_CATALOG.to_string()),
+                ..Default::default()
+            })
+            .await
+            .expect("get_db_schemas should succeed");
+        let batches = fetch_batches(&mut client, flight_info).await;
+        assert_eq!(
+            string_column(&batches[0], "db_schema_name"),
+            vec![INFORMATION_SCHEMA]
+        );
+
+        let flight_info = client
+            .get_tables(CommandGetTables {
+                catalog: Some(INTERNAL_CATALOG.to_string()),
+                db_schema_filter_pattern: Some(INFORMATION_SCHEMA.to_string()),
+                ..Default::default()
+            })
+            .await
+            .expect("get_tables should succeed");
+        let batches = fetch_batches(&mut client, flight_info).await;
+        assert_eq!(
+            string_column(&batches[0], "table_name"),
+            vec![INFORMATION_SCHEMA_SHOW_VARIABLES]
+        );
+        assert_eq!(string_column(&batches[0], "table_type"), vec!["TABLE"]);
+        // include_schema is refused outright, so the column never appears.
+        assert!(batches[0].column_by_name("table_schema").is_none());
+
+        let flight_info = client
+            .get_table_types()
+            .await
+            .expect("get_table_types should succeed");
+        let batches = fetch_batches(&mut client, flight_info).await;
+        assert_eq!(string_column(&batches[0], "table_type"), vec!["TABLE"]);
         Ok(())
     }
 
