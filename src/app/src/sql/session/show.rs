@@ -117,7 +117,7 @@ impl ExtendedSessionContext {
         let catalog_name = Self::resolve_show_scope(show_options, "SHOW SCHEMAS", 1)?
             .map_or_else(|| default_catalog, |parts| parts[0].clone());
 
-        let Some(catalog) = self.catalog_provider_list.get_catalog(&catalog_name)? else {
+        let Some(catalog) = self.catalog_provider_list.get_catalog(&catalog_name) else {
             return Err(DataFusionError::Plan(format!(
                 "unknown catalog {}",
                 catalog_name
@@ -146,7 +146,7 @@ impl ExtendedSessionContext {
                 Some(parts) => (parts[0].clone(), parts[1].clone()),
             };
 
-        let Some(catalog) = self.catalog_provider_list.get_catalog(&catalog_name)? else {
+        let Some(catalog) = self.catalog_provider_list.get_catalog(&catalog_name) else {
             return Err(DataFusionError::Plan(format!(
                 "unknown catalog {}",
                 catalog_name

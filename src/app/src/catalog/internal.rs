@@ -56,11 +56,6 @@ impl LakeletCatalogProvider for InternalCatalog {
         let schema_names = self.list_schema_names().await?;
         Ok(schema_names.iter().any(|name| name == schema_name))
     }
-
-    async fn table_exist(&self, table_name: &str, schema_name: &str) -> Result<bool> {
-        let table_names = self.list_table_names(schema_name).await?;
-        Ok(table_names.iter().any(|name| name == table_name))
-    }
 }
 
 #[async_trait]

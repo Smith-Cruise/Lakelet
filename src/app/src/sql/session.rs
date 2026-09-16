@@ -28,12 +28,16 @@ pub struct ExtendedSessionContext {
     session_context: SessionContext,
 }
 
+// Only for unit tests: the real entry points build the provider list from a
+// configured `LakeletContext` and propagate its error.
 impl Default for ExtendedSessionContext {
     fn default() -> Self {
         let lakelet_context = Arc::new(LakeletContext::default());
         let runtime_env = Arc::new(RuntimeEnv::default());
-        let catalog_provider_list =
-            Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone()));
+        let catalog_provider_list = Arc::new(
+            LakeletCatalogProviderList::new(lakelet_context.clone())
+                .expect("the internal catalog is always constructible"),
+        );
         Self::new(catalog_provider_list, lakelet_context, runtime_env)
     }
 }

@@ -21,7 +21,7 @@ use datafusion::common::Result;
 pub(crate) use internal::{INFORMATION_SCHEMA_SHOW_VARIABLES, INTERNAL_CATALOG};
 pub(crate) use manager::{CatalogConfig, CatalogConfigs, CatalogManager};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 pub(crate) use table_definition_builder::TableDefinitionBuilder;
 
 #[async_trait]
@@ -31,75 +31,57 @@ pub trait LakeletCatalogProvider: AsyncCatalogProvider {
     async fn list_table_names(&self, schema_name: &str) -> Result<Vec<String>>;
 
     async fn schema_exist(&self, schema_name: &str) -> Result<bool>;
-
-    async fn table_exist(&self, table_name: &str, schema_name: &str) -> Result<bool>;
 }
 
 pub struct LakeletCatalogProviderList {
-    lakelet_context: Arc<LakeletContext>,
-    // One catalog provider per configured catalog, built on first reference.
-    // Providers own their metastore clients, so caching them here keeps
-    // clients (and their connection pools) alive across statements.
-    catalogs: Mutex<HashMap<String, Arc<dyn LakeletCatalogProvider>>>,
+    // Every configured catalog gets a provider up front, so this map is
+    // immutable afterwards and needs no lock. Providers build their metastore
+    // clients lazily, so registering them all stays cheap.
+    catalogs: HashMap<String, Arc<dyn LakeletCatalogProvider>>,
 }
 
 impl LakeletCatalogProviderList {
-    pub fn new(lakelet_context: Arc<LakeletContext>) -> LakeletCatalogProviderList {
-        Self {
-            lakelet_context,
-            catalogs: Mutex::new(HashMap::new()),
+    pub fn new(lakelet_context: Arc<LakeletContext>) -> Result<LakeletCatalogProviderList> {
+        let mut catalogs = HashMap::new();
+        for (catalog_name, catalog_config) in lakelet_context.catalog_manager.list_catalogs() {
+            let catalog = build_catalog_provider(&lakelet_context, catalog_config)?;
+            catalogs.insert(catalog_name, catalog);
         }
+        Ok(Self { catalogs })
     }
 
-    // Keep this synchronous: every provider constructor is sync, so the lock
-    // is never held across an await point.
-    pub fn get_catalog(
-        &self,
-        catalog_name: &str,
-    ) -> Result<Option<Arc<dyn LakeletCatalogProvider>>> {
-        let mut catalogs = self.catalogs.lock().unwrap();
-        if let Some(catalog) = catalogs.get(catalog_name) {
-            return Ok(Some(catalog.clone()));
-        }
-
-        // start to create catalog
-        let catalog_config = if let Some(catalog_config) = self
-            .lakelet_context
-            .catalog_manager
-            .get_catalog(catalog_name)
-        {
-            catalog_config.clone()
-        } else {
-            return Ok(None);
-        };
-
-        let catalog: Arc<dyn LakeletCatalogProvider> = match catalog_config {
-            CatalogConfig::IcebergRest(config) => {
-                Arc::new(IcebergRestCatalog::new(Arc::new(config)))
-            }
-            CatalogConfig::Internal => Arc::new(InternalCatalog::new(self.lakelet_context.clone())),
-            CatalogConfig::HMS(hms_catalog) => Arc::new(HMSCatalog::new(
-                self.lakelet_context.clone(),
-                Arc::new(hms_catalog),
-            )),
-            CatalogConfig::GLUE(glue_catalog) => Arc::new(GlueCatalog::new(
-                self.lakelet_context.clone(),
-                Arc::new(glue_catalog),
-            )),
-            CatalogConfig::PaimonFS(paimon_fs_catalog) => Arc::new(PaimonFSCatalog::try_new(
-                self.lakelet_context.clone(),
-                Arc::new(paimon_fs_catalog),
-            )?),
-        };
-        catalogs.insert(catalog_name.to_string(), catalog.clone());
-        Ok(Some(catalog))
+    pub fn get_catalog(&self, catalog_name: &str) -> Option<Arc<dyn LakeletCatalogProvider>> {
+        self.catalogs.get(catalog_name).cloned()
     }
+}
+
+fn build_catalog_provider(
+    lakelet_context: &Arc<LakeletContext>,
+    catalog_config: CatalogConfig,
+) -> Result<Arc<dyn LakeletCatalogProvider>> {
+    let catalog: Arc<dyn LakeletCatalogProvider> = match catalog_config {
+        CatalogConfig::IcebergRest(config) => Arc::new(IcebergRestCatalog::new(Arc::new(config))),
+        CatalogConfig::Internal => Arc::new(InternalCatalog::new(lakelet_context.clone())),
+        CatalogConfig::HMS(hms_catalog) => Arc::new(HMSCatalog::new(
+            lakelet_context.clone(),
+            Arc::new(hms_catalog),
+        )),
+        CatalogConfig::GLUE(glue_catalog) => Arc::new(GlueCatalog::new(
+            lakelet_context.clone(),
+            Arc::new(glue_catalog),
+        )),
+        CatalogConfig::PaimonFS(paimon_fs_catalog) => Arc::new(PaimonFSCatalog::try_new(
+            lakelet_context.clone(),
+            Arc::new(paimon_fs_catalog),
+        )?),
+    };
+    Ok(catalog)
 }
 
 #[async_trait]
 impl AsyncCatalogProviderList for LakeletCatalogProviderList {
     async fn catalog(&self, catalog_name: &str) -> Result<Option<Arc<dyn AsyncCatalogProvider>>> {
-        let Some(catalog) = self.get_catalog(catalog_name)? else {
+        let Some(catalog) = self.get_catalog(catalog_name) else {
             return Ok(None);
         };
         Ok(Some(catalog))
@@ -111,8 +93,9 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_catalog_provider_list_caches_providers() {
-        let provider_list = LakeletCatalogProviderList::new(Arc::new(LakeletContext::default()));
+    async fn test_catalog_provider_list_registers_configured_catalogs() {
+        let provider_list =
+            LakeletCatalogProviderList::new(Arc::new(LakeletContext::default())).unwrap();
         let first = provider_list
             .catalog(INTERNAL_CATALOG)
             .await
@@ -123,7 +106,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        // Repeated resolution returns the same cached provider instance.
+        // Repeated resolution returns the same registered provider instance.
         assert!(Arc::ptr_eq(&first, &second));
         assert!(provider_list.catalog("missing").await.unwrap().is_none());
     }

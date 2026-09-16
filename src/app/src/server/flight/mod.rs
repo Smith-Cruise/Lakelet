@@ -74,8 +74,8 @@ impl LakeletFlightSqlService {
     // A fresh session per request: `create_dataframe` replaces the session's
     // catalog list with only the catalogs resolved for that query, so a shared
     // session would race under concurrent requests. Sharing the catalog
-    // provider list is safe: it is read-only per resolution and its provider
-    // cache is lock-protected.
+    // provider list is safe: its providers are registered at startup and the
+    // map is immutable afterwards.
     fn new_session(&self, session_defaults: SessionDefaults) -> ExtendedSessionContext {
         let session = ExtendedSessionContext::new(
             self.catalog_provider_list.clone(),
@@ -317,7 +317,7 @@ mod tests {
         let lakelet_context = Arc::new(LakeletContext::default());
         let runtime_env = Arc::new(RuntimeEnv::default());
         let catalog_provider_list =
-            Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone()));
+            Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone())?);
         let service =
             LakeletFlightSqlService::new(catalog_provider_list, lakelet_context, runtime_env);
 

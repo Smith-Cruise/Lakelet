@@ -133,15 +133,6 @@ impl LakeletCatalogProvider for IcebergRestCatalog {
             .await
             .map_err(to_datafusion_error)
     }
-
-    async fn table_exist(&self, table_name: &str, schema_name: &str) -> Result<bool> {
-        let client = self.client().await?;
-        let ns = namespace_from_schema(schema_name)?;
-        client
-            .table_exists(&TableIdent::new(ns, table_name.into()))
-            .await
-            .map_err(to_datafusion_error)
-    }
 }
 
 #[async_trait]

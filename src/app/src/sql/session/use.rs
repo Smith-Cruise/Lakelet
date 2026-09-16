@@ -72,7 +72,7 @@ impl ExtendedSessionContext {
         if let Some(schema_name) = schema_name {
             if !self
                 .catalog_provider_list
-                .get_catalog(&catalog_name)?
+                .get_catalog(&catalog_name)
                 .unwrap()
                 .schema_exist(&schema_name)
                 .await?
