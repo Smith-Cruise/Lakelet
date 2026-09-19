@@ -39,18 +39,27 @@ pub async fn serve(
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .map_err(|e| super::bind_error(port, "flight-sql-server-port", &e))?;
+        .map_err(|e| super::bind_error(port, "server-port", &e))?;
     let service = LakeletFlightSqlService::new(catalog_provider_list, lakelet_context, runtime_env);
-    println!("Lakelet Flight SQL server listening on port {port}");
-    #[cfg(feature = "web-ui")]
-    if crate::server::web::is_bundled() {
-        println!("Lakelet web UI available at http://localhost:{port}/");
-    } else {
-        println!(
-            "Lakelet web UI is not bundled in this build (web/dist was missing at compile time)"
-        );
-    }
+    println!("Lakelet server is running");
+    println!("  Flight SQL  grpc://localhost:{port}");
+    println!("  Web UI      {}", web_ui_status(port));
     serve_flight(service, listener).await
+}
+
+/// Where the web UI is reachable, or why it is not.
+#[cfg(feature = "web-ui")]
+fn web_ui_status(port: u16) -> String {
+    if crate::server::web::is_bundled() {
+        format!("http://localhost:{port}/")
+    } else {
+        "not bundled (web/dist was missing at compile time)".to_string()
+    }
+}
+
+#[cfg(not(feature = "web-ui"))]
+fn web_ui_status(_port: u16) -> String {
+    "not built in (compile with --features web-ui)".to_string()
 }
 
 async fn shutdown_signal() {

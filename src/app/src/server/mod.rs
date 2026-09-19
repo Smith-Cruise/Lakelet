@@ -66,10 +66,10 @@ struct LakeletArgs {
 
     #[clap(
         long,
-        help = "Start an Arrow Flight SQL server instead of the interactive REPL. Listens on 'flight-sql-server-port' under [server] in the config file (default 32010). Conflicts with --command and --file.",
+        help = "Start the Lakelet server (Arrow Flight SQL plus the web UI) instead of the interactive REPL. Listens on 'server-port' under [server] in the config file (default 32010). Conflicts with --command and --file.",
         conflicts_with_all = ["command", "file"]
     )]
-    flight_sql_server: bool,
+    server: bool,
 
     #[clap(
         short = 'V',
@@ -110,8 +110,8 @@ async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> R
     // across statements and, for Flight SQL, across requests.
     let catalog_provider_list = Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone())?);
 
-    if args.flight_sql_server {
-        let port = lakelet_context.server_config.flight_sql_server_port;
+    if args.server {
+        let port = lakelet_context.server_config.server_port;
         return flight::serve(catalog_provider_list, lakelet_context, runtime_env, port).await;
     }
 
@@ -212,20 +212,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_flight_sql_server() {
-        let args = LakeletArgs::try_parse_from([
-            "lakelet",
-            "--config",
-            "config.toml",
-            "--flight-sql-server",
-        ])
-        .expect("--flight-sql-server should parse");
+    fn test_parse_server() {
+        let args = LakeletArgs::try_parse_from(["lakelet", "--config", "config.toml", "--server"])
+            .expect("--server should parse");
 
-        assert!(args.flight_sql_server);
+        assert!(args.server);
     }
 
     #[test]
-    fn test_parse_flight_sql_server_conflicts_with_command_and_file() {
+    fn test_parse_server_conflicts_with_command_and_file() {
         let file = NamedTempFile::new().expect("temp sql file should be created");
         let file_path = file
             .path()
@@ -236,10 +231,10 @@ mod tests {
             vec!["--command", "show catalogs;"],
             vec!["--file", file_path],
         ] {
-            let mut argv = vec!["lakelet", "--config", "config.toml", "--flight-sql-server"];
+            let mut argv = vec!["lakelet", "--config", "config.toml", "--server"];
             argv.extend(conflicting);
             let err = LakeletArgs::try_parse_from(argv)
-                .expect_err("--flight-sql-server should conflict with --command/--file");
+                .expect_err("--server should conflict with --command/--file");
 
             assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
         }

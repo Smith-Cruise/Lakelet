@@ -95,10 +95,10 @@ Lakelet can run as an [Arrow Flight SQL](https://arrow.apache.org/docs/format/Fl
 server, including ADBC instead of the interactive REPL:
 
 ```bash
-lakelet --config config.toml --flight-sql-server
+lakelet --config config.toml --server
 ```
 
-The server listens on `flight-sql-server-port` under `[server]` (default
+The server listens on `server-port` under `[server]` (default
 32010).
 
 Note: Each flight SQL connection is a new fresh session, it will not share any SessionState.

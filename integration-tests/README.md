@@ -15,7 +15,7 @@ environment.
 ## Notes
 
 - Queries run over ADBC (`adbc_driver_flightsql`): pytest starts one
-  `lakelet --flight-sql-server` process for the whole session and opens one
+  `lakelet --server` process for the whole session and opens one
   connection per test file, passing the file's `-- DATABASE` via the
   `default-catalog`/`default-schema` gRPC headers. Connections explicitly use
   autocommit, and queries run through the DB-API `cursor.execute()` interface;

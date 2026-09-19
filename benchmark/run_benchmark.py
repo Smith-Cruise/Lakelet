@@ -16,7 +16,7 @@ from typing import Sequence
 RUNS_PER_QUERY = 1
 SUPPORTED_BENCHMARK_TYPES = ("tpch",)
 FLIGHT_SQL_HOST = "127.0.0.1"
-DEFAULT_FLIGHT_SQL_SERVER_PORT = 32010
+DEFAULT_SERVER_PORT = 32010
 SERVER_READY_TIMEOUT_SECONDS = 30
 SERVER_SHUTDOWN_TIMEOUT_SECONDS = 10
 
@@ -178,13 +178,13 @@ class LakeletRunner(EngineRunner):
 
     def prepare(self) -> None:
         flight_sql, database_options = load_adbc_driver()
-        self.server_port = read_flight_sql_server_port(self.config_path)
+        self.server_port = read_server_port(self.config_path)
         ensure_port_available(FLIGHT_SQL_HOST, self.server_port)
         command = [
             str(self.bin_path),
             "--config",
             str(self.config_path),
-            "--flight-sql-server",
+            "--server",
         ]
 
         try:
@@ -444,7 +444,7 @@ def load_adbc_driver():
     return flight_sql, DatabaseOptions
 
 
-def read_flight_sql_server_port(config_path: Path) -> int:
+def read_server_port(config_path: Path) -> int:
     try:
         try:
             import tomllib
@@ -469,10 +469,10 @@ def read_flight_sql_server_port(config_path: Path) -> int:
         raise BenchmarkInfrastructureError(
             f"invalid [server] table in Lakelet config: {config_path}"
         )
-    port = server.get("flight-sql-server-port", DEFAULT_FLIGHT_SQL_SERVER_PORT)
+    port = server.get("server-port", DEFAULT_SERVER_PORT)
     if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
         raise BenchmarkInfrastructureError(
-            "flight-sql-server-port must be an integer between 1 and 65535"
+            "server-port must be an integer between 1 and 65535"
         )
     return port
 
