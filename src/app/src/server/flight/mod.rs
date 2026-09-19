@@ -49,10 +49,10 @@ pub async fn serve(
 
 /// Where the web UI is reachable, or why it is not.
 fn web_ui_status(port: u16) -> String {
-    if crate::server::web::is_bundled() {
+    if lakelet_web::is_bundled() {
         format!("http://localhost:{port}/")
     } else {
-        "not bundled (web/dist was missing at compile time)".to_string()
+        lakelet_web::STATUS.to_string()
     }
 }
 
@@ -86,7 +86,7 @@ async fn serve_flight(
 fn router(service: LakeletFlightSqlService) -> Router {
     use tonic::service::{LayerExt, Routes};
 
-    let routes = Routes::from(crate::server::web::router())
+    let routes = Routes::from(lakelet_web::router())
         .add_service(tonic_web::GrpcWebLayer::new().named_layer(FlightServiceServer::new(service)));
     Server::builder().accept_http1(true).add_routes(routes)
 }
@@ -866,8 +866,11 @@ mod tests {
             "unexpected response: {response}"
         );
 
+        // `is_bundled` is a compile-time constant of `lakelet-web`, not a
+        // filesystem probe, so exactly one of these arms is the assertion for
+        // this build rather than both being tolerated.
         let response = http1_get(addr, "/").await?;
-        if crate::server::web::is_bundled() {
+        if lakelet_web::is_bundled() {
             assert!(
                 response.starts_with("HTTP/1.1 200 "),
                 "unexpected response: {response}"
@@ -878,7 +881,7 @@ mod tests {
                 response.starts_with("HTTP/1.1 404 "),
                 "unexpected response: {response}"
             );
-            assert!(response.contains("not bundled"));
+            assert!(response.contains(lakelet_web::MISSING_BUNDLE));
         }
         Ok(())
     }

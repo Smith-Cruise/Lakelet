@@ -7,7 +7,8 @@ resolver = "2"
 members = [
     "src/app",
     "src/common",
-    "src/storage"
+    "src/storage",
+    "src/web"
 ]
 
 [workspace.dependencies]
@@ -21,7 +22,11 @@ tonic-web = "0.14.6"
 # default-features = false matches how tonic already depends on axum, so the
 # web UI adds no transitive dependencies of its own.
 axum = { version = "0.8", default-features = false }
-rust-embed = { version = "8.12", features = ["mime-guess"] }
+# `debug-embed` makes debug builds embed the bundle like release builds do.
+# Without it rust-embed reads `web/dist` from an absolute path at runtime,
+# which would make `cargo test` depend on the state of the disk at test time
+# and make a debug binary useless once copied off the build machine.
+rust-embed = { version = "8.12", features = ["mime-guess", "debug-embed"] }
 tokio = { version = "1.0", features = ["rt-multi-thread", "tracing", "rt", "signal", "sync"] }
 console-subscriber = "0.5.0"
 serde = { version = "1.0.228", features = ["derive"] }
@@ -46,6 +51,7 @@ sysinfo = { version = "0.39.6", default-features = false, features = ["system"] 
 lakelet-app = { path = "src/app" }
 lakelet-storage = {path = "src/storage"}
 lakelet-common = {path = "src/common"}
+lakelet-web = { path = "src/web" }
 
 [profile.release]
 debug = 0

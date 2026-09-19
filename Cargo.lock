@@ -4331,7 +4331,6 @@ dependencies = [
  "async-trait",
  "aws-config",
  "aws-sdk-glue",
- "axum",
  "bytes",
  "clap",
  "comfy-table",
@@ -4345,6 +4344,7 @@ dependencies = [
  "iceberg-datafusion",
  "lakelet-common",
  "lakelet-storage",
+ "lakelet-web",
  "mimalloc",
  "moka",
  "opendal",
@@ -4352,7 +4352,6 @@ dependencies = [
  "paimon-datafusion",
  "percent-encoding",
  "prost 0.14.3",
- "rust-embed",
  "rustyline",
  "serde",
  "sqlparser 0.62.0",
@@ -4384,6 +4383,15 @@ dependencies = [
  "serde",
  "toml",
  "url",
+]
+
+[[package]]
+name = "lakelet-web"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "rust-embed",
+ "tokio",
 ]
 
 [[package]]

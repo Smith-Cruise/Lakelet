@@ -2,7 +2,6 @@ pub mod cli_helper;
 pub mod flight;
 pub mod print;
 pub mod repl;
-pub mod web;
 
 use crate::catalog::LakeletCatalogProviderList;
 use crate::context::LakeletContext;

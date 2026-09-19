@@ -1,41 +1,29 @@
-//! Serves the embedded web UI from the Flight SQL port.
-//!
-//! The UI is a single page with no client-side router, so there is no SPA
-//! fallback: `/` is the entry point and every other path either names an
-//! embedded asset or does not exist. Answering an unknown path with the entry
-//! point instead would turn a typo into a 200 and make it hard to tell a
-//! missing asset from a working one.
+//! The embedded bundle and the responses built from it.
 
-use axum::Router;
+use crate::MISSING_BUNDLE;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
 use rust_embed::{Embed, EmbeddedFile};
 use std::borrow::Cow;
 
-/// The bundle produced by `web/`. `allow_missing` keeps the crate compiling
-/// when the directory has not been built, which is what happens on a plain
-/// `cargo build` checkout without Node: the binary then simply serves no UI
-/// and says so on `/`.
+/// The bundle produced by `web/`. The directory is always present because
+/// `build.rs` creates it, so an unbuilt checkout embeds nothing rather than
+/// failing to compile.
 #[derive(Embed)]
 #[folder = "../../web/dist"]
-#[allow_missing = true]
 struct WebAssets;
 
 const INDEX_HTML: &str = "index.html";
 
-const MISSING_BUNDLE: &str = "web UI is not bundled in this build; build web/ and recompile";
+pub(crate) async fn serve_asset(uri: Uri, headers: HeaderMap) -> Response {
+    let path = uri.path().trim_start_matches('/');
+    let path = if path.is_empty() { INDEX_HTML } else { path };
 
-/// Whether a bundle was embedded (or, in debug builds, is on disk right now).
-pub fn is_bundled() -> bool {
-    WebAssets::get(INDEX_HTML).is_some()
-}
-
-/// Routes every non-gRPC path to the embedded bundle. Registered as a fallback
-/// rather than explicit routes so it never shadows the Flight service, which
-/// `Routes::add_service` mounts at its own path prefix.
-pub fn router() -> Router {
-    Router::new().fallback(get(serve_asset))
+    match respond(WebAssets::get(path).map(Asset::from), &headers) {
+        Some(response) => response,
+        None if path == INDEX_HTML => (StatusCode::NOT_FOUND, MISSING_BUNDLE).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// One file of the bundle, reduced to what a response needs. Decoupled from
@@ -54,17 +42,6 @@ impl From<EmbeddedFile> for Asset {
             sha256: file.metadata.sha256_hash(),
             data: file.data,
         }
-    }
-}
-
-async fn serve_asset(uri: Uri, headers: HeaderMap) -> Response {
-    let path = uri.path().trim_start_matches('/');
-    let path = if path.is_empty() { INDEX_HTML } else { path };
-
-    match respond(WebAssets::get(path).map(Asset::from), &headers) {
-        Some(response) => response,
-        None if path == INDEX_HTML => (StatusCode::NOT_FOUND, MISSING_BUNDLE).into_response(),
-        None => StatusCode::NOT_FOUND.into_response(),
     }
 }
 
@@ -184,23 +161,26 @@ mod tests {
         assert!(respond(None, &HeaderMap::new()).is_none());
     }
 
-    /// Runs against whatever `web/dist` holds, so it asserts both sides: a
-    /// built bundle is served, a missing one is explained rather than 404ing
-    /// silently.
+    /// The two halves of `/` are split on the cfg rather than branched on at
+    /// runtime, so each build asserts one outcome instead of accepting both.
+    #[cfg(web_ui_bundled)]
     #[tokio::test]
-    async fn index_is_served_or_explained() {
+    async fn index_is_served() {
         let response = serve_asset("/".parse().unwrap(), HeaderMap::new()).await;
-        if is_bundled() {
-            assert_eq!(response.status(), StatusCode::OK);
-            assert!(
-                header(&response, header::CONTENT_TYPE)
-                    .unwrap()
-                    .starts_with("text/html")
-            );
-            assert!(body(response).await.contains("<div id=\"root\">"));
-        } else {
-            assert_eq!(response.status(), StatusCode::NOT_FOUND);
-            assert_eq!(body(response).await, MISSING_BUNDLE);
-        }
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            header(&response, header::CONTENT_TYPE)
+                .unwrap()
+                .starts_with("text/html")
+        );
+        assert!(body(response).await.contains("<div id=\"root\">"));
+    }
+
+    #[cfg(not(web_ui_bundled))]
+    #[tokio::test]
+    async fn index_explains_missing_bundle() {
+        let response = serve_asset("/".parse().unwrap(), HeaderMap::new()).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(body(response).await, MISSING_BUNDLE);
     }
 }

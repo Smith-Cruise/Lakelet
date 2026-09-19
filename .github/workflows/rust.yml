@@ -118,6 +118,22 @@ jobs:
     - name: Rust Cache
       if: needs.build.outputs.src_changed == 'true'
       uses: Swatinem/rust-cache@v2
+
+    - name: Check formatting
+      if: needs.build.outputs.src_changed == 'true'
+      run: cargo fmt --all -- --check
+
+    - name: Clippy check
+      if: needs.build.outputs.src_changed == 'true'
+      run: cargo clippy --all-targets --all-features -- -D warnings
+
+    # Deliberately before the bundle is downloaded: this is what proves a
+    # checkout with no Node toolchain still builds and tests, and it is the
+    # only run that covers the paths taken when `web/dist` holds no bundle.
+    - name: Run tests (no web UI bundle)
+      if: needs.build.outputs.src_changed == 'true'
+      run: cargo test --all-targets --all-features --verbose
+
     - name: Download web UI bundle
       if: needs.build.outputs.src_changed == 'true'
       uses: actions/download-artifact@v4
@@ -125,15 +141,7 @@ jobs:
         name: web-dist
         path: web/dist
 
-    - name: Check formatting
-      if: needs.build.outputs.src_changed == 'true'
-      run: cargo fmt --all -- --check
-      
-    - name: Clippy check
-      if: needs.build.outputs.src_changed == 'true'
-      run: cargo clippy --all-targets --all-features -- -D warnings
-      
-    - name: Run tests
+    - name: Run tests (with web UI bundle)
       if: needs.build.outputs.src_changed == 'true'
       run: cargo test --all-targets --all-features --verbose
 

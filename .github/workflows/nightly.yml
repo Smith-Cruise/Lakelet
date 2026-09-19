@@ -142,8 +142,11 @@ jobs:
         with:
           name: web-dist
           path: web/dist
-      # rust-embed tolerates a missing web/dist, so a bad download would
-      # silently ship a binary without the UI. Fail loudly instead.
+      # A build with no bundle is a valid outcome everywhere else (that is
+      # what a checkout without Node produces), so nothing in the crate can
+      # tell an intentionally UI-less build from a bad download here. A
+      # release must always carry the UI, so assert it at the one place that
+      # knows: fail loudly rather than publish a binary without it.
       - name: Check web UI bundle (unix)
         if: runner.os != 'Windows'
         run: test -f web/dist/index.html

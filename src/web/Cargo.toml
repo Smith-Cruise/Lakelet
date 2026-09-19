@@ -1,0 +1,11 @@
+[package]
+name = "lakelet-web"
+version = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+axum = { workspace = true }
+rust-embed = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros"] }

@@ -43,9 +43,16 @@ the UI, build it first (needs Node.js 24+ and [pnpm](https://pnpm.io/)), then
 build Lakelet:
 
 ```bash
-cd web && pnpm install && pnpm build && cd ..
+pnpm -C web install
+pnpm -C web build
 cargo build --release
 ```
+
+`web/dist` is embedded exactly as it is on disk, so rebuild it with
+`pnpm -C web build` after changing anything under `web/`. Cargo watches the
+directory and recompiles when it changes. A `web/dist` that holds files but no
+`index.html` — a `pnpm build` that died halfway — is reported as a build
+warning rather than quietly producing a binary without the UI.
 
 ## Create a Configuration File
 
@@ -124,6 +131,10 @@ SessionState. So `USE` state is discarded after every RPC and does not affect
 the next query even on the same ADBC connection.
 
 ### Web UI
+
+The UI is only present in binaries that were built with `web/dist` in place;
+every published release is. Without it, `/` answers 404 with a line of text
+saying so, and the startup banner prints `Web UI  not bundled`.
 
 Open `http://localhost:32010/` in a browser. The page is a SQL workbench:
 
