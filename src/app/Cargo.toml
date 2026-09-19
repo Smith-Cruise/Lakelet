@@ -3,6 +3,11 @@ name = "lakelet-app"
 version = { workspace = true }
 edition = { workspace = true }
 
+[features]
+default = []
+# Serves the embedded web UI and gRPC-Web on the Flight SQL port.
+web-ui = ["dep:axum", "dep:tonic-web", "dep:rust-embed"]
+
 [dependencies]
 rustyline = "18.0.1"
 comfy-table = "7.1.2"
@@ -12,7 +17,10 @@ datafusion-cli = { workspace = true }
 sqlparser = { workspace = true }
 arrow-flight = { workspace = true }
 tonic = { workspace = true }
+tonic-web = { workspace = true, optional = true }
 prost = { workspace = true }
+axum = { workspace = true, optional = true }
+rust-embed = { workspace = true, optional = true }
 tokio = { workspace = true }
 lakelet-common = { workspace = true }
 lakelet-storage = { workspace = true }

@@ -42,11 +42,59 @@ pub async fn serve(
         .map_err(|e| super::bind_error(port, "flight-sql-server-port", &e))?;
     let service = LakeletFlightSqlService::new(catalog_provider_list, lakelet_context, runtime_env);
     println!("Lakelet Flight SQL server listening on port {port}");
+    #[cfg(feature = "web-ui")]
+    if crate::server::web::is_bundled() {
+        println!("Lakelet web UI available at http://localhost:{port}/");
+    } else {
+        println!(
+            "Lakelet web UI is not bundled in this build (web/dist was missing at compile time)"
+        );
+    }
+    serve_flight(service, listener).await
+}
+
+async fn shutdown_signal() {
+    let _ = tokio::signal::ctrl_c().await;
+}
+
+#[cfg(not(feature = "web-ui"))]
+async fn serve_flight(
+    service: LakeletFlightSqlService,
+    listener: tokio::net::TcpListener,
+) -> Result<()> {
     Server::builder()
         .add_service(FlightServiceServer::new(service))
-        .serve_with_incoming_shutdown(TcpIncoming::from(listener), async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
+        .serve_with_incoming_shutdown(TcpIncoming::from(listener), shutdown_signal())
+        .await
+        .map_err(|e| DataFusionError::External(Box::new(e)))
+}
+
+/// Serves native Flight SQL, gRPC-Web and the web UI on the one port.
+///
+/// `accept_http1` swaps hyper's HTTP/2-only connection builder for the one that
+/// sniffs the HTTP/2 client preface, so a native client speaking h2c with prior
+/// knowledge still lands on HTTP/2 exactly as before; only connections that are
+/// not HTTP/2 fall through to HTTP/1, which is what a browser sends.
+///
+/// gRPC-Web wraps the Flight service alone rather than the whole server:
+/// `GrpcWebLayer` answers any HTTP/1.1 request that is not gRPC-Web with 400,
+/// so installing it globally would reject every request for the UI itself.
+/// `Routes` must be built from the UI router, because a `Routes` created from a
+/// service falls back to a gRPC `UNIMPLEMENTED` response and would leave the
+/// UI unreachable.
+#[cfg(feature = "web-ui")]
+async fn serve_flight(
+    service: LakeletFlightSqlService,
+    listener: tokio::net::TcpListener,
+) -> Result<()> {
+    use tonic::service::{LayerExt, Routes};
+
+    let routes = Routes::from(crate::server::web::router())
+        .add_service(tonic_web::GrpcWebLayer::new().named_layer(FlightServiceServer::new(service)));
+    Server::builder()
+        .accept_http1(true)
+        .add_routes(routes)
+        .serve_with_incoming_shutdown(TcpIncoming::from(listener), shutdown_signal())
         .await
         .map_err(|e| DataFusionError::External(Box::new(e)))
 }
@@ -366,7 +414,7 @@ impl FlightSqlService for LakeletFlightSqlService {
         // question than the one it asked.
         metadata::validate_tables_request(&self.catalog_provider_list, &query)?;
         let flight_info = Self::flight_info(
-            &metadata::tables_schema(),
+            &metadata::tables_schema(query.include_schema),
             query.as_any().encode_to_vec(),
             request.into_inner(),
         )?;
@@ -380,7 +428,7 @@ impl FlightSqlService for LakeletFlightSqlService {
     ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
         let batch = metadata::tables_batch(&self.catalog_provider_list, &query).await?;
         Ok(metadata::single_batch_response(
-            metadata::tables_schema(),
+            metadata::tables_schema(query.include_schema),
             batch,
         ))
     }
@@ -420,8 +468,9 @@ mod tests {
     use super::*;
     use crate::catalog::{INFORMATION_SCHEMA_SHOW_VARIABLES, INTERNAL_CATALOG};
     use arrow_flight::sql::client::FlightSqlServiceClient;
-    use datafusion::arrow::array::{Int64Array, StringArray, UInt32Array};
+    use datafusion::arrow::array::{BinaryArray, Int64Array, StringArray, UInt32Array};
     use datafusion::arrow::datatypes::DataType;
+    use datafusion::arrow::ipc::convert::try_schema_from_flatbuffer_bytes;
     use datafusion::arrow::record_batch::RecordBatch;
     use datafusion::catalog::information_schema::INFORMATION_SCHEMA;
     use tonic::transport::Channel;
@@ -731,8 +780,62 @@ mod tests {
             vec![INFORMATION_SCHEMA_SHOW_VARIABLES]
         );
         assert_eq!(string_column(&batches[0], "table_type"), vec!["TABLE"]);
-        // include_schema is refused outright, so the column never appears.
+        // Without include_schema the column is not even advertised.
         assert!(batches[0].column_by_name("table_schema").is_none());
+
+        // With a table name to bound it, include_schema carries each table's
+        // Arrow schema as an IPC message.
+        let flight_info = client
+            .get_tables(CommandGetTables {
+                catalog: Some(INTERNAL_CATALOG.to_string()),
+                db_schema_filter_pattern: Some(INFORMATION_SCHEMA.to_string()),
+                table_name_filter_pattern: Some(INFORMATION_SCHEMA_SHOW_VARIABLES.to_string()),
+                include_schema: true,
+                ..Default::default()
+            })
+            .await
+            .expect("get_tables with include_schema should succeed");
+        let batches = fetch_batches(&mut client, flight_info).await;
+        assert_eq!(
+            string_column(&batches[0], "table_name"),
+            vec![INFORMATION_SCHEMA_SHOW_VARIABLES]
+        );
+        let table_schemas = batches[0]
+            .column_by_name("table_schema")
+            .expect("include_schema should add a table_schema column")
+            .as_any()
+            .downcast_ref::<BinaryArray>()
+            .expect("table_schema should be binary");
+        // The builder writes the encapsulated form: a continuation marker and
+        // a length ahead of the flatbuffer message.
+        let bytes = table_schemas.value(0);
+        assert_eq!(&bytes[..4], &[0xff, 0xff, 0xff, 0xff]);
+        let table_schema = try_schema_from_flatbuffer_bytes(&bytes[8..])
+            .expect("table_schema should decode as an IPC schema message");
+        assert_eq!(
+            table_schema
+                .fields()
+                .iter()
+                .map(|field| field.name().as_str())
+                .collect::<Vec<_>>(),
+            vec!["name", "value", "description"]
+        );
+
+        // Without a table name the same flag is still refused: it would mean
+        // loading every table's metadata.
+        let err = client
+            .get_tables(CommandGetTables {
+                catalog: Some(INTERNAL_CATALOG.to_string()),
+                db_schema_filter_pattern: Some(INFORMATION_SCHEMA.to_string()),
+                include_schema: true,
+                ..Default::default()
+            })
+            .await
+            .expect_err("include_schema without a table name filter should be refused");
+        assert!(
+            err.to_string().contains("table_name_filter_pattern"),
+            "unexpected error: {err}"
+        );
 
         let flight_info = client
             .get_table_types()

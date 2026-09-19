@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+/* Radix Colors: slate for the neutrals, blue for the single accent. The two
+   modes are paired scales, so every token below has exactly one counterpart.
+   `--lk-page` is the gray canvas the white cards sit on; keep them apart. */
+:root {
+  --lk-page: #f1f1f4;
+  --lk-panel: #ffffff;
+  --lk-sub: #f7f7f9;
+  --lk-border: #e0e1e6;
+  --lk-border-strong: #cdced7;
+  --lk-fg: #1c2024;
+  --lk-fg-muted: #60646c;
+  --lk-fg-faint: #8b8d98;
+  --lk-accent: #0d74ce;
+  --lk-accent-bg: #e6f1fb;
+  --lk-accent-contrast: #ffffff;
+  --lk-hover: rgba(28, 32, 36, 0.05);
+  --lk-danger-bg: #feebec;
+  --lk-danger-fg: #ce2c31;
+  --lk-success-bg: #e4f6ec;
+  --lk-success-fg: #1b6b45;
+  --lk-warning-bg: #fdf3dd;
+  --lk-warning-fg: #815300;
+  --lk-shadow: 0 1px 2px rgba(28, 32, 36, 0.05), 0 0 0 0.5px var(--lk-border);
+  --lk-syntax-keyword: #8e4ec6;
+  --lk-syntax-string: #17a47f;
+  --lk-syntax-number: #c77c1e;
+  --lk-syntax-comment: #8b8d98;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --lk-page: #111113;
+    --lk-panel: #18191b;
+    --lk-sub: #1f2023;
+    --lk-border: #2e3035;
+    --lk-border-strong: #43464e;
+    --lk-fg: #edeef0;
+    --lk-fg-muted: #b0b4ba;
+    --lk-fg-faint: #7e8289;
+    --lk-accent: #3b9eff;
+    --lk-accent-bg: #0d2847;
+    --lk-accent-contrast: #06121f;
+    --lk-hover: rgba(255, 255, 255, 0.06);
+    --lk-danger-bg: #3b1219;
+    --lk-danger-fg: #ff9592;
+    --lk-success-bg: #113123;
+    --lk-success-fg: #5bc489;
+    --lk-warning-bg: #302008;
+    --lk-warning-fg: #ffba18;
+    --lk-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 0.5px var(--lk-border);
+    --lk-syntax-keyword: #bf7af0;
+    --lk-syntax-string: #27b08b;
+    --lk-syntax-number: #ffba18;
+    --lk-syntax-comment: #7e8289;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --lk-page: #111113;
+  --lk-panel: #18191b;
+  --lk-sub: #1f2023;
+  --lk-border: #2e3035;
+  --lk-border-strong: #43464e;
+  --lk-fg: #edeef0;
+  --lk-fg-muted: #b0b4ba;
+  --lk-fg-faint: #7e8289;
+  --lk-accent: #3b9eff;
+  --lk-accent-bg: #0d2847;
+  --lk-accent-contrast: #06121f;
+  --lk-hover: rgba(255, 255, 255, 0.06);
+  --lk-danger-bg: #3b1219;
+  --lk-danger-fg: #ff9592;
+  --lk-success-bg: #113123;
+  --lk-success-fg: #5bc489;
+  --lk-warning-bg: #302008;
+  --lk-warning-fg: #ffba18;
+  --lk-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 0.5px var(--lk-border);
+  --lk-syntax-keyword: #bf7af0;
+  --lk-syntax-string: #27b08b;
+  --lk-syntax-number: #ffba18;
+  --lk-syntax-comment: #7e8289;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-page: var(--lk-page);
+  --color-panel: var(--lk-panel);
+  --color-sub: var(--lk-sub);
+  --color-line: var(--lk-border);
+  --color-line-strong: var(--lk-border-strong);
+  --color-fg: var(--lk-fg);
+  --color-fg-muted: var(--lk-fg-muted);
+  --color-fg-faint: var(--lk-fg-faint);
+  --color-accent: var(--lk-accent);
+  --color-accent-bg: var(--lk-accent-bg);
+  --color-accent-contrast: var(--lk-accent-contrast);
+  --color-hover: var(--lk-hover);
+  --color-danger-bg: var(--lk-danger-bg);
+  --color-danger-fg: var(--lk-danger-fg);
+  --color-success-bg: var(--lk-success-bg);
+  --color-success-fg: var(--lk-success-fg);
+  --color-warning-bg: var(--lk-warning-bg);
+  --color-warning-fg: var(--lk-warning-fg);
+  --shadow-card: var(--lk-shadow);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--lk-page);
+  color: var(--lk-fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Gutter bar marking the lines Run would execute. One element per line, each
+   the full line height, so a multi-line statement reads as a single bar. */
+.lk-run-gutter {
+  width: 10px;
+}
+.lk-run-gutter .cm-gutterElement {
+  padding: 0;
+}
+.lk-run-mark {
+  width: 3px;
+  height: 100%;
+  margin-left: 3px;
+  background: var(--lk-accent);
+}
+.lk-run-mark-start {
+  border-radius: 2px 2px 0 0;
+}
+.lk-run-mark-end {
+  border-radius: 0 0 2px 2px;
+}
+
+/* NULL cells: dimmed so they read as absent, not as an empty string. */
+.ag-cell.lk-null {
+  color: var(--lk-fg-faint);
+  font-style: italic;
+}

@@ -15,8 +15,13 @@ datafusion = "54.1.0"
 datafusion-cli = "54.1.0"
 sqlparser = "0.62.0"
 arrow-flight = { version = "58.4.0", features = ["flight-sql"] }
-tonic = "0.14"
 prost = "0.14"
+tonic = "0.14.6"
+tonic-web = "0.14.6"
+# default-features = false matches how tonic already depends on axum, so the
+# web-ui feature adds no transitive dependencies of its own.
+axum = { version = "0.8", default-features = false }
+rust-embed = { version = "8.12", features = ["mime-guess"] }
 tokio = { version = "1.0", features = ["rt-multi-thread", "tracing", "rt", "signal", "sync"] }
 console-subscriber = "0.5.0"
 serde = { version = "1.0.228", features = ["derive"] }

@@ -23,6 +23,8 @@ pub(super) struct TablesRequest {
     catalog_name: String,
     catalog: Arc<dyn LakeletCatalogProvider>,
     db_schema_filter_pattern: String,
+    table_name_filter_pattern: Option<String>,
+    include_schema: bool,
 }
 
 // The result schemas are constants, so GetFlightInfo can advertise them
@@ -36,13 +38,15 @@ pub(super) fn db_schemas_schema() -> SchemaRef {
     GetDbSchemasBuilder::new(None::<String>, None::<String>).schema()
 }
 
-pub(super) fn tables_schema() -> SchemaRef {
+/// With `include_schema` the result carries an extra `table_schema` column,
+/// so GetFlightInfo and DoGet must agree on the flag.
+pub(super) fn tables_schema(include_schema: bool) -> SchemaRef {
     GetTablesBuilder::new(
         None::<String>,
         None::<String>,
         None::<String>,
         Vec::<String>::new(),
-        false,
+        include_schema,
     )
     .schema()
 }
@@ -72,12 +76,16 @@ pub(super) fn validate_tables_request(
     catalog_provider_list: &LakeletCatalogProviderList,
     query: &CommandGetTables,
 ) -> Result<TablesRequest, Status> {
-    if query.include_schema {
-        // Answering this means loading every listed table's metadata, one
-        // metastore round trip each. Say so rather than return the rows with
-        // the schema column quietly missing.
-        return Err(Status::unimplemented(
-            "GetTables does not support include_schema",
+    let table_name_filter_pattern = query
+        .table_name_filter_pattern
+        .as_deref()
+        .filter(|pattern| !pattern.is_empty())
+        .map(str::to_string);
+    if query.include_schema && table_name_filter_pattern.is_none() {
+        // Each schema costs a metastore round trip, so the request has to
+        // name the tables it wants rather than ask for every table's schema.
+        return Err(Status::invalid_argument(
+            "GetTables with include_schema requires a table_name_filter_pattern",
         ));
     }
     let (catalog_name, catalog) =
@@ -92,6 +100,8 @@ pub(super) fn validate_tables_request(
         catalog_name,
         catalog,
         db_schema_filter_pattern,
+        table_name_filter_pattern,
+        include_schema: query.include_schema,
     })
 }
 
@@ -153,26 +163,57 @@ pub(super) async fn tables_batch(
         query.db_schema_filter_pattern.clone(),
         query.table_name_filter_pattern.clone(),
         query.table_types.clone(),
-        // Always false: `validate_tables_request` has already turned down
-        // every request that asked for table schemas.
-        false,
+        request.include_schema,
     );
     // Dropped by the builder when `include_schema` is false.
-    let table_schema = Schema::empty();
+    let empty_schema = Schema::empty();
     for schema_name in schema_names {
-        let table_names = request
+        let mut table_names = request
             .catalog
             .list_table_names(&schema_name)
             .await
             .map_err(df_error_to_status)?;
+        // The same narrowing as for schemas: with `include_schema` every
+        // table left here costs a metadata load, so drop the rest first.
+        if let Some(pattern) = &request.table_name_filter_pattern {
+            table_names = filter_like(table_names, pattern)?;
+        }
+        let schema_provider = if request.include_schema {
+            match request
+                .catalog
+                .schema(&schema_name)
+                .await
+                .map_err(df_error_to_status)?
+            {
+                Some(provider) => Some(provider),
+                // Listed a moment ago, gone now: none of its tables can carry
+                // a schema, so leave them all out rather than emit empty ones.
+                None => continue,
+            }
+        } else {
+            None
+        };
         for table_name in table_names {
+            let loaded = match &schema_provider {
+                Some(provider) => match provider
+                    .table(&table_name)
+                    .await
+                    .map_err(df_error_to_status)?
+                {
+                    Some(table) => Some(table.schema()),
+                    // Listed a moment ago, gone now: leave the row out rather
+                    // than fail the whole listing.
+                    None => continue,
+                },
+                None => None,
+            };
             builder
                 .append(
                     &request.catalog_name,
                     &schema_name,
                     table_name,
                     TABLE_TYPE,
-                    &table_schema,
+                    loaded.as_deref().unwrap_or(&empty_schema),
                 )
                 .map_err(Status::from)?;
         }
