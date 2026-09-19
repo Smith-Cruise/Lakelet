@@ -39,3 +39,8 @@ Pass tests:
 ```bash
 cargo test --all-targets --all-features --verbose
 ```
+
+When `web/` is changed, pass the web UI typecheck too:
+```bash
+pnpm -C web typecheck
+```

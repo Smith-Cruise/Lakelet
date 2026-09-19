@@ -27,7 +27,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use tonic::metadata::MetadataMap;
 use tonic::transport::Server;
-use tonic::transport::server::TcpIncoming;
+use tonic::transport::server::{Router, TcpIncoming};
 use tonic::{Request, Response, Status, Streaming};
 
 pub async fn serve(
@@ -48,7 +48,6 @@ pub async fn serve(
 }
 
 /// Where the web UI is reachable, or why it is not.
-#[cfg(feature = "web-ui")]
 fn web_ui_status(port: u16) -> String {
     if crate::server::web::is_bundled() {
         format!("http://localhost:{port}/")
@@ -57,28 +56,21 @@ fn web_ui_status(port: u16) -> String {
     }
 }
 
-#[cfg(not(feature = "web-ui"))]
-fn web_ui_status(_port: u16) -> String {
-    "not built in (compile with --features web-ui)".to_string()
-}
-
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
 }
 
-#[cfg(not(feature = "web-ui"))]
 async fn serve_flight(
     service: LakeletFlightSqlService,
     listener: tokio::net::TcpListener,
 ) -> Result<()> {
-    Server::builder()
-        .add_service(FlightServiceServer::new(service))
+    router(service)
         .serve_with_incoming_shutdown(TcpIncoming::from(listener), shutdown_signal())
         .await
         .map_err(|e| DataFusionError::External(Box::new(e)))
 }
 
-/// Serves native Flight SQL, gRPC-Web and the web UI on the one port.
+/// Routes native Flight SQL, gRPC-Web and the web UI on the one port.
 ///
 /// `accept_http1` swaps hyper's HTTP/2-only connection builder for the one that
 /// sniffs the HTTP/2 client preface, so a native client speaking h2c with prior
@@ -91,21 +83,12 @@ async fn serve_flight(
 /// `Routes` must be built from the UI router, because a `Routes` created from a
 /// service falls back to a gRPC `UNIMPLEMENTED` response and would leave the
 /// UI unreachable.
-#[cfg(feature = "web-ui")]
-async fn serve_flight(
-    service: LakeletFlightSqlService,
-    listener: tokio::net::TcpListener,
-) -> Result<()> {
+fn router(service: LakeletFlightSqlService) -> Router {
     use tonic::service::{LayerExt, Routes};
 
     let routes = Routes::from(crate::server::web::router())
         .add_service(tonic_web::GrpcWebLayer::new().named_layer(FlightServiceServer::new(service)));
-    Server::builder()
-        .accept_http1(true)
-        .add_routes(routes)
-        .serve_with_incoming_shutdown(TcpIncoming::from(listener), shutdown_signal())
-        .await
-        .map_err(|e| DataFusionError::External(Box::new(e)))
+    Server::builder().accept_http1(true).add_routes(routes)
 }
 
 pub struct LakeletFlightSqlService {
@@ -484,7 +467,10 @@ mod tests {
     use datafusion::catalog::information_schema::INFORMATION_SCHEMA;
     use tonic::transport::Channel;
 
-    async fn start_test_server() -> Result<FlightSqlServiceClient<Channel>> {
+    /// Serves the production router on an ephemeral port, so every test
+    /// goes through the same wiring as `serve`, web UI and gRPC-Web layers
+    /// included.
+    async fn spawn_test_server() -> Result<SocketAddr> {
         let lakelet_context = Arc::new(LakeletContext::default());
         let runtime_env = Arc::new(RuntimeEnv::default());
         let catalog_provider_list =
@@ -494,12 +480,12 @@ mod tests {
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let addr = listener.local_addr()?;
-        tokio::spawn(
-            Server::builder()
-                .add_service(FlightServiceServer::new(service))
-                .serve_with_incoming(TcpIncoming::from(listener)),
-        );
+        tokio::spawn(router(service).serve_with_incoming(TcpIncoming::from(listener)));
+        Ok(addr)
+    }
 
+    async fn start_test_server() -> Result<FlightSqlServiceClient<Channel>> {
+        let addr = spawn_test_server().await?;
         let channel = Channel::from_shared(format!("http://{addr}"))
             .map_err(|e| DataFusionError::External(Box::new(e)))?
             .connect()
@@ -865,5 +851,52 @@ mod tests {
 
         let status = df_error_to_status(DataFusionError::Execution("boom".to_string()));
         assert_eq!(status.code(), tonic::Code::Internal);
+    }
+
+    /// A browser speaks HTTP/1.1 to the same port as Flight SQL: unknown
+    /// paths reach the UI router (not a gRPC error), and `/` serves the
+    /// bundle when one is built.
+    #[tokio::test]
+    async fn test_http1_requests_reach_web_ui() -> Result<()> {
+        let addr = spawn_test_server().await?;
+
+        let response = http1_get(addr, "/no-such-path").await?;
+        assert!(
+            response.starts_with("HTTP/1.1 404 "),
+            "unexpected response: {response}"
+        );
+
+        let response = http1_get(addr, "/").await?;
+        if crate::server::web::is_bundled() {
+            assert!(
+                response.starts_with("HTTP/1.1 200 "),
+                "unexpected response: {response}"
+            );
+            assert!(response.contains("<div id=\"root\">"));
+        } else {
+            assert!(
+                response.starts_with("HTTP/1.1 404 "),
+                "unexpected response: {response}"
+            );
+            assert!(response.contains("not bundled"));
+        }
+        Ok(())
+    }
+
+    /// Fetches `path` with a bare HTTP/1.1 request and returns the raw
+    /// response, headers and body included.
+    async fn http1_get(addr: SocketAddr, path: &str) -> Result<String> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let mut stream = tokio::net::TcpStream::connect(addr).await?;
+        stream
+            .write_all(
+                format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                    .as_bytes(),
+            )
+            .await?;
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await?;
+        Ok(String::from_utf8_lossy(&response).into_owned())
     }
 }

@@ -29,7 +29,8 @@ Windows builds are on the [releases page](https://github.com/Smith-Cruise/Lakele
 curl -fsSL https://lakelet.dev/install.sh | sh
 ```
 
-Or build from source:
+Or build from source (to include the web UI, run `pnpm install && pnpm build`
+in `web/` first; see the [docs](https://lakelet.dev/getting-started/#build-from-source)):
 
 ```bash
 cargo build --release
@@ -63,6 +64,12 @@ Run SQL from a file:
 
 ```bash
 ./lakelet --config config.toml --file query.sql
+```
+
+Start the server (Arrow Flight SQL plus the web UI at `http://localhost:32010/`):
+
+```bash
+./lakelet --config config.toml --server
 ```
 
 ## Basic SQL

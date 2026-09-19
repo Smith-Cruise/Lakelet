@@ -16,7 +16,8 @@ configuration `config_demo.toml`:
 curl -fsSL https://lakelet.dev/install.sh | sh
 ```
 
-The script supports Linux and macOS (x86_64 and aarch64).
+The script supports Linux and macOS (x86_64 and aarch64). Every release
+binary bundles the [web UI](#web-ui).
 
 Alternatively, download an archive directly from
 [GitHub Releases](https://github.com/Smith-Cruise/Lakelet/releases) — this is
@@ -33,6 +34,17 @@ git clone https://github.com/Smith-Cruise/Lakelet.git
 cd Lakelet
 cargo build --release
 cp target/release/lakelet .
+```
+
+This binary serves Flight SQL but has no web UI: the UI is built from `web/`
+with Node.js and embedded at compile time, and a fresh checkout has no build
+output yet. Starting the server then prints `Web UI  not bundled`. To include
+the UI, build it first (needs Node.js 24+ and [pnpm](https://pnpm.io/)), then
+build Lakelet:
+
+```bash
+cd web && pnpm install && pnpm build && cd ..
+cargo build --release
 ```
 
 ## Create a Configuration File
@@ -89,21 +101,45 @@ The configuration file is required for normal execution.
 
 You can get more help by `./lakelet --help`.
 
-## Start with Arrow Flight SQL server
+## Start the server
 
-Lakelet can run as an [Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html)
-server, including ADBC instead of the interactive REPL:
+Instead of the interactive REPL, Lakelet can run as a server that speaks
+[Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html) (including
+ADBC) and hosts a web UI, both on the same port:
 
 ```bash
 lakelet --config config.toml --server
 ```
 
-The server listens on `server-port` under `[server]` (default
-32010).
+```text
+Lakelet server is running
+  Flight SQL  grpc://localhost:32010
+  Web UI      http://localhost:32010/
+```
 
-Note: Each flight SQL connection is a new fresh session, it will not share any SessionState.
-So `USE` state is discarded after every RPC and does not affect
+The port is `server-port` under `[server]` (default 32010).
+
+Note: Each Flight SQL connection is a fresh session; it does not share any
+SessionState. So `USE` state is discarded after every RPC and does not affect
 the next query even on the same ADBC connection.
+
+### Web UI
+
+Open `http://localhost:32010/` in a browser. The page is a SQL workbench:
+
+- The explorer on the left lists catalogs, schemas and tables; expand a table
+  to see its columns and their types.
+- Each query tab is bound to its own catalog and schema, chosen from the two
+  pickers above the editor. Tabs and their SQL are kept in the browser's local
+  storage, so they are still there after a reload.
+- `Run` (or ⌘↵ / Ctrl+↵) executes the selected text, or the statement under
+  the cursor when nothing is selected. Several selected statements run in
+  order and the last result is shown.
+- Results can be sorted per column and downloaded as CSV. At most 10,000 rows
+  are fetched per query.
+
+The UI talks to the server with gRPC-Web on the same port, so no extra
+process or proxy is needed.
 
 ### Connect with ADBC (Python)
 
