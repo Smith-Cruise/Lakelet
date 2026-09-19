@@ -103,9 +103,6 @@ async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> R
         .with_object_store_registry(Arc::new(DefaultObjectStoreRegistry::new()))
         .build_arc()?;
 
-    // One catalog provider list per process, built here and shared from then
-    // on: providers (and the metastore clients they create on first use) live
-    // across statements and, for Flight SQL, across requests.
     let catalog_provider_list = Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone())?);
 
     if args.server {

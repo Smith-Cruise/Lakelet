@@ -28,8 +28,7 @@ pub struct ExtendedSessionContext {
     session_context: SessionContext,
 }
 
-// Only for unit tests: the real entry points build the provider list from a
-// configured `LakeletContext` and propagate its error.
+// Only for unit tests
 impl Default for ExtendedSessionContext {
     fn default() -> Self {
         let lakelet_context = Arc::new(LakeletContext::default());

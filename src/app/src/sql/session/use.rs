@@ -50,16 +50,15 @@ impl ExtendedSessionContext {
             }
         };
 
-        if !self
-            .lakelet_context
-            .catalog_manager
-            .catalog_exists(&catalog_name)
-        {
-            return Err(DataFusionError::Plan(format!(
-                "unknown catalog {}",
-                catalog_name
-            )));
-        }
+        let catalog_provider = match self.catalog_provider_list.get_catalog(&catalog_name) {
+            Some(catalog_provider) => catalog_provider,
+            None => {
+                return Err(DataFusionError::Plan(format!(
+                    "unknown catalog {}",
+                    catalog_name
+                )));
+            }
+        };
 
         let state = self.session_context.state_ref();
         state
@@ -70,13 +69,7 @@ impl ExtendedSessionContext {
             .default_catalog = catalog_name.clone();
 
         if let Some(schema_name) = schema_name {
-            if !self
-                .catalog_provider_list
-                .get_catalog(&catalog_name)
-                .unwrap()
-                .schema_exist(&schema_name)
-                .await?
-            {
+            if !catalog_provider.schema_exist(&schema_name).await? {
                 return Err(DataFusionError::Plan(format!(
                     "unknown schema {}",
                     schema_name
