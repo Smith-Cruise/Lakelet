@@ -33,7 +33,7 @@ const STATUS: &str = "not bundled (web/dist was missing at compile time)";
 /// A `const` rather than a `#[cfg]` so both arms of every caller stay compiled
 /// and linted no matter which kind of build this is; the branch still folds
 /// away at compile time.
-pub(super) const IS_BUNDLED: bool = matches!(env!("LAKELET_BUILD_WEB_UI").as_bytes(), b"1");
+pub(super) const IS_BUNDLED: bool = matches!(env!("LAKELET_BUILD_WEB_UI").as_bytes(), b"on");
 
 /// Where the UI is reachable, or why it is not. Phrased for the one line the
 /// server prints on startup.

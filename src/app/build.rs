@@ -116,7 +116,8 @@ fn prepare_web_bundle() {
     // means cargo's value shadows any same-named variable that happens to be
     // in the build shell, so nothing outside this check can flip the answer.
     let bundled = dist.join("index.html").is_file();
-    println!("cargo:rustc-env=LAKELET_BUILD_WEB_UI={}", u8::from(bundled));
+    let bundled_value = if bundled { "on" } else { "off" };
+    println!("cargo:rustc-env=LAKELET_BUILD_WEB_UI={bundled_value}");
 
     if !bundled && has_entries(&dist) {
         // An empty directory is the ordinary "no bundle" case. Files without
