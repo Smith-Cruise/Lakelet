@@ -1,9 +1,7 @@
 # Lakelet
 
-**Wake up, query the data lake.**
-
-Lakelet is a single-binary SQL engine for lakehouse tables. No Spark cluster is
-needed, query delta lake tables directly with SQL.
+Lakelet is a single-binary SQL engine for LakeHouse tables. No Spark cluster is
+needed, query data lake tables directly with SQL.
 
 ```sql
 show catalogs;
@@ -29,8 +27,7 @@ Windows builds are on the [releases page](https://github.com/Smith-Cruise/Lakele
 curl -fsSL https://lakelet.dev/install.sh | sh
 ```
 
-Or build from source (to include the web UI, run `pnpm -C web install && pnpm -C web build`
-first; see the [docs](https://lakelet.dev/getting-started/#build-from-source)):
+Or build from source, more details see the [docs](https://lakelet.dev/getting-started/#build-from-source):
 
 ```bash
 cargo build --release
@@ -66,7 +63,7 @@ Run SQL from a file:
 ./lakelet --config config.toml --file query.sql
 ```
 
-Start the server (Arrow Flight SQL plus the web UI at `http://localhost:32010/`):
+Start the server:
 
 ```bash
 ./lakelet --config config.toml --server

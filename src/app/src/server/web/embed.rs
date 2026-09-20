@@ -1,6 +1,6 @@
 //! The embedded bundle and the responses built from it.
 
-use crate::MISSING_BUNDLE;
+use super::MISSING_BUNDLE;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use rust_embed::{Embed, EmbeddedFile};
@@ -8,7 +8,8 @@ use std::borrow::Cow;
 
 /// The bundle produced by `web/`. The directory is always present because
 /// `build.rs` creates it, so an unbuilt checkout embeds nothing rather than
-/// failing to compile.
+/// failing to compile. `folder` resolves against `CARGO_MANIFEST_DIR`, not
+/// against this file.
 #[derive(Embed)]
 #[folder = "../../web/dist"]
 struct WebAssets;
@@ -84,6 +85,7 @@ fn etag(hash: &[u8; 32]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::web::IS_BUNDLED;
     use axum::body::to_bytes;
 
     fn css_asset() -> Asset {
@@ -161,26 +163,23 @@ mod tests {
         assert!(respond(None, &HeaderMap::new()).is_none());
     }
 
-    /// The two halves of `/` are split on the cfg rather than branched on at
-    /// runtime, so each build asserts one outcome instead of accepting both.
-    #[cfg(web_ui_bundled)]
+    /// `/` has two legal outcomes, and `IS_BUNDLED` is a compile-time
+    /// constant, so each build still asserts exactly one of them — the other
+    /// arm is folded away before the test ever runs.
     #[tokio::test]
-    async fn index_is_served() {
+    async fn index_is_served_or_explained() {
         let response = serve_asset("/".parse().unwrap(), HeaderMap::new()).await;
-        assert_eq!(response.status(), StatusCode::OK);
-        assert!(
-            header(&response, header::CONTENT_TYPE)
-                .unwrap()
-                .starts_with("text/html")
-        );
-        assert!(body(response).await.contains("<div id=\"root\">"));
-    }
-
-    #[cfg(not(web_ui_bundled))]
-    #[tokio::test]
-    async fn index_explains_missing_bundle() {
-        let response = serve_asset("/".parse().unwrap(), HeaderMap::new()).await;
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        assert_eq!(body(response).await, MISSING_BUNDLE);
+        if IS_BUNDLED {
+            assert_eq!(response.status(), StatusCode::OK);
+            assert!(
+                header(&response, header::CONTENT_TYPE)
+                    .unwrap()
+                    .starts_with("text/html")
+            );
+            assert!(body(response).await.contains("<div id=\"root\">"));
+        } else {
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            assert_eq!(body(response).await, MISSING_BUNDLE);
+        }
     }
 }

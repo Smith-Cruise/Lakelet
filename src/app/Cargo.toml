@@ -13,11 +13,12 @@ sqlparser = { workspace = true }
 arrow-flight = { workspace = true }
 tonic = { workspace = true }
 tonic-web = { workspace = true }
+axum = { workspace = true }
+rust-embed = { workspace = true }
 prost = { workspace = true }
 tokio = { workspace = true }
 lakelet-common = { workspace = true }
 lakelet-storage = { workspace = true }
-lakelet-web = { workspace = true }
 serde = { workspace = true }
 typetag = { workspace = true }
 toml = { workspace = true }
@@ -43,3 +44,7 @@ sysinfo = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.23.0"
+# The workspace tokio does not enable `macros`; spell it out here so the
+# `#[tokio::test]` attribute does not depend on another dependency happening
+# to turn that feature on.
+tokio = { workspace = true, features = ["macros"] }
