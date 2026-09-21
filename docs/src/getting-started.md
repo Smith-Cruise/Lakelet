@@ -116,27 +116,15 @@ Lakelet server is running
 
 The port is `server-port` under `[server]` (default 32010).
 
-Note: Each Flight SQL connection is a fresh session; it does not share any
+### Flight SQL
+
+Each Flight SQL connection is a fresh session; it does not share any
 SessionState. So `USE` state is discarded after every RPC and does not affect
-the next query even on the same ADBC connection.
+the next query.
 
 ### Web UI
 
-Open `http://localhost:32010/` in a browser. The page is a SQL workbench:
-
-- The explorer on the left lists catalogs, schemas and tables; expand a table
-  to see its columns and their types.
-- Each query tab is bound to its own catalog and schema, chosen from the two
-  pickers above the editor. Tabs and their SQL are kept in the browser's local
-  storage, so they are still there after a reload.
-- `Run` (or ⌘↵ / Ctrl+↵) executes the selected text, or the statement under
-  the cursor when nothing is selected. Several selected statements run in
-  order and the last result is shown.
-- Results can be sorted per column and downloaded as CSV. At most 10,000 rows
-  are fetched per query.
-
-The UI talks to the server with gRPC-Web on the same port, so no extra
-process or proxy is needed.
+Open `http://localhost:32010/` in a browser, then just feeling it.
 
 ### Connect with ADBC (Python)
 

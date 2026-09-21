@@ -15,7 +15,7 @@ server-port = 32010
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `memory-limit` | String | No | 80% of effective total memory | Caps the memory available to the query engine. |
-| `server-port` | Integer | No | 32010 | Port the server started by `--server` listens on; Flight SQL and the [web UI](getting-started.md#web-ui) share it. |
+| `server-port` | Integer | No | 32010 | Port the server started by `--server` listens on; [Flight SQL](getting-started.md#flight-sql) and the [web UI](getting-started.md#web-ui) share it. |
 
 The `memory-limit` value is an integer with an optional, case-insensitive unit. With no unit, the value is treated as bytes.
 
