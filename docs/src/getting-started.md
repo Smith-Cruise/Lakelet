@@ -16,8 +16,7 @@ configuration `config_demo.toml`:
 curl -fsSL https://lakelet.dev/install.sh | sh
 ```
 
-The script supports Linux and macOS (x86_64 and aarch64). Every release
-binary bundles the [web UI](#web-ui).
+The script supports Linux and macOS (x86_64 and aarch64).
 
 Alternatively, download an archive directly from
 [GitHub Releases](https://github.com/Smith-Cruise/Lakelet/releases) — this is
@@ -36,23 +35,14 @@ cargo build --release
 cp target/release/lakelet .
 ```
 
-This binary serves Flight SQL but has no web UI: the UI is built from `web/`
-with Node.js and embedded at compile time, and a fresh checkout has no build
-output yet. Starting the server then prints `Web UI  not bundled`. To include
-the UI, build it first (needs Node.js 24+ and [pnpm](https://pnpm.io/)), then
-build Lakelet:
+To include the web UI, build it first (needs Node.js and
+[pnpm](https://pnpm.io/)):
 
 ```bash
 pnpm -C web install
 pnpm -C web build
 cargo build --release
 ```
-
-`web/dist` is embedded exactly as it is on disk, so rebuild it with
-`pnpm -C web build` after changing anything under `web/`. Cargo watches the
-directory and recompiles when it changes. A `web/dist` that holds files but no
-`index.html` — a `pnpm build` that died halfway — is reported as a build
-warning rather than quietly producing a binary without the UI.
 
 ## Create a Configuration File
 
@@ -131,10 +121,6 @@ SessionState. So `USE` state is discarded after every RPC and does not affect
 the next query even on the same ADBC connection.
 
 ### Web UI
-
-The UI is only present in binaries that were built with `web/dist` in place;
-every published release is. Without it, `/` answers 404 with a line of text
-saying so, and the startup banner prints `Web UI  not bundled`.
 
 Open `http://localhost:32010/` in a browser. The page is a SQL workbench:
 

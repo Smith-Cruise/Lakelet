@@ -231,9 +231,6 @@ jobs:
 
           This release is replaced every day when new commits land on \`main\`.
 
-          Every binary bundles the web UI: start with \`lakelet --config config.toml --server\`
-          and open \`http://localhost:32010/\`.
-
           | Asset | Platform | Notes |
           |---|---|---|
           | \`lakelet-nightly-x86_64-unknown-linux-gnu.tar.gz\` | Linux x86_64 | glibc 2.35+, requires x86-64-v3 (AVX2, Intel Haswell 2013+ / AMD Excavator+) |
