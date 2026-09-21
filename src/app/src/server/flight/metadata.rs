@@ -24,7 +24,6 @@ pub(super) struct TablesRequest {
     catalog: Arc<dyn LakeletCatalogProvider>,
     db_schema_filter_pattern: String,
     table_name_filter_pattern: Option<String>,
-    include_schema: bool,
 }
 
 // The result schemas are constants, so GetFlightInfo can advertise them
@@ -38,15 +37,15 @@ pub(super) fn db_schemas_schema() -> SchemaRef {
     GetDbSchemasBuilder::new(None::<String>, None::<String>).schema()
 }
 
-/// With `include_schema` the result carries an extra `table_schema` column,
-/// so GetFlightInfo and DoGet must agree on the flag.
-pub(super) fn tables_schema(include_schema: bool) -> SchemaRef {
+/// One shape, always: Lakelet refuses `include_schema`, so the result never
+/// carries the extra `table_schema` column the flag would add.
+pub(super) fn tables_schema() -> SchemaRef {
     GetTablesBuilder::new(
         None::<String>,
         None::<String>,
         None::<String>,
         Vec::<String>::new(),
-        include_schema,
+        false,
     )
     .schema()
 }
@@ -76,18 +75,21 @@ pub(super) fn validate_tables_request(
     catalog_provider_list: &LakeletCatalogProviderList,
     query: &CommandGetTables,
 ) -> Result<TablesRequest, Status> {
+    if query.include_schema {
+        // Every table the listing matches would cost a metadata load, and
+        // Flight SQL already has a cheaper way to ask the same question:
+        // GetFlightInfo on `select * from <table> limit 0` plans without
+        // executing and answers with the schema.
+        return Err(Status::unimplemented(
+            "GetTables does not support include_schema; \
+             use GetFlightInfo on a statement to read a table's schema",
+        ));
+    }
     let table_name_filter_pattern = query
         .table_name_filter_pattern
         .as_deref()
         .filter(|pattern| !pattern.is_empty())
         .map(str::to_string);
-    if query.include_schema && table_name_filter_pattern.is_none() {
-        // Each schema costs a metastore round trip, so the request has to
-        // name the tables it wants rather than ask for every table's schema.
-        return Err(Status::invalid_argument(
-            "GetTables with include_schema requires a table_name_filter_pattern",
-        ));
-    }
     let (catalog_name, catalog) =
         require_catalog(catalog_provider_list, query.catalog.as_deref(), "GetTables")?;
     let db_schema_filter_pattern = query
@@ -101,7 +103,6 @@ pub(super) fn validate_tables_request(
         catalog,
         db_schema_filter_pattern,
         table_name_filter_pattern,
-        include_schema: query.include_schema,
     })
 }
 
@@ -163,9 +164,10 @@ pub(super) async fn tables_batch(
         query.db_schema_filter_pattern.clone(),
         query.table_name_filter_pattern.clone(),
         query.table_types.clone(),
-        request.include_schema,
+        false,
     );
-    // Dropped by the builder when `include_schema` is false.
+    // Never read: the builder drops it because `include_schema` is off, but
+    // `append` takes a schema either way.
     let empty_schema = Schema::empty();
     for schema_name in schema_names {
         let mut table_names = request
@@ -173,47 +175,19 @@ pub(super) async fn tables_batch(
             .list_table_names(&schema_name)
             .await
             .map_err(df_error_to_status)?;
-        // The same narrowing as for schemas: with `include_schema` every
-        // table left here costs a metadata load, so drop the rest first.
+        // The same narrowing as for schemas: the builder would drop these rows
+        // anyway, and filtering here keeps them out of the batch it allocates.
         if let Some(pattern) = &request.table_name_filter_pattern {
             table_names = filter_like(table_names, pattern)?;
         }
-        let schema_provider = if request.include_schema {
-            match request
-                .catalog
-                .schema(&schema_name)
-                .await
-                .map_err(df_error_to_status)?
-            {
-                Some(provider) => Some(provider),
-                // Listed a moment ago, gone now: none of its tables can carry
-                // a schema, so leave them all out rather than emit empty ones.
-                None => continue,
-            }
-        } else {
-            None
-        };
         for table_name in table_names {
-            let loaded = match &schema_provider {
-                Some(provider) => match provider
-                    .table(&table_name)
-                    .await
-                    .map_err(df_error_to_status)?
-                {
-                    Some(table) => Some(table.schema()),
-                    // Listed a moment ago, gone now: leave the row out rather
-                    // than fail the whole listing.
-                    None => continue,
-                },
-                None => None,
-            };
             builder
                 .append(
                     &request.catalog_name,
                     &schema_name,
                     table_name,
                     TABLE_TYPE,
-                    loaded.as_deref().unwrap_or(&empty_schema),
+                    &empty_schema,
                 )
                 .map_err(Status::from)?;
         }

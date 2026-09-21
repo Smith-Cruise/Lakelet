@@ -1,10 +1,10 @@
 /**
- * Flight SQL metadata commands, encoded by hand.
+ * The Flight SQL commands this app sends, encoded by hand.
  *
- * These three messages are small and stable, so encoding them directly costs
- * far less than adding protobuf codegen to the build. Field numbers and the
- * type URL prefix match arrow-flight 58.4.0, which is what the server runs:
- * see `arrow-flight/src/sql/arrow.flight.protocol.sql.rs` for the tags and
+ * All four messages are small and stable, so encoding them directly costs far
+ * less than adding protobuf codegen to the build. Field numbers and the type
+ * URL prefix match arrow-flight 58.4.0, which is what the server runs: see
+ * `arrow-flight/src/sql/arrow.flight.protocol.sql.rs` for the tags and
  * `arrow-flight/src/sql/mod.rs` for the `type.googleapis.com/...` prefix.
  */
 
@@ -36,11 +36,6 @@ function stringField(fieldNumber: number, value: string): number[] {
   return lengthDelimited(fieldNumber, encoder.encode(value));
 }
 
-/** A varint field holding a bool: tag byte with wire type 0, then 0 or 1. */
-function boolField(fieldNumber: number, value: boolean): number[] {
-  return [fieldNumber << 3, value ? 1 : 0];
-}
-
 /** google.protobuf.Any: type_url = 1, value = 2. */
 function wrapInAny(messageName: string, body: Uint8Array): Uint8Array {
   return new Uint8Array([
@@ -70,16 +65,17 @@ export function commandGetDbSchemas(catalog: string): Uint8Array {
 
 /**
  * CommandGetTables: catalog = 1, db_schema_filter_pattern = 2,
- * table_name_filter_pattern = 3, table_types = 4, include_schema = 5.
+ * table_name_filter_pattern = 3.
  *
- * Both name filters are LIKE patterns, so exact names are escaped. Lakelet
- * only honours `include_schema` together with a table name filter, since
- * each table's schema costs a metastore round trip.
+ * Both name filters are LIKE patterns, so exact names are escaped. The
+ * remaining fields are never set: Lakelet reports one table type, and it
+ * refuses `include_schema` outright - a table's columns come from
+ * `commandStatementQuery` below instead.
  */
 export function commandGetTables(
   catalog: string,
   dbSchema: string,
-  options: { table?: string; includeSchema?: boolean } = {},
+  options: { table?: string } = {},
 ): Uint8Array {
   return wrapInAny(
     "CommandGetTables",
@@ -87,8 +83,20 @@ export function commandGetTables(
       ...stringField(1, catalog),
       ...stringField(2, escapeLikePattern(dbSchema)),
       ...(options.table === undefined ? [] : stringField(3, escapeLikePattern(options.table))),
-      ...(options.includeSchema ? boolField(5, true) : []),
     ]),
+  );
+}
+
+/**
+ * CommandStatementQuery: query = 1.
+ *
+ * Sent to GetFlightInfo on its own, to read a statement's schema without
+ * running it; executing a statement goes through sparrowJS instead.
+ */
+export function commandStatementQuery(sql: string): Uint8Array {
+  return wrapInAny(
+    "CommandStatementQuery",
+    new Uint8Array(stringField(1, sql)),
   );
 }
 

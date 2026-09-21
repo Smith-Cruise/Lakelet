@@ -14,10 +14,12 @@ import { connect, type FlightClient } from "@sparrowflight/js";
 import type { RecordBatch, Table } from "apache-arrow";
 import { decodeIpcSchema } from "../lib/ipc";
 import { describeColumn, type ColumnMeta } from "../lib/values";
+import { qualifiedName } from "../lib/sql";
 import {
   commandGetCatalogs,
   commandGetDbSchemas,
   commandGetTables,
+  commandStatementQuery,
 } from "./commands";
 
 /** Rows kept in the browser. Past this the stream is cancelled. */
@@ -133,33 +135,29 @@ export function listTables(catalog: string, dbSchema: string): Promise<string[]>
 }
 
 /**
- * The columns of one table, through GetTables with `include_schema`: the
- * standard Flight SQL way to read a table's schema without planning a query.
- * The name filter is a LIKE pattern, so the row is matched by exact name.
+ * The columns of one table, read from the FlightInfo of a statement that is
+ * planned but never run.
+ *
+ * GetFlightInfo answers a statement with the Arrow schema its result would
+ * have, so a `limit 0` select is the cheapest way to ask what a table looks
+ * like: one round trip, no DoGet, no rows. It also means the type labels here
+ * come from the same schema the result grid renders.
+ *
+ * The ticket that comes back is dropped. Lakelet's statement ticket is the
+ * SQL text itself, so not redeeming it leaves nothing behind on the server.
  */
 export async function describeTable(
   catalog: string,
   dbSchema: string,
   table: string,
 ): Promise<ColumnMeta[]> {
-  const result = await metadataTable(
-    commandGetTables(catalog, dbSchema, { table, includeSchema: true }),
-  );
-  const names = result.getChild("table_name");
-  const schemas = result.getChild("table_schema");
-  if (!names || !schemas) {
-    throw new Error("metadata result is missing the table_schema column");
+  const flight = await client();
+  const sql = `select * from ${qualifiedName(catalog, dbSchema, table)} limit 0`;
+  const info = await flight.getFlightInfo({ cmd: commandStatementQuery(sql) });
+  if (info.schema.byteLength === 0) {
+    throw new Error("server returned no schema for the statement");
   }
-  for (let index = 0; index < result.numRows; index += 1) {
-    if (names.get(index) === table) {
-      const bytes = schemas.get(index) as Uint8Array | null;
-      if (!bytes) {
-        break;
-      }
-      return decodeIpcSchema(bytes).fields.map(describeColumn);
-    }
-  }
-  throw new Error(`table ${table} was not found`);
+  return decodeIpcSchema(info.schema).fields.map(describeColumn);
 }
 
 /**

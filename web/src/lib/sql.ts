@@ -103,3 +103,8 @@ function trimRange(text: string, start: number, end: number): StatementRange | u
 export function quoteIdent(name: string): string {
   return /^[a-z_][a-z0-9_]*$/.test(name) ? name : `"${name.replace(/"/g, '""')}"`;
 }
+
+/** A dotted path - catalog.schema.table - with each part quoted as needed. */
+export function qualifiedName(...parts: string[]): string {
+  return parts.map(quoteIdent).join(".");
+}

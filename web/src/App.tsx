@@ -7,7 +7,7 @@ import { SqlEditor } from "./components/SqlEditor";
 import { ResultPanel } from "./components/ResultPanel";
 import { describeError, listCatalogs, runQuery, ROW_LIMIT } from "./flight/client";
 import { buildResultSet } from "./lib/result";
-import { quoteIdent } from "./lib/sql";
+import { qualifiedName } from "./lib/sql";
 import { useApp } from "./store";
 
 /** A hairline between panels with an 8px grab area; it turns accent while hovered or dragged. */
@@ -70,7 +70,7 @@ export function App() {
 
   const onPickTable = useCallback(
     (pickedCatalog: string, pickedSchema: string, table: string) => {
-      const target = [pickedCatalog, pickedSchema, table].map(quoteIdent).join(".");
+      const target = qualifiedName(pickedCatalog, pickedSchema, table);
       setTabScope(activeTabId, pickedCatalog, pickedSchema);
       setActiveTable({ catalog: pickedCatalog, schema: pickedSchema, table });
       updateSql(activeTabId, `select *\nfrom ${target}\nlimit 100;`);

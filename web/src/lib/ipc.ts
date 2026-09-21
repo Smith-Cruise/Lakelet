@@ -3,13 +3,13 @@ import { tableFromIPC, type Schema } from "apache-arrow";
 const CONTINUATION = 0xffffffff;
 
 /**
- * Decodes the `table_schema` bytes a Flight SQL GetTables(include_schema)
- * row carries.
+ * Decodes the IPC schema message a Flight SQL FlightInfo carries.
  *
- * arrow-rs writes a bare flatbuffer Message; apache-arrow's reader wants an
- * IPC stream, so wrap it as one: continuation marker, little-endian length
- * padded to eight bytes, the message, then an end-of-stream marker. Bytes
- * that already start with the marker (pyarrow style) pass straight through.
+ * apache-arrow's reader wants an IPC stream, not a lone message, so an
+ * end-of-stream marker is always appended. arrow-rs already writes the
+ * encapsulated form - continuation marker, little-endian length, then the
+ * flatbuffer message - and passes straight through; a bare message (some
+ * other producers) is wrapped into that form first.
  */
 export function decodeIpcSchema(bytes: Uint8Array): Schema {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);

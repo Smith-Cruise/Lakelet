@@ -336,13 +336,13 @@ impl FlightSqlService for LakeletFlightSqlService {
         query: CommandGetTables,
         request: Request<FlightDescriptor>,
     ) -> Result<Response<FlightInfo>, Status> {
-        // `include_schema` especially must be refused here: the advertised
-        // schema has no table_schema column, so letting the request through
-        // would hand the client a FlightInfo that answers a different
-        // question than the one it asked.
+        // Reject an unsupported request here rather than at DoGet, so the
+        // client never holds a ticket it cannot redeem. `include_schema` in
+        // particular: the advertised schema has no table_schema column, so
+        // letting it through would promise an answer to a different question.
         metadata::validate_tables_request(&self.catalog_provider_list, &query)?;
         let flight_info = Self::flight_info(
-            &metadata::tables_schema(query.include_schema),
+            &metadata::tables_schema(),
             query.as_any().encode_to_vec(),
             request.into_inner(),
         )?;
@@ -356,7 +356,7 @@ impl FlightSqlService for LakeletFlightSqlService {
     ) -> Result<Response<<Self as FlightService>::DoGetStream>, Status> {
         let batch = metadata::tables_batch(&self.catalog_provider_list, &query).await?;
         Ok(metadata::single_batch_response(
-            metadata::tables_schema(query.include_schema),
+            metadata::tables_schema(),
             batch,
         ))
     }
@@ -397,9 +397,8 @@ mod tests {
     use crate::catalog::{INFORMATION_SCHEMA_SHOW_VARIABLES, INTERNAL_CATALOG};
     use crate::server::tests::spawn_test_server;
     use arrow_flight::sql::client::FlightSqlServiceClient;
-    use datafusion::arrow::array::{BinaryArray, Int64Array, StringArray, UInt32Array};
+    use datafusion::arrow::array::{Int64Array, StringArray, UInt32Array};
     use datafusion::arrow::datatypes::DataType;
-    use datafusion::arrow::ipc::convert::try_schema_from_flatbuffer_bytes;
     use datafusion::arrow::record_batch::RecordBatch;
     use datafusion::catalog::information_schema::INFORMATION_SCHEMA;
     use tonic::transport::Channel;
@@ -695,12 +694,13 @@ mod tests {
             vec![INFORMATION_SCHEMA_SHOW_VARIABLES]
         );
         assert_eq!(string_column(&batches[0], "table_type"), vec!["TABLE"]);
-        // Without include_schema the column is not even advertised.
+        // The table_schema column is never advertised: include_schema is not
+        // supported, so this is the one shape a GetTables result has.
         assert!(batches[0].column_by_name("table_schema").is_none());
 
-        // With a table name to bound it, include_schema carries each table's
-        // Arrow schema as an IPC message.
-        let flight_info = client
+        // Refused outright, narrow enough to be cheap or not — a table's
+        // schema comes from GetFlightInfo on a statement instead.
+        let err = client
             .get_tables(CommandGetTables {
                 catalog: Some(INTERNAL_CATALOG.to_string()),
                 db_schema_filter_pattern: Some(INFORMATION_SCHEMA.to_string()),
@@ -709,46 +709,13 @@ mod tests {
                 ..Default::default()
             })
             .await
-            .expect("get_tables with include_schema should succeed");
-        let batches = fetch_batches(&mut client, flight_info).await;
-        assert_eq!(
-            string_column(&batches[0], "table_name"),
-            vec![INFORMATION_SCHEMA_SHOW_VARIABLES]
-        );
-        let table_schemas = batches[0]
-            .column_by_name("table_schema")
-            .expect("include_schema should add a table_schema column")
-            .as_any()
-            .downcast_ref::<BinaryArray>()
-            .expect("table_schema should be binary");
-        // The builder writes the encapsulated form: a continuation marker and
-        // a length ahead of the flatbuffer message.
-        let bytes = table_schemas.value(0);
-        assert_eq!(&bytes[..4], &[0xff, 0xff, 0xff, 0xff]);
-        let table_schema = try_schema_from_flatbuffer_bytes(&bytes[8..])
-            .expect("table_schema should decode as an IPC schema message");
-        assert_eq!(
-            table_schema
-                .fields()
-                .iter()
-                .map(|field| field.name().as_str())
-                .collect::<Vec<_>>(),
-            vec!["name", "value", "description"]
-        );
-
-        // Without a table name the same flag is still refused: it would mean
-        // loading every table's metadata.
-        let err = client
-            .get_tables(CommandGetTables {
-                catalog: Some(INTERNAL_CATALOG.to_string()),
-                db_schema_filter_pattern: Some(INFORMATION_SCHEMA.to_string()),
-                include_schema: true,
-                ..Default::default()
-            })
-            .await
-            .expect_err("include_schema without a table name filter should be refused");
+            .expect_err("include_schema should be refused");
         assert!(
-            err.to_string().contains("table_name_filter_pattern"),
+            matches!(err, FlightError::Tonic(ref status) if status.code() == tonic::Code::Unimplemented),
+            "unexpected error: {err}"
+        );
+        assert!(
+            err.to_string().contains("include_schema"),
             "unexpected error: {err}"
         );
 

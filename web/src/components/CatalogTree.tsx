@@ -229,8 +229,8 @@ interface TableNodeProps {
 }
 
 /**
- * A table row that opens into its columns. The schema comes from Flight SQL's
- * GetTables(include_schema), so the type labels match the result grid's.
+ * A table row that opens into its columns. The schema comes from planning a
+ * `select * ... limit 0`, so the type labels match the result grid's.
  */
 function TableNode({ catalog, schema, table, expanded, onToggle, selected, onPickTable }: TableNodeProps) {
   const columns = useQuery({
