@@ -12,6 +12,9 @@ datafusion-cli = { workspace = true }
 sqlparser = { workspace = true }
 arrow-flight = { workspace = true }
 tonic = { workspace = true }
+tonic-web = { workspace = true }
+axum = { workspace = true }
+rust-embed = { workspace = true }
 prost = { workspace = true }
 tokio = { workspace = true }
 lakelet-common = { workspace = true }
@@ -41,3 +44,4 @@ sysinfo = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.23.0"
+tokio = { workspace = true, features = ["macros"] }

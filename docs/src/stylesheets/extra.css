@@ -1,516 +1,1158 @@
 /* ---------------------------------------------------------------------------
- * Home page (index.md) enhancements.
+ * Lakebed — the Lakelet look, for the whole site.
  *
- * Everything here is scoped to the `.ll-home` wrapper (or gated behind
- * `body:has(.ll-home)`), so doc pages are untouched. Colors come from the
- * theme's own palette variables and adapt to light/dark automatically.
+ * Near-black ink on warm paper, square corners, hard rules, and one
+ * high-voltage accent. There is a single theme: `zensical.toml` deliberately
+ * declares no palette, so the theme emits no `data-md-color-scheme` and the
+ * variables below simply replace its defaults.
+ *
+ * The same values drive the web console in `web/src/styles.css`. A colour
+ * changed here belongs there too.
+ *
+ * One rule matters more than the rest: `--ll-volt` is a FILL and MARK colour.
+ * At roughly 2:1 against paper it is unreadable as text, so anything sitting
+ * on volt is inked, and volt itself never carries a word.
  * ------------------------------------------------------------------------- */
 
-/* Site-wide: copy button turns into a green check after a click (the
- * `ll-copied` class is added briefly by javascripts/extra.js). */
-.md-code__button.ll-copied[data-md-type="copy"] {
-  color: #2fa36b !important;
+/* The theme's own font link stops at 700; display headings need 800. */
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@800&display=swap");
+
+:root {
+  --ll-ink: #14170f;
+  --ll-ink-soft: #5a5e4e;
+  --ll-ink-faint: #8c907e;
+  --ll-paper: #ebe9de;
+  --ll-panel: #f7f6ef;
+  --ll-panel-alt: #ffffff;
+  --ll-rule: #14170f;
+  --ll-line: rgba(20, 23, 15, 0.14);
+  --ll-volt: #c8f135;
+  --ll-volt-deep: #a7ce1c;
+  --ll-volt-wash: #edf9c4;
+  --ll-danger: #c4392b;
+  --ll-warning: #b8791a;
+  --ll-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Material's own variables, remapped. The header paints with
+     `--md-primary-fg-color` and letters with `--md-primary-bg-color`. */
+  --md-primary-fg-color: var(--ll-ink);
+  --md-primary-fg-color--light: #2b3022;
+  --md-primary-fg-color--dark: #0e100a;
+  --md-primary-bg-color: var(--ll-paper);
+  --md-primary-bg-color--light: rgba(235, 233, 222, 0.72);
+
+  /* Accent stays ink on purpose: it drives link and control hovers, where
+     volt would fail contrast. Volt arrives through the explicit rules below. */
+  --md-accent-fg-color: var(--ll-ink);
+  --md-accent-fg-color--transparent: rgba(20, 23, 15, 0.08);
+  --md-accent-bg-color: var(--ll-paper);
+  --md-accent-bg-color--light: rgba(235, 233, 222, 0.72);
+
+  --md-default-bg-color: var(--ll-paper);
+  --md-default-fg-color: var(--ll-ink);
+  --md-default-fg-color--light: var(--ll-ink-soft);
+  --md-default-fg-color--lighter: var(--ll-ink-faint);
+  --md-default-fg-color--lightest: var(--ll-line);
+
+  --md-code-bg-color: var(--ll-panel);
+  --md-code-fg-color: var(--ll-ink);
+  --md-code-hl-color: var(--ll-volt);
+  --md-code-hl-color--light: var(--ll-volt-wash);
+  --md-code-hl-keyword-color: #b5451f;
+  --md-code-hl-operator-color: #b5451f;
+  --md-code-hl-string-color: #3d7a2e;
+  --md-code-hl-number-color: #8a6a1f;
+  --md-code-hl-constant-color: #8a6a1f;
+  --md-code-hl-special-color: #8a6a1f;
+  --md-code-hl-function-color: #6a4bb0;
+  --md-code-hl-name-color: var(--ll-ink);
+  --md-code-hl-comment-color: var(--ll-ink-faint);
+  --md-code-hl-punctuation-color: var(--ll-ink-soft);
+  --md-code-hl-generic-color: var(--ll-ink-soft);
+  --md-code-hl-variable-color: var(--ll-ink);
+
+  --md-typeset-color: var(--ll-ink);
+  --md-typeset-a-color: var(--ll-ink);
+  --md-typeset-mark-color: rgba(200, 241, 53, 0.55);
+  --md-typeset-table-color: var(--ll-line);
+  --md-typeset-table-color--light: rgba(20, 23, 15, 0.04);
+  --md-typeset-kbd-color: var(--ll-panel);
+  --md-typeset-kbd-accent-color: var(--ll-panel-alt);
+  --md-typeset-kbd-border-color: var(--ll-rule);
+
+  --md-footer-bg-color: var(--ll-ink);
+  --md-footer-bg-color--dark: #0e100a;
+  --md-footer-fg-color: var(--ll-paper);
+  --md-footer-fg-color--light: rgba(235, 233, 222, 0.7);
+  --md-footer-fg-color--lighter: rgba(235, 233, 222, 0.45);
+
+  /* Lakebed has no soft depth: what is raised is offset, not blurred. */
+  --md-shadow-z1: none;
+  --md-shadow-z2: 4px 4px 0 rgba(20, 23, 15, 0.16);
+  --md-shadow-z3: 6px 6px 0 rgba(20, 23, 15, 0.2);
+
+  color-scheme: light;
 }
 
-.md-code__button.ll-copied[data-md-type="copy"]::after {
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+/* Typography ---------------------------------------------------------------- */
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4 {
+  font-family: var(--ll-mono);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--ll-ink);
 }
 
-/* Soft brand-colored glow behind the hero. */
-body:has(.ll-home) .md-main {
-  background:
-    radial-gradient(
-      70rem 30rem at 80% -8%,
-      color-mix(in srgb, var(--md-primary-fg-color) 9%, transparent),
-      transparent 70%
-    ),
-    radial-gradient(
-      50rem 26rem at 8% -12%,
-      color-mix(in srgb, var(--md-accent-fg-color) 7%, transparent),
-      transparent 70%
-    );
+.md-typeset h1 {
+  font-size: 2rem;
+  line-height: 1.05;
 }
 
-body[data-md-color-scheme="slate"]:has(.ll-home) .md-main {
-  background:
-    radial-gradient(
-      70rem 30rem at 80% -8%,
-      color-mix(in srgb, var(--md-primary-fg-color) 16%, transparent),
-      transparent 70%
-    ),
-    radial-gradient(
-      50rem 26rem at 8% -12%,
-      color-mix(in srgb, var(--md-accent-fg-color) 10%, transparent),
-      transparent 70%
-    );
+.md-typeset h2 {
+  font-size: 1.4rem;
+  margin-top: 2.2rem;
 }
 
-/* Hero ------------------------------------------------------------------- */
-
-.md-typeset .ll-home {
-  padding-top: 1.6rem;
-}
-
-.md-typeset .ll-home h1 {
-  max-width: 24em;
-  margin-bottom: 1rem;
-  font-size: clamp(2.2rem, 1.4rem + 3vw, 3.2rem);
+.md-typeset h3 {
+  font-size: 1.05rem;
   font-weight: 700;
-  line-height: 1.04;
-  letter-spacing: -0.045em;
-  text-wrap: balance;
-  background: linear-gradient(
-    92deg,
-    var(--md-default-fg-color) 30%,
-    var(--md-primary-fg-color)
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: var(--md-default-fg-color); /* fallback if clip unsupported */
 }
 
-/* Install command: terminal-style card. */
-.md-typeset .ll-home > .highlight {
-  width: min(100%, 36rem);
-  margin: 1.4rem 0 1rem;
-  border: 0.05rem solid var(--md-default-fg-color--lightest);
-  border-radius: 0.5rem;
-  overflow: hidden;
-  box-shadow: var(--md-shadow-z1);
-  background-color: var(--md-code-bg-color);
+.md-typeset h4 {
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
-/* Title bar with three window dots. */
-.md-typeset .ll-home > .highlight::before {
-  content: "";
-  display: block;
-  height: 1.5rem;
-  border-bottom: 0.05rem solid var(--md-default-fg-color--lightest);
-  background:
-    radial-gradient(0.24rem 0.24rem at 0.8rem 50%, #ff5f57 48%, transparent 52%),
-    radial-gradient(0.24rem 0.24rem at 1.5rem 50%, #febc2e 48%, transparent 52%),
-    radial-gradient(0.24rem 0.24rem at 2.2rem 50%, #28c840 48%, transparent 52%);
+/* Links read as ink with a volt rule under them; colour alone is not the cue. */
+.md-typeset a:not(.md-button):not(.md-nav__link):not(.md-content__button) {
+  border-bottom: 2px solid var(--ll-volt);
+  text-decoration: none;
 }
 
-.md-typeset .ll-home > .highlight pre {
+.md-typeset a:not(.md-button):not(.md-nav__link):not(.md-content__button):hover {
+  background: var(--ll-volt-wash);
+  border-bottom-color: var(--ll-volt-deep);
+}
+
+/* Header -------------------------------------------------------------------- */
+
+/* The modern variant ships a translucent white bar. Lakebed wants one ink
+   block from the logo down to the tab row, matching the web console's header,
+   so the colour is set here rather than through `--md-primary-fg-color`. */
+.md-header {
+  background-color: var(--ll-ink);
+  color: var(--ll-paper);
+  border-bottom: 0;
+  box-shadow: none;
+}
+
+.md-header__title,
+.md-header .md-icon,
+.md-header .md-source {
+  color: var(--ll-paper);
+}
+
+.md-header__title {
+  font-family: var(--ll-mono);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.md-header .md-search__button {
+  color: var(--ll-paper);
+  background-color: rgba(235, 233, 222, 0.12);
+  border-radius: 0;
+  font-family: var(--ll-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+}
+
+.md-header .md-search__button:hover,
+.md-header .md-search__button:focus {
+  background-color: rgba(235, 233, 222, 0.22);
+  color: var(--ll-paper);
+}
+
+/* The magnifier is a mask painted with the default foreground, which is ink
+   and therefore invisible on the ink bar. */
+.md-header .md-search__button::before {
+  background-color: var(--ll-paper);
+}
+
+.md-header .md-search__button::after {
+  background: rgba(235, 233, 222, 0.18);
+  border-radius: 0;
+  color: var(--ll-paper);
+}
+
+.md-header .md-source__fact {
+  color: rgba(235, 233, 222, 0.7);
+}
+
+/* The mark carries its own volt tile, so it must not be padded into a circle. */
+.md-header__button.md-logo {
+  padding: 0;
+  margin-right: 0.5rem;
+}
+
+.md-header__button.md-logo img {
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 0;
+}
+
+.md-search__form,
+.md-search__input {
+  border-radius: 0;
+  background-color: rgba(235, 233, 222, 0.14);
+}
+
+.md-search__form:hover,
+.md-search__input:hover {
+  background-color: rgba(235, 233, 222, 0.24);
+}
+
+.md-search__input::placeholder {
+  font-family: var(--ll-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+[data-md-toggle="search"]:checked ~ .md-header .md-search__output,
+.md-search__output {
+  border-radius: 0;
+}
+
+.md-search-result__meta,
+.md-search-result__article .md-search-result__title {
+  font-family: var(--ll-mono);
+}
+
+/* Navigation tabs ----------------------------------------------------------- */
+
+.md-tabs {
+  background-color: var(--ll-ink);
+  border-bottom: 2px solid var(--ll-rule);
+  /* The theme leaves the tab row inheriting ink, which is invisible on ink. */
+  color: var(--ll-paper);
+}
+
+.md-tabs__link {
+  color: var(--ll-paper);
+  font-family: var(--ll-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.62;
+  border-bottom: 2px solid transparent;
+}
+
+.md-tabs__link:hover,
+.md-tabs__link--active {
+  opacity: 1;
+  border-bottom-color: var(--ll-volt);
+}
+
+/* Sidebar nav --------------------------------------------------------------- */
+
+.md-nav {
+  font-size: 0.68rem;
+}
+
+.md-nav__title {
+  font-family: var(--ll-mono);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ll-ink-faint);
+  box-shadow: none;
+}
+
+.md-nav__link {
+  border-radius: 0;
+  padding: 0.22rem 0.5rem;
+  margin-top: 0;
+}
+
+.md-nav__link:hover {
+  background: rgba(20, 23, 15, 0.05);
+  color: var(--ll-ink);
+}
+
+.md-nav__item .md-nav__link--active,
+.md-nav__item .md-nav__link--active:hover {
+  font-weight: 700;
+  color: var(--ll-ink);
+  background: var(--ll-volt-wash);
+  box-shadow: inset 3px 0 0 var(--ll-volt);
+}
+
+.md-sidebar--secondary .md-nav__link--active {
+  box-shadow: inset 3px 0 0 var(--ll-volt);
+}
+
+/* Code ---------------------------------------------------------------------- */
+
+.md-typeset code {
+  border-radius: 0;
+  padding: 0.05em 0.35em;
+  background: var(--ll-panel);
+  box-shadow: inset 0 0 0 1px var(--ll-line);
+}
+
+.md-typeset pre > code {
+  box-shadow: none;
+  background: transparent;
+}
+
+.md-typeset .highlight,
+.md-typeset pre {
+  border-radius: 0;
+}
+
+.md-typeset .highlight {
+  border: 1.5px solid var(--ll-rule);
+  background: var(--ll-panel);
+}
+
+.md-typeset .highlight > pre {
   margin: 0;
 }
 
-.md-typeset .ll-home > .highlight pre > code {
-  padding: 0.9rem 3rem 0.9rem 1rem; /* right padding keeps text clear of the copy button */
+.md-typeset .md-code__button {
+  border-radius: 0;
+  color: var(--ll-ink-faint);
 }
 
-/* Keep the shell prompt visual only, so the copied command remains runnable. */
-.md-typeset .ll-home > .highlight pre > code::before {
-  margin-right: 0.55rem;
-  color: var(--md-accent-fg-color);
-  content: "$";
+.md-typeset .md-code__button:hover {
+  color: var(--ll-ink);
+  background: var(--ll-volt-wash);
+}
+
+/* Copy button flips to a check for a moment; `javascripts/extra.js` adds the
+   class. Volt is a fill, so the tick sits inside a volt block instead of
+   being drawn in volt. */
+.md-code__button.ll-copied[data-md-type="copy"] {
+  color: var(--ll-ink) !important;
+  background: var(--ll-volt);
+}
+
+.md-code__button.ll-copied[data-md-type="copy"]::after {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+}
+
+/* Tables -------------------------------------------------------------------- */
+
+.md-typeset table:not([class]) {
+  border-radius: 0;
+  border: 1.5px solid var(--ll-rule);
+  background: var(--ll-panel-alt);
+  font-size: 0.66rem;
+}
+
+.md-typeset table:not([class]) th {
+  background: var(--ll-ink);
+  color: var(--ll-paper);
+  font-family: var(--ll-mono);
+  font-size: 0.55rem;
   font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.md-typeset table:not([class]) td {
+  border-top: 1px solid var(--ll-line);
+}
+
+.md-typeset table:not([class]) tr:hover {
+  background: rgba(20, 23, 15, 0.03);
+}
+
+/* Admonitions --------------------------------------------------------------- */
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 0;
+  border: 1.5px solid var(--ll-rule);
+  border-left-width: 4px;
+  border-left-color: var(--ll-volt);
+  box-shadow: none;
+  background: var(--ll-panel);
+  font-size: 0.68rem;
+}
+
+.md-typeset .admonition-title,
+.md-typeset summary {
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--ll-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.md-typeset .admonition.warning,
+.md-typeset .admonition.caution {
+  border-left-color: var(--ll-warning);
+}
+
+.md-typeset .admonition.danger,
+.md-typeset .admonition.failure,
+.md-typeset .admonition.bug {
+  border-left-color: var(--ll-danger);
+}
+
+/* Buttons, kbd and rules ---------------------------------------------------- */
+
+.md-typeset .md-button {
+  border-radius: 0;
+  border: 2px solid var(--ll-rule);
+  font-family: var(--ll-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.6rem 1.1rem;
+  box-shadow: 4px 4px 0 var(--ll-rule);
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s;
+}
+
+.md-typeset .md-button:hover,
+.md-typeset .md-button:focus {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--ll-rule);
+}
+
+.md-typeset .md-button:active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+.md-typeset .md-button--primary {
+  background: var(--ll-ink);
+  border-color: var(--ll-ink);
+  color: var(--ll-volt);
+}
+
+.md-typeset kbd {
+  border-radius: 0;
+  box-shadow: 0 0 0 1px var(--ll-rule);
+  font-family: var(--ll-mono);
+}
+
+.md-typeset hr {
+  border-bottom: 1.5px solid var(--ll-rule);
+}
+
+/* Footer -------------------------------------------------------------------- */
+
+.md-footer-meta {
+  background-color: var(--md-footer-bg-color--dark);
+}
+
+/* The attribution is the one piece of chrome the theme repaints itself, with
+   `html .md-footer-meta.md-typeset a:not(:focus, :hover)` — ink, on ink.
+   Matching that `html` prefix is the only way to win. The bar also carries
+   `.md-typeset`, so the site's 2px volt link rule reaches it and has to be
+   quietened back down to a colophon. */
+html .md-footer-meta.md-typeset .md-copyright,
+html .md-footer-meta.md-typeset .md-copyright a:not(:focus, :hover) {
+  color: rgba(235, 233, 222, 0.62);
+}
+
+/* Mono and uppercase, so it reads as a sibling of the colophon above it on
+   the home page and of the PREVIOUS / NEXT labels on every other page. */
+html .md-footer-meta.md-typeset .md-copyright {
+  font-family: var(--ll-mono);
+  font-size: 0.52rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* `:not(.md-button)` only buys specificity: the site-wide link rule carries
+   three negations and would otherwise keep its full-strength 2px rule, which
+   is far too loud for a colophon. */
+html .md-footer-meta.md-typeset .md-copyright a:not(.md-button) {
+  border-bottom: 1px solid rgba(200, 241, 53, 0.55);
+}
+
+html .md-footer-meta.md-typeset .md-copyright a:hover,
+html .md-footer-meta.md-typeset .md-copyright a:focus {
+  color: var(--ll-volt);
+  border-bottom-color: var(--ll-volt);
+}
+
+.md-footer-meta__inner {
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+.md-footer__link {
+  font-family: var(--ll-mono);
+}
+
+.md-footer__direction {
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* ===========================================================================
+ * Home page (index.md)
+ *
+ * Everything below is scoped to the `.ll-home` wrapper, or to the body that
+ * contains it, so doc pages stay untouched.
+ * ========================================================================= */
+
+body:has(.ll-home) .md-main__inner {
+  margin-top: 0;
+}
+
+body:has(.ll-home) .md-content__inner {
+  padding: 0;
+  margin: 0;
+}
+
+body:has(.ll-home) .md-content__inner::before {
+  display: none;
+}
+
+body:has(.ll-home) .md-grid {
+  max-width: none;
+}
+
+.md-typeset .ll-home {
+  margin: 0;
+}
+
+/* The home page drops the grid's max-width, which also un-gutters the footer
+   bar. Put it back on the bands' own gutter so the attribution lines up under
+   the closing band instead of the viewport edge. (`.md-copyright` carries its
+   own 0.6rem side margin, hence the difference.) */
+body:has(.ll-home) .md-footer-meta__inner {
+  padding-left: 1.8rem;
+  padding-right: 1.8rem;
+}
+
+/* Full-bleed bands ---------------------------------------------------------- */
+
+.md-typeset .ll-band {
+  padding: 3.2rem 2.4rem;
+}
+
+/* Hero ---------------------------------------------------------------------- */
+
+.md-typeset .ll-hero {
+  position: relative;
+  background-color: var(--ll-volt);
+  background-image:
+    linear-gradient(rgba(20, 23, 15, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(20, 23, 15, 0.07) 1px, transparent 1px);
+  background-size: 1.7rem 1.7rem;
+  border-bottom: 2px solid var(--ll-rule);
+  padding-bottom: 4.8rem;
+  color: var(--ll-ink);
+}
+
+.md-typeset .ll-kicker {
+  display: inline-block;
+  margin-bottom: 1.1rem;
+  padding: 0.25rem 0.55rem;
+  background: var(--ll-ink);
+  color: var(--ll-volt);
+  font-family: var(--ll-mono);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.md-typeset .ll-hero h1 {
+  max-width: 15ch;
+  margin: 0;
+  font-size: clamp(2rem, 1.1rem + 3.6vw, 3.7rem);
+  line-height: 0.95;
+  color: var(--ll-ink);
+}
+
+.md-typeset .ll-hero .ll-lead {
+  max-width: 44ch;
+  margin-top: 1.1rem;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: #2c3020;
+}
+
+.md-typeset .ll-hero .md-button {
+  margin: 1.5rem 0.5rem 0 0;
+}
+
+/* The install card straddles the band's bottom edge. */
+.md-typeset .ll-install {
+  position: relative;
+  z-index: 2;
+  width: auto;
+  max-width: 32rem;
+  margin: -2.9rem 2.4rem 0;
+}
+
+.md-typeset .ll-install > .highlight {
+  border: 2px solid var(--ll-rule);
+  background: var(--ll-panel-alt);
+  box-shadow: 6px 6px 0 var(--ll-rule);
+}
+
+/* Title bar with three square window marks. */
+.md-typeset .ll-install > .highlight::before {
+  content: "";
+  display: block;
+  height: 1.4rem;
+  border-bottom: 2px solid var(--ll-rule);
+  background:
+    linear-gradient(var(--ll-ink) 0 0) 0.7rem 50% / 0.22rem 0.22rem no-repeat,
+    linear-gradient(var(--ll-ink) 0 0) 1.15rem 50% / 0.22rem 0.22rem no-repeat,
+    linear-gradient(var(--ll-ink) 0 0) 1.6rem 50% / 0.22rem 0.22rem no-repeat;
+}
+
+.md-typeset .ll-install > .highlight pre {
+  margin: 0;
+}
+
+.md-typeset .ll-install > .highlight pre > code {
+  padding: 0.8rem 2.8rem 0.8rem 0.9rem;
+  font-size: 0.68rem;
+}
+
+/* Prompt is decoration only, so the copied command stays runnable. */
+.md-typeset .ll-install > .highlight pre > code::before {
+  content: "$";
+  margin-right: 0.5rem;
+  color: var(--ll-volt-deep);
+  font-weight: 800;
   user-select: none;
 }
 
-/* Copy button: vertically centered in the code row, with visible feedback. */
-.md-typeset .ll-home > .highlight .md-code__nav {
+.md-typeset .ll-install .md-code__nav {
   top: 50%;
   right: 0.5rem;
   transform: translateY(-50%);
   background-color: transparent;
 }
 
-.md-typeset .ll-home > .highlight .md-code__button {
-  color: var(--md-default-fg-color--light);
-  border-radius: 0.2rem;
-  transition: color 0.25s, background-color 0.25s, transform 0.15s;
+.md-typeset .ll-note {
+  width: auto;
+  max-width: 32rem;
+  margin: 0.7rem 2.4rem 0;
+  font-size: 0.62rem;
+  color: var(--ll-ink-soft);
 }
 
-.md-typeset .ll-home > .highlight .md-code__button:hover,
-.md-typeset .ll-home > .highlight .md-code__button.focus-visible {
-  color: var(--md-accent-fg-color);
-  background-color: color-mix(in srgb, var(--md-accent-fg-color) 12%, transparent);
+/* Sections ------------------------------------------------------------------ */
+
+.md-typeset .ll-section {
+  padding: 2.8rem 2.4rem;
 }
 
-.md-typeset .ll-home > .highlight .md-code__button:active {
-  transform: scale(0.82);
-}
-
-.md-typeset .ll-home > .highlight .md-code__button--active {
-  color: var(--md-accent-fg-color) !important;
-}
-
-/* Platform note under the install card. */
-.md-typeset .ll-home > .highlight + p {
-  font-size: 0.68rem;
-  color: var(--md-default-fg-color--light);
-}
-
-/* CTA buttons. */
-.md-typeset .ll-home .md-button {
-  margin-right: 0.4rem;
-}
-
-.md-typeset .ll-home .md-button--primary {
-  background: linear-gradient(
-    35deg,
-    var(--md-primary-fg-color),
-    color-mix(in srgb, var(--md-primary-fg-color) 55%, var(--md-accent-fg-color))
-  );
-  transition: filter 0.25s, box-shadow 0.25s;
-}
-
-.md-typeset .ll-home .md-button--primary:hover,
-.md-typeset .ll-home .md-button--primary:focus {
-  filter: brightness(1.12);
-  box-shadow: 0 0.2rem 0.8rem
-    color-mix(in srgb, var(--md-primary-fg-color) 35%, transparent);
-  opacity: 1;
-}
-
-/* Sections ----------------------------------------------------------------- */
-
-/* Section headings get an eyebrow-style overline and more breathing room. */
-.md-typeset .ll-home h2 {
-  margin-top: 3.6rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.md-typeset .ll-home h2::before {
-  content: "";
+.md-typeset .ll-eyebrow {
   display: block;
-  width: 1.8rem;
-  height: 0.15rem;
-  margin-bottom: 0.7rem;
-  border-radius: 0.1rem;
-  background: linear-gradient(
-    90deg,
-    var(--md-primary-fg-color),
-    var(--md-accent-fg-color)
-  );
+  margin-bottom: 0.6rem;
+  font-family: var(--ll-mono);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ll-ink-faint);
 }
 
-/* Section intro line. */
-.md-typeset .ll-home h2 + p {
-  max-width: 36rem;
-  color: var(--md-default-fg-color--light);
+.md-typeset .ll-section h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.5rem;
+  text-transform: uppercase;
+  /* The mode cards jump here. The theme's own offset clears the sticky header
+     but lands on the heading itself, hiding the eyebrow above it. */
+  scroll-margin-top: 6rem;
 }
 
-/* CLI and Flight SQL ------------------------------------------------------- */
+.md-typeset .ll-section h2::before {
+  display: none;
+}
 
-.md-typeset .ll-query-modes {
+.md-typeset .ll-sub {
+  max-width: 52ch;
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--ll-ink-soft);
+}
+
+/* Two ways to query --------------------------------------------------------- */
+
+.md-typeset .ll-modes {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.9rem;
   margin-top: 1.4rem;
 }
 
-.md-typeset .ll-query-mode {
+.md-typeset .ll-mode {
   display: flex;
-  min-height: 10.5rem;
   flex-direction: column;
   padding: 1.1rem;
-  background: var(--md-default-bg-color);
-  border: 0.05rem solid var(--md-default-fg-color--lightest);
-  border-radius: 0.55rem;
-  box-shadow: var(--md-shadow-z1);
+  background: var(--ll-panel-alt);
+  border: 2px solid var(--ll-rule);
+  box-shadow: 5px 5px 0 var(--ll-rule);
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s;
 }
 
-body[data-md-color-scheme="slate"] .md-typeset .ll-query-mode {
-  background: color-mix(
-    in srgb,
-    var(--md-default-fg-color) 3%,
-    var(--md-default-bg-color)
-  );
+.md-typeset .ll-mode:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 7px 7px 0 var(--ll-volt-deep);
 }
 
-.md-typeset .ll-query-mode__copy {
-  display: flex;
-  height: 100%;
-  flex-direction: column;
-}
-
-.md-typeset .ll-query-mode__identity {
+.md-typeset .ll-mode__id {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.5rem;
+  margin-bottom: 0.8rem;
 }
 
-.md-typeset .ll-query-mode__icon {
+.md-typeset .ll-mode__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.9rem;
-  height: 1.9rem;
-  color: var(--md-accent-fg-color);
-  background: color-mix(in srgb, var(--md-accent-fg-color) 12%, transparent);
-  border-radius: 0.45rem;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: var(--ll-volt);
+  color: var(--ll-ink);
 }
 
-.md-typeset .ll-query-mode__icon svg {
-  width: 1rem;
-  height: 1rem;
+.md-typeset .ll-mode__icon svg {
+  width: 0.8rem;
+  height: 0.8rem;
 }
 
-.md-typeset .ll-query-mode__kicker {
-  color: var(--md-primary-fg-color);
-  font-size: 0.55rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-}
-
-.md-typeset .ll-query-mode__copy h3 {
-  margin: 0.7rem 0 0.45rem;
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.md-typeset .ll-query-mode__copy p {
+.md-typeset .ll-mode .ll-eyebrow {
   margin: 0;
-  color: var(--md-default-fg-color--light);
-  font-size: 0.72rem;
-  line-height: 1.55;
 }
 
-.md-typeset .ll-query-link {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  gap: 0.25rem;
+.md-typeset .ll-mode h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+
+.md-typeset .ll-mode p {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.6;
+  color: var(--ll-ink-soft);
+}
+
+/* The link is pushed to the bottom of the card by its own wrapper paragraph,
+   which is the flex item; the inline <a> is not, and an inline box's padding
+   does not grow its line, so padding here would bleed over the text above. */
+.md-typeset .ll-mode > p:last-child {
   margin-top: auto;
-  padding-top: 0.8rem;
-  color: var(--md-accent-fg-color);
-  font-size: 0.68rem;
-  font-weight: 700;
+  padding-top: 0.9rem;
 }
 
-.md-typeset .ll-query-link svg {
-  width: 0.75rem;
-  height: 0.75rem;
-}
-
-/* Catalog and table-format architecture ------------------------------------ */
-
-.md-typeset .ll-lake-architecture {
-  position: relative;
-  display: flex;
-  align-items: center;
-  flex-direction: column;
-  margin-top: 1.4rem;
-  padding: 1.5rem;
-  overflow: hidden;
-  background:
-    radial-gradient(
-      circle at 50% 48%,
-      color-mix(in srgb, var(--md-primary-fg-color) 13%, transparent),
-      transparent 28%
-    ),
-    color-mix(in srgb, var(--md-default-fg-color) 2%, var(--md-default-bg-color));
-  border: 0.05rem solid var(--md-default-fg-color--lightest);
-  border-radius: 0.7rem;
-  box-shadow: var(--md-shadow-z1);
-}
-
-.md-typeset .ll-architecture-group {
-  width: 100%;
-  min-width: 0;
-}
-
-/* The Markdown-in-HTML extension may add transparent paragraph wrappers. */
-.md-typeset .ll-architecture-group > p,
-.md-typeset .ll-architecture-nodes > p,
-.md-typeset .ll-architecture-engine > p {
-  display: contents;
-}
-
-.md-typeset .ll-architecture-label {
-  display: block;
-  margin-bottom: 0.55rem;
-  color: var(--md-default-fg-color--light);
+.md-typeset .ll-mode__go,
+.md-typeset .ll-go {
+  display: inline-block;
+  width: fit-content;
+  font-family: var(--ll-mono);
   font-size: 0.55rem;
   font-weight: 700;
   letter-spacing: 0.12em;
-  text-align: center;
+  text-transform: uppercase;
 }
 
-.md-typeset .ll-architecture-nodes {
-  display: grid;
-  gap: 0.55rem;
+.md-typeset .ll-section > p:has(> .ll-go) {
+  margin: 0.7rem 0 0;
 }
 
-.md-typeset .ll-architecture-node {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: center;
-  gap: 0.65rem;
-  padding: 0.25rem;
-  color: var(--md-default-fg-color);
-  background: transparent;
-  border: 0;
+/* Support matrix ------------------------------------------------------------ */
+
+.md-typeset .ll-matrix {
+  margin-top: 1.4rem;
+  overflow-x: auto;
 }
 
-.md-typeset .ll-architecture-catalogs {
-  width: min(100%, 22rem);
-}
-
-.md-typeset .ll-architecture-catalogs .ll-architecture-nodes {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.md-typeset .ll-architecture-node--catalog {
-  min-height: 4rem;
-}
-
-.md-typeset .ll-catalog-logo {
-  width: 3.35rem;
-  height: 3.35rem;
-  object-fit: contain;
-}
-
-.md-typeset .ll-architecture-engine {
-  display: flex;
-  width: min(100%, 18rem);
-  min-height: 5rem;
-  align-items: center;
-  justify-content: center;
-  padding: 1.25rem;
-  flex-direction: column;
-  text-align: center;
-  background: var(--md-default-bg-color);
-  border: 0.08rem solid
-    color-mix(in srgb, var(--md-primary-fg-color) 55%, var(--md-default-bg-color));
-  border-radius: 0.65rem;
-  box-shadow:
-    0 0 0 0.35rem color-mix(in srgb, var(--md-primary-fg-color) 5%, transparent),
-    0 0.5rem 2rem color-mix(in srgb, var(--md-primary-fg-color) 17%, transparent);
-}
-
-.md-typeset .ll-architecture-engine > strong {
-  margin: 0;
-  font-size: 1.4rem;
-  line-height: 1.15;
-}
-
-.md-typeset .ll-architecture-arrow {
-  color: var(--md-primary-fg-color);
-}
-
-.md-typeset .ll-architecture-arrow i {
-  position: relative;
-  display: block;
-  background: currentColor;
-}
-
-.md-typeset .ll-architecture-arrow i::after {
-  position: absolute;
-  width: 0.42rem;
-  height: 0.42rem;
-  border-top: 0.1rem solid currentColor;
-  border-right: 0.1rem solid currentColor;
-  content: "";
-}
-
-.md-typeset .ll-architecture-arrow--down {
-  width: 5rem;
-  margin: 0.55rem auto;
-  transform: none;
-}
-
-.md-typeset .ll-architecture-arrow--down i {
-  width: 0.08rem;
-  height: 2.2rem;
-  margin: 0.25rem auto 0;
-}
-
-.md-typeset .ll-architecture-arrow--down i::after {
-  bottom: 0;
-  left: 50%;
-  transform: translate(-50%, 0.05rem) rotate(135deg);
-}
-
-.md-typeset .ll-architecture-formats {
-  width: min(100%, 40rem);
-  margin: 0;
-  padding: 0.85rem;
-  background: color-mix(in srgb, var(--md-default-fg-color) 2%, transparent);
-  border: 0.05rem solid var(--md-default-fg-color--lightest);
-  border-radius: 0.55rem;
-}
-
-.md-typeset .ll-architecture-formats .ll-architecture-nodes {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.md-typeset .ll-architecture-formats .ll-architecture-node {
-  min-height: 4rem;
-  justify-content: center;
-  padding: 0.35rem;
-  flex-direction: column;
-  gap: 0.35rem;
-  text-align: center;
-  background: transparent;
-}
-
-.md-typeset .ll-architecture-formats .ll-architecture-node strong {
-  color: #202020;
+.md-typeset .ll-matrix table {
+  /* `display: table` on purpose: the theme renders doc tables as inline
+     blocks so they can scroll, which collapses this one to its content. */
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  border: 2px solid var(--ll-rule);
+  background: var(--ll-panel-alt);
+  font-family: var(--ll-mono);
   font-size: 0.62rem;
 }
 
-.md-typeset .ll-format-logo {
-  width: min(100%, 7rem);
-  height: 2.5rem;
+.md-typeset .ll-matrix th,
+.md-typeset .ll-matrix td {
+  border-right: 1px solid var(--ll-line);
+  border-bottom: 1px solid var(--ll-line);
+  padding: 0.7rem 0.4rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.md-typeset .ll-matrix th:last-child,
+.md-typeset .ll-matrix td:last-child {
+  border-right: 0;
+}
+
+.md-typeset .ll-matrix tr:last-child td,
+.md-typeset .ll-matrix tr:last-child th {
+  border-bottom: 0;
+}
+
+.md-typeset .ll-matrix thead th {
+  background: var(--ll-ink);
+  color: var(--ll-paper);
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-right-color: rgba(200, 241, 53, 0.22);
+}
+
+.md-typeset .ll-matrix tbody th {
+  background: var(--ll-panel);
+  font-size: 0.66rem;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  padding-left: 0.9rem;
+}
+
+.md-typeset .ll-matrix tbody th img {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-right: 0.5rem;
   object-fit: contain;
+  vertical-align: -0.28rem;
 }
 
-.md-typeset .ll-format-logo--glyph {
-  width: 3.35rem;
-  height: 3.35rem;
+/* A filled volt block for supported, an outlined one for experimental, and a
+   dash for not applicable — three shapes, so colour is never the only cue. */
+.md-typeset .ll-yes,
+.md-typeset .ll-beta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--ll-ink);
 }
 
-.md-typeset .ll-architecture-node--hive .ll-format-logo {
-  width: 3.35rem;
-  height: 3.35rem;
+.md-typeset .ll-yes {
+  background: var(--ll-volt);
 }
 
-body[data-md-color-scheme="slate"] .md-typeset .ll-lake-architecture,
-body[data-md-color-scheme="slate"] .md-typeset .ll-architecture-engine {
-  background-color: color-mix(
-    in srgb,
-    var(--md-default-fg-color) 3%,
-    var(--md-default-bg-color)
-  );
+.md-typeset .ll-beta {
+  border: 1.5px solid var(--ll-volt-deep);
+  background: var(--ll-volt-wash);
+  font-size: 0.5rem;
+  font-weight: 700;
 }
 
-@media screen and (max-width: 48rem) {
-  .md-typeset .ll-query-modes {
+.md-typeset .ll-yes svg {
+  width: 0.6rem;
+  height: 0.6rem;
+}
+
+.md-typeset .ll-no {
+  color: var(--ll-ink-faint);
+  opacity: 0.5;
+}
+
+.md-typeset .ll-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+  margin-top: 0.8rem;
+  font-family: var(--ll-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.06em;
+  color: var(--ll-ink-soft);
+}
+
+.md-typeset .ll-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Console shot -------------------------------------------------------------- */
+
+.md-typeset .ll-shot {
+  margin-top: 1.4rem;
+  border: 2px solid var(--ll-rule);
+  box-shadow: 8px 8px 0 var(--ll-rule);
+  line-height: 0;
+}
+
+.md-typeset .ll-shot img {
+  display: block;
+  width: 100%;
+}
+
+.md-typeset .ll-caption {
+  display: block;
+  margin-top: 0.8rem;
+  font-family: var(--ll-mono);
+  font-size: 0.52rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ll-ink-faint);
+}
+
+/* CLI terminal -------------------------------------------------------------- */
+
+/* A grown-up version of the install card: same ink frame and window marks,
+   same paper surface. It is deliberately not a dark terminal — a black panel
+   on this page would read as a stray dark theme. */
+.md-typeset .ll-term {
+  margin-top: 1.4rem;
+  border: 2px solid var(--ll-rule);
+  background: var(--ll-panel-alt);
+  box-shadow: 8px 8px 0 var(--ll-rule);
+}
+
+.md-typeset .ll-term__bar {
+  display: flex;
+  align-items: stretch;
+  height: 1.9rem;
+  border-bottom: 2px solid var(--ll-rule);
+  background: var(--ll-panel);
+}
+
+.md-typeset .ll-term__dots {
+  flex: none;
+  width: 2.5rem;
+  background:
+    linear-gradient(var(--ll-ink) 0 0) 0.7rem 50% / 0.22rem 0.22rem no-repeat,
+    linear-gradient(var(--ll-ink) 0 0) 1.15rem 50% / 0.22rem 0.22rem no-repeat,
+    linear-gradient(var(--ll-ink) 0 0) 1.6rem 50% / 0.22rem 0.22rem no-repeat;
+}
+
+/* Tab strip: hard-edged file tabs with a volt cap on the active one, the same device the
+   console uses for its editor tabs. */
+.md-typeset .ll-switch {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.md-typeset .ll-switch__tab {
+  position: relative;
+  flex: none;
+  padding: 0 0.9rem;
+  border: 0;
+  border-left: 1px solid var(--ll-line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ll-ink-faint);
+  font-family: var(--ll-mono);
+  font-size: 0.54rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.md-typeset .ll-switch__tab:last-child {
+  border-right: 1px solid var(--ll-line);
+}
+
+.md-typeset .ll-switch__tab:hover {
+  color: var(--ll-ink);
+}
+
+.md-typeset .ll-switch__tab[aria-selected="true"] {
+  background: var(--ll-panel-alt);
+  color: var(--ll-ink);
+}
+
+.md-typeset .ll-switch__tab[aria-selected="true"]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--ll-volt);
+}
+
+/* Volt first so the ring is on-brand, ink behind it so it stays visible on
+   paper, where volt alone is far too quiet. */
+.md-typeset .ll-switch__tab:focus-visible,
+.md-typeset .ll-term__panel:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--ll-volt),
+    0 0 0 4px var(--ll-rule);
+}
+
+/* Sized to the longest session, so switching tabs never resizes the card. */
+.md-typeset .ll-term__body {
+  min-height: 21.2rem;
+  overflow-x: auto;
+}
+
+/* The box-drawing characters comfy-table prints are not in the webfont's
+   subset, so they come from the fallback monospace at the end of `--ll-mono`
+   (same 0.6em advance, so columns still line up). Those glyphs fill exactly
+   one em, so the borders only join into a grid at `line-height: 1` and a
+   whole-pixel size: anything looser leaves the table as stacked rectangles,
+   and a fractional size gaps on subpixel rounding. Terminal leading is the
+   right look here anyway; blank lines do the spacing. */
+.md-typeset .ll-term__panel {
+  margin: 0;
+  padding: 0.9rem 1rem 1.1rem;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ll-ink);
+  font-family: var(--ll-mono);
+  font-size: 0.6rem;
+  line-height: 1;
+  white-space: pre;
+}
+
+.md-typeset .ll-term__panel[hidden] {
+  display: none;
+}
+
+/* Session colours: the box drawing is structure, the prompt is the one place
+   volt-deep earns a word, everything else follows the SQL syntax palette. */
+.md-typeset .ll-t-box {
+  color: var(--ll-ink-faint);
+}
+
+.md-typeset .ll-t-dim {
+  color: var(--ll-ink-soft);
+}
+
+.md-typeset .ll-t-p {
+  color: var(--ll-volt-deep);
+  font-weight: 700;
+}
+
+.md-typeset .ll-t-cmd,
+.md-typeset .ll-t-h {
+  font-weight: 700;
+}
+
+.md-typeset .ll-t-kw {
+  color: var(--md-code-hl-keyword-color);
+}
+
+.md-typeset .ll-t-str {
+  color: var(--md-code-hl-string-color);
+}
+
+.md-typeset .ll-t-err {
+  color: var(--ll-danger);
+}
+
+/* Closing band -------------------------------------------------------------- */
+
+.md-typeset .ll-close {
+  display: flex;
+  align-items: center;
+  gap: 1.6rem;
+  flex-wrap: wrap;
+  background: var(--ll-ink);
+  border-top: 2px solid var(--ll-rule);
+  padding: 2.4rem;
+}
+
+.md-typeset .ll-close h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  text-transform: uppercase;
+  color: var(--ll-volt);
+}
+
+.md-typeset .ll-close > p {
+  margin: 0;
+}
+
+.md-typeset .ll-close > p:has(> code) {
+  margin-left: auto;
+}
+
+.md-typeset .ll-close > p:has(> .ll-colophon) {
+  width: 100%;
+  padding-top: 0.4rem;
+}
+
+.md-typeset .ll-close code {
+  padding: 0.6rem 0.8rem;
+  background: transparent;
+  border: 2px solid var(--ll-volt);
+  box-shadow: none;
+  color: var(--ll-volt);
+  font-size: 0.68rem;
+}
+
+.md-typeset .ll-close .ll-colophon {
+  width: 100%;
+  font-family: var(--ll-mono);
+  font-size: 0.52rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(235, 233, 222, 0.45);
+}
+
+/* Responsive ---------------------------------------------------------------- */
+
+@media screen and (max-width: 76.1875em) {
+  .md-nav--primary .md-nav__title {
+    background: var(--ll-ink);
+    color: var(--ll-paper);
+    box-shadow: none;
+  }
+}
+
+@media screen and (max-width: 59.9375em) {
+  .md-typeset .ll-hero,
+  .md-typeset .ll-section,
+  .md-typeset .ll-close {
+    padding-left: 1.2rem;
+    padding-right: 1.2rem;
+  }
+
+  .md-typeset .ll-install,
+  .md-typeset .ll-note {
+    margin-left: 1.2rem;
+    margin-right: 1.2rem;
+  }
+
+  .md-typeset .ll-modes {
     grid-template-columns: 1fr;
   }
 
-  .md-typeset .ll-query-mode {
-    min-height: 9.5rem;
+  .md-typeset .ll-close code {
+    margin-left: 0;
   }
 
-  .md-typeset .ll-lake-architecture {
-    padding: 1rem;
-  }
-
-  .md-typeset .ll-architecture-engine {
-    min-height: 5rem;
-  }
-
-  .md-typeset .ll-architecture-arrow--down {
-    margin: 0.6rem auto;
-    transform: none;
-  }
-
-  .md-typeset .ll-architecture-formats {
-    width: auto;
-    margin: 0;
-  }
-
-  .md-typeset .ll-architecture-formats .ll-architecture-nodes {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  body:has(.ll-home) .md-footer-meta__inner {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
   }
 }

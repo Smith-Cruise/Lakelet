@@ -18,7 +18,7 @@ CONFIG_PATH = REPO_ROOT / "integration-tests" / "lakelet-integration.toml"
 LAKELET_BIN = Path(os.environ.get("LAKELET_BIN", REPO_ROOT / "target" / "debug" / "lakelet"))
 
 # lakelet-integration.toml has no [server] table, so the server listens on the
-# default flight-sql-server-port.
+# default server-port.
 FLIGHT_PORT = 32010
 SERVER_READY_TIMEOUT_SECONDS = 30
 CALL_HEADER = DatabaseOptions.RPC_CALL_HEADER_PREFIX.value
@@ -45,9 +45,9 @@ def pytest_generate_tests(metafunc):
 
 @pytest.fixture(scope="session")
 def flight_server():
-    """One lakelet --flight-sql-server process shared by every test."""
+    """One lakelet --server process shared by every test."""
     process = subprocess.Popen(
-        [str(LAKELET_BIN), "--config", str(CONFIG_PATH), "--flight-sql-server"],
+        [str(LAKELET_BIN), "--config", str(CONFIG_PATH), "--server"],
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

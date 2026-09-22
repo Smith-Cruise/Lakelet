@@ -34,8 +34,9 @@ jobs:
         fi
 
         # Dependency changes (root Cargo.toml/Cargo.lock) must also trigger Rust CI
-        # so the new dependency graph is actually validated.
-        if git diff --name-only "$base" "$head" | grep -Eq '^(src/|Cargo\.(toml|lock)$)'; then
+        # so the new dependency graph is actually validated. web/ is included
+        # because the binary embeds the built UI.
+        if git diff --name-only "$base" "$head" | grep -Eq '^(src/|web/|Cargo\.(toml|lock)$)'; then
           echo "src_changed=true" >> "$GITHUB_OUTPUT"
         else
           echo "src_changed=false" >> "$GITHUB_OUTPUT"
@@ -46,6 +47,42 @@ jobs:
         else
           echo "integration_changed=false" >> "$GITHUB_OUTPUT"
         fi
+
+    # The web UI is built once here and embedded into every binary below: the
+    # integration binary gets it through web/dist, the unit tests download the
+    # same artifact so the embed path is what gets tested.
+    - name: Install pnpm
+      if: steps.changes.outputs.src_changed == 'true' || steps.changes.outputs.integration_changed == 'true'
+      uses: pnpm/action-setup@v4
+      with:
+        package_json_file: web/package.json
+    - name: Install Node.js
+      if: steps.changes.outputs.src_changed == 'true' || steps.changes.outputs.integration_changed == 'true'
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24
+        cache: pnpm
+        cache-dependency-path: web/pnpm-lock.yaml
+    - name: Install web dependencies
+      if: steps.changes.outputs.src_changed == 'true' || steps.changes.outputs.integration_changed == 'true'
+      working-directory: web
+      run: pnpm install --frozen-lockfile
+    - name: Typecheck web UI
+      if: steps.changes.outputs.src_changed == 'true' || steps.changes.outputs.integration_changed == 'true'
+      working-directory: web
+      run: pnpm typecheck
+    - name: Build web UI
+      if: steps.changes.outputs.src_changed == 'true' || steps.changes.outputs.integration_changed == 'true'
+      working-directory: web
+      run: pnpm build
+    - name: Upload web UI bundle
+      if: steps.changes.outputs.src_changed == 'true' || steps.changes.outputs.integration_changed == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: web-dist
+        path: web/dist
+        if-no-files-found: error
+
     - name: Install Rust toolchain
       if: steps.changes.outputs.integration_changed == 'true'
       uses: dtolnay/rust-toolchain@stable
@@ -81,16 +118,30 @@ jobs:
     - name: Rust Cache
       if: needs.build.outputs.src_changed == 'true'
       uses: Swatinem/rust-cache@v2
-      
+
     - name: Check formatting
       if: needs.build.outputs.src_changed == 'true'
       run: cargo fmt --all -- --check
-      
+
     - name: Clippy check
       if: needs.build.outputs.src_changed == 'true'
       run: cargo clippy --all-targets --all-features -- -D warnings
-      
-    - name: Run tests
+
+    # Deliberately before the bundle is downloaded: this is what proves a
+    # checkout with no Node toolchain still builds and tests, and it is the
+    # only run that covers the paths taken when `web/dist` holds no bundle.
+    - name: Run tests (no web UI bundle)
+      if: needs.build.outputs.src_changed == 'true'
+      run: cargo test --all-targets --all-features --verbose
+
+    - name: Download web UI bundle
+      if: needs.build.outputs.src_changed == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: web-dist
+        path: web/dist
+
+    - name: Run tests (with web UI bundle)
       if: needs.build.outputs.src_changed == 'true'
       run: cargo test --all-targets --all-features --verbose
 

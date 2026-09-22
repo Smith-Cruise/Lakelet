@@ -15,7 +15,7 @@ use datafusion::common::{Result, Statistics};
 use datafusion::error::DataFusionError;
 use hive_metastore::{
     GetTableRequest, ThriftHiveMetastoreClient, ThriftHiveMetastoreClientBuilder,
-    ThriftHiveMetastoreGetDatabaseException, ThriftHiveMetastoreGetTableReqException,
+    ThriftHiveMetastoreGetDatabaseException,
 };
 use lakelet_storage::storage::Storage;
 use serde::{Deserialize, Serialize};
@@ -134,27 +134,6 @@ impl LakeletCatalogProvider for HMSCatalog {
         {
             MaybeException::Ok(_) => Ok(true),
             MaybeException::Exception(ThriftHiveMetastoreGetDatabaseException::O1(_)) => Ok(false),
-            MaybeException::Exception(err) => Err(DataFusionError::Internal(format!(
-                "operation failed for hitting thrift error: {:?}",
-                err
-            ))),
-        }
-    }
-
-    async fn table_exist(&self, table_name: &str, schema_name: &str) -> Result<bool> {
-        let hms_client = self.client().await?;
-        let get_table_request = GetTableRequest {
-            db_name: schema_name.to_string().into(),
-            tbl_name: table_name.to_string().into(),
-            capabilities: None,
-        };
-        match hms_client
-            .get_table_req(get_table_request)
-            .await
-            .map_err(|e| DataFusionError::External(Box::new(e)))?
-        {
-            MaybeException::Ok(_) => Ok(true),
-            MaybeException::Exception(ThriftHiveMetastoreGetTableReqException::O2(_)) => Ok(false),
             MaybeException::Exception(err) => Err(DataFusionError::Internal(format!(
                 "operation failed for hitting thrift error: {:?}",
                 err

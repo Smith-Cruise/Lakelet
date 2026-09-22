@@ -2,21 +2,28 @@ pub mod cli_helper;
 pub mod flight;
 pub mod print;
 pub mod repl;
+pub mod web;
 
 use crate::catalog::LakeletCatalogProviderList;
 use crate::context::LakeletContext;
+use crate::server::flight::LakeletFlightSqlService;
 use crate::server::print::PrintOptions;
 use crate::sql::session::ExtendedSessionContext;
+use arrow_flight::flight_service_server::FlightServiceServer;
 use clap::Parser;
 use datafusion::common::error::Result;
 use datafusion::error::DataFusionError;
 use datafusion::execution::object_store::DefaultObjectStoreRegistry;
+use datafusion::execution::runtime_env::RuntimeEnv;
 use datafusion::execution::runtime_env::RuntimeEnvBuilder;
 use datafusion_cli::print_format::PrintFormat;
 use datafusion_cli::print_options::MaxRows;
+use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use tonic::transport::Server;
+use tonic::transport::server::{Router, TcpIncoming};
 
 /// Turns a TCP bind failure into a configuration error. When the port is
 /// already taken, points the user at the config key that controls it.
@@ -28,6 +35,52 @@ fn bind_error(port: u16, config_key: &str, e: &std::io::Error) -> DataFusionErro
         ));
     }
     DataFusionError::Configuration(message)
+}
+
+/// Binds the one port both protocols share and serves them until Ctrl-C.
+pub async fn serve(
+    catalog_provider_list: Arc<LakeletCatalogProviderList>,
+    lakelet_context: Arc<LakeletContext>,
+    runtime_env: Arc<RuntimeEnv>,
+    port: u16,
+) -> Result<()> {
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .map_err(|e| bind_error(port, "server-port", &e))?;
+    let service = LakeletFlightSqlService::new(catalog_provider_list, lakelet_context, runtime_env);
+    println!("Lakelet server is running");
+    println!("  Flight SQL  grpc://localhost:{port}");
+    println!("  Web UI      {}", web::status_line(port));
+    router(service)
+        .serve_with_incoming_shutdown(TcpIncoming::from(listener), shutdown_signal())
+        .await
+        .map_err(|e| DataFusionError::External(Box::new(e)))
+}
+
+async fn shutdown_signal() {
+    let _ = tokio::signal::ctrl_c().await;
+}
+
+/// Routes native Flight SQL, gRPC-Web and the web UI on the one port.
+///
+/// `accept_http1` swaps hyper's HTTP/2-only connection builder for the one that
+/// sniffs the HTTP/2 client preface, so a native client speaking h2c with prior
+/// knowledge still lands on HTTP/2 exactly as before; only connections that are
+/// not HTTP/2 fall through to HTTP/1, which is what a browser sends.
+///
+/// gRPC-Web wraps the Flight service alone rather than the whole server:
+/// `GrpcWebLayer` answers any HTTP/1.1 request that is not gRPC-Web with 400,
+/// so installing it globally would reject every request for the UI itself.
+/// `Routes` must be built from the UI router, because a `Routes` created from a
+/// service falls back to a gRPC `UNIMPLEMENTED` response and would leave the
+/// UI unreachable.
+fn router(service: LakeletFlightSqlService) -> Router {
+    use tonic::service::{LayerExt, Routes};
+
+    let routes = Routes::from(web::router())
+        .add_service(tonic_web::GrpcWebLayer::new().named_layer(FlightServiceServer::new(service)));
+    Server::builder().accept_http1(true).add_routes(routes)
 }
 
 #[derive(Parser, Debug)]
@@ -64,10 +117,10 @@ struct LakeletArgs {
 
     #[clap(
         long,
-        help = "Start an Arrow Flight SQL server instead of the interactive REPL. Listens on 'flight-sql-server-port' under [server] in the config file (default 32010). Conflicts with --command and --file.",
+        help = "Start the Lakelet server (Arrow Flight SQL plus the web UI) instead of the interactive REPL. Listens on 'server-port' under [server] in the config file (default 32010). Conflicts with --command and --file.",
         conflicts_with_all = ["command", "file"]
     )]
-    flight_sql_server: bool,
+    server: bool,
 
     #[clap(
         short = 'V',
@@ -103,14 +156,11 @@ async fn async_run(lakelet_context: Arc<LakeletContext>, args: LakeletArgs) -> R
         .with_object_store_registry(Arc::new(DefaultObjectStoreRegistry::new()))
         .build_arc()?;
 
-    // One catalog provider list per process: it caches catalog providers and
-    // their metastore clients across statements (and, for Flight SQL, across
-    // requests).
-    let catalog_provider_list = Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone()));
+    let catalog_provider_list = Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone())?);
 
-    if args.flight_sql_server {
-        let port = lakelet_context.server_config.flight_sql_server_port;
-        return flight::serve(catalog_provider_list, lakelet_context, runtime_env, port).await;
+    if args.server {
+        let port = lakelet_context.server_config.server_port;
+        return serve(catalog_provider_list, lakelet_context, runtime_env, port).await;
     }
 
     let print_options = PrintOptions {
@@ -159,6 +209,70 @@ mod tests {
     use clap::Parser;
     use std::fs;
     use tempfile::NamedTempFile;
+
+    /// Serves the production router on an ephemeral port, so every test
+    /// goes through the same wiring as `serve`, web UI and gRPC-Web layers
+    /// included.
+    pub(super) async fn spawn_test_server() -> Result<SocketAddr> {
+        let lakelet_context = Arc::new(LakeletContext::default());
+        let runtime_env = Arc::new(RuntimeEnv::default());
+        let catalog_provider_list =
+            Arc::new(LakeletCatalogProviderList::new(lakelet_context.clone())?);
+        let service =
+            LakeletFlightSqlService::new(catalog_provider_list, lakelet_context, runtime_env);
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        tokio::spawn(router(service).serve_with_incoming(TcpIncoming::from(listener)));
+        Ok(addr)
+    }
+
+    /// A browser speaks HTTP/1.1 to the same port as Flight SQL: unknown
+    /// paths reach the UI router (not a gRPC error), and `/` serves the
+    /// bundle when one is built.
+    #[tokio::test]
+    async fn test_http1_requests_reach_web_ui() -> Result<()> {
+        let addr = spawn_test_server().await?;
+
+        let response = http1_get(addr, "/no-such-path").await?;
+        assert!(
+            response.starts_with("HTTP/1.1 404 "),
+            "unexpected response: {response}"
+        );
+
+        let response = http1_get(addr, "/").await?;
+        if web::has_bundle() {
+            assert!(
+                response.starts_with("HTTP/1.1 200 "),
+                "unexpected response: {response}"
+            );
+            assert!(response.contains("<div id=\"root\">"));
+        } else {
+            assert!(
+                response.starts_with("HTTP/1.1 404 "),
+                "unexpected response: {response}"
+            );
+            assert!(response.contains(web::MISSING_BUNDLE));
+        }
+        Ok(())
+    }
+
+    /// Fetches `path` with a bare HTTP/1.1 request and returns the raw
+    /// response, headers and body included.
+    async fn http1_get(addr: SocketAddr, path: &str) -> Result<String> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let mut stream = tokio::net::TcpStream::connect(addr).await?;
+        stream
+            .write_all(
+                format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                    .as_bytes(),
+            )
+            .await?;
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await?;
+        Ok(String::from_utf8_lossy(&response).into_owned())
+    }
 
     #[test]
     fn test_parse_single_command() {
@@ -210,20 +324,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_flight_sql_server() {
-        let args = LakeletArgs::try_parse_from([
-            "lakelet",
-            "--config",
-            "config.toml",
-            "--flight-sql-server",
-        ])
-        .expect("--flight-sql-server should parse");
+    fn test_parse_server() {
+        let args = LakeletArgs::try_parse_from(["lakelet", "--config", "config.toml", "--server"])
+            .expect("--server should parse");
 
-        assert!(args.flight_sql_server);
+        assert!(args.server);
     }
 
     #[test]
-    fn test_parse_flight_sql_server_conflicts_with_command_and_file() {
+    fn test_parse_server_conflicts_with_command_and_file() {
         let file = NamedTempFile::new().expect("temp sql file should be created");
         let file_path = file
             .path()
@@ -234,10 +343,10 @@ mod tests {
             vec!["--command", "show catalogs;"],
             vec!["--file", file_path],
         ] {
-            let mut argv = vec!["lakelet", "--config", "config.toml", "--flight-sql-server"];
+            let mut argv = vec!["lakelet", "--config", "config.toml", "--server"];
             argv.extend(conflicting);
             let err = LakeletArgs::try_parse_from(argv)
-                .expect_err("--flight-sql-server should conflict with --command/--file");
+                .expect_err("--server should conflict with --command/--file");
 
             assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
         }

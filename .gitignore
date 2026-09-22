@@ -34,3 +34,7 @@ target
 # MkDocs build output and local Python env
 /docs/site
 /docs/.venv
+
+/web/dist
+/web/node_modules
+/web/*.tsbuildinfo

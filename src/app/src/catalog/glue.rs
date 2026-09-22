@@ -297,27 +297,6 @@ impl LakeletCatalogProvider for GlueCatalog {
             Err(err) => Err(DataFusionError::External(Box::new(err))),
         }
     }
-
-    async fn table_exist(&self, table_name: &str, schema_name: &str) -> Result<bool> {
-        let glue_client = self.client().await;
-        match glue_client
-            .get_table()
-            .database_name(schema_name)
-            .name(table_name)
-            .send()
-            .await
-        {
-            Ok(_) => Ok(true),
-            Err(err)
-                if err
-                    .as_service_error()
-                    .is_some_and(|err| err.is_entity_not_found_exception()) =>
-            {
-                Ok(false)
-            }
-            Err(err) => Err(DataFusionError::External(Box::new(err))),
-        }
-    }
 }
 
 #[cfg(test)]

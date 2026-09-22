@@ -35,6 +35,15 @@ cargo build --release
 cp target/release/lakelet .
 ```
 
+To include the web UI, build it first (needs Node.js and
+[pnpm](https://pnpm.io/)):
+
+```bash
+pnpm -C web install
+pnpm -C web build
+cargo build --release
+```
+
 ## Create a Configuration File
 
 Copy the example configuration and edit it for your environment:
@@ -89,21 +98,33 @@ The configuration file is required for normal execution.
 
 You can get more help by `./lakelet --help`.
 
-## Start with Arrow Flight SQL server
+## Start the server
 
-Lakelet can run as an [Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html)
-server, including ADBC instead of the interactive REPL:
+Instead of the interactive REPL, Lakelet can run as a server that speaks
+[Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html) (including
+ADBC) and hosts a web UI, both on the same port:
 
 ```bash
-lakelet --config config.toml --flight-sql-server
+lakelet --config config.toml --server
 ```
 
-The server listens on `flight-sql-server-port` under `[server]` (default
-32010).
+```text
+Lakelet server is running
+  Flight SQL  grpc://localhost:32010
+  Web UI      http://localhost:32010
+```
 
-Note: Each flight SQL connection is a new fresh session, it will not share any SessionState.
-So `USE` state is discarded after every RPC and does not affect
-the next query even on the same ADBC connection.
+The port is `server-port` under `[server]` (default 32010).
+
+### Flight SQL
+
+Each Flight SQL connection is a fresh session; it does not share any
+SessionState. So `USE` state is discarded after every RPC and does not affect
+the next query.
+
+### Web UI
+
+Open `http://localhost:32010/` in a browser, then just feeling it.
 
 ### Connect with ADBC (Python)
 

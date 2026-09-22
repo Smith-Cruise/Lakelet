@@ -117,11 +117,13 @@ impl ExtendedSessionContext {
         let catalog_name = Self::resolve_show_scope(show_options, "SHOW SCHEMAS", 1)?
             .map_or_else(|| default_catalog, |parts| parts[0].clone());
 
-        let schema_names = self
-            .lakelet_context
-            .catalog_manager
-            .list_schema_names(&catalog_name)
-            .await?;
+        let Some(catalog) = self.catalog_provider_list.get_catalog(&catalog_name) else {
+            return Err(DataFusionError::Plan(format!(
+                "unknown catalog {}",
+                catalog_name
+            )));
+        };
+        let schema_names = catalog.list_schema_names().await?;
         self.build_show_names_dataframe(
             "schema_name",
             schema_names,
@@ -144,11 +146,13 @@ impl ExtendedSessionContext {
                 Some(parts) => (parts[0].clone(), parts[1].clone()),
             };
 
-        let table_names = self
-            .lakelet_context
-            .catalog_manager
-            .list_table_names(&catalog_name, &schema_name)
-            .await?;
+        let Some(catalog) = self.catalog_provider_list.get_catalog(&catalog_name) else {
+            return Err(DataFusionError::Plan(format!(
+                "unknown catalog {}",
+                catalog_name
+            )));
+        };
+        let table_names = catalog.list_table_names(&schema_name).await?;
         self.build_show_names_dataframe(
             "table_name",
             table_names,

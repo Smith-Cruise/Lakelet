@@ -8,7 +8,7 @@ use datafusion::common::Result;
 use datafusion::common::TableReference;
 use datafusion::error::DataFusionError;
 use lakelet_storage::storage::Storage;
-use paimon::catalog::{Catalog, Identifier};
+use paimon::catalog::Catalog;
 use paimon::{CatalogOptions, FileSystemCatalog, Options};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -85,17 +85,6 @@ impl LakeletCatalogProvider for PaimonFSCatalog {
             Err(error) => Err(to_datafusion_error(error)),
         }
     }
-
-    async fn table_exist(&self, table_name: &str, schema_name: &str) -> Result<bool> {
-        let identifier = Identifier::new(schema_name, table_name);
-        match self.inner_catalog.get_table(&identifier).await {
-            Ok(_) => Ok(true),
-            Err(paimon::Error::TableNotExist { .. } | paimon::Error::DatabaseNotExist { .. }) => {
-                Ok(false)
-            }
-            Err(error) => Err(to_datafusion_error(error)),
-        }
-    }
 }
 
 #[async_trait]
@@ -158,6 +147,7 @@ impl AsyncSchemaProvider for PaimonFSSchema {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use paimon::catalog::Identifier;
 
     #[test]
     fn test_parse_paimon_fs_config_without_storage_block() {
@@ -246,9 +236,6 @@ mod tests {
         assert_eq!(catalog.list_table_names("db1").await.unwrap(), vec!["t1"]);
         assert!(catalog.schema_exist("db1").await.unwrap());
         assert!(!catalog.schema_exist("db_missing").await.unwrap());
-        assert!(catalog.table_exist("t1", "db1").await.unwrap());
-        assert!(!catalog.table_exist("t_missing", "db1").await.unwrap());
-        assert!(!catalog.table_exist("t1", "db_missing").await.unwrap());
     }
 
     #[tokio::test]

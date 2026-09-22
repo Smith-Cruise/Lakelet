@@ -19,8 +19,8 @@ pub struct LakeletConfig {
     pub catalog: Option<CatalogConfigs>,
 }
 
-/// Used when `flight-sql-server-port` is not set in the config file.
-pub const DEFAULT_FLIGHT_SQL_SERVER_PORT: u16 = 32010;
+/// Used when `server-port` is not set in the config file.
+pub const DEFAULT_SERVER_PORT: u16 = 32010;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -28,16 +28,17 @@ pub struct ServerConfig {
     #[serde(rename = "memory-limit", deserialize_with = "deserialize_memory_size")]
     pub memory_limit: Option<usize>,
 
-    /// Port for the Arrow Flight SQL server started by `--flight-sql-server`.
-    #[serde(rename = "flight-sql-server-port")]
-    pub flight_sql_server_port: u16,
+    /// Port the server started by `--server` listens on. Flight SQL and the
+    /// web UI share it.
+    #[serde(rename = "server-port")]
+    pub server_port: u16,
 }
 
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             memory_limit: None,
-            flight_sql_server_port: DEFAULT_FLIGHT_SQL_SERVER_PORT,
+            server_port: DEFAULT_SERVER_PORT,
         }
     }
 }
@@ -256,17 +257,17 @@ mod tests {
     }
 
     #[test]
-    fn parse_flight_sql_server_config() {
+    fn parse_server_config() {
         let config: LakeletConfig = toml::from_str(
             r#"
             [server]
-            flight-sql-server-port = 12345
+            server-port = 12345
             "#,
         )
         .unwrap();
 
         let server_config = config.server_config.unwrap();
-        assert_eq!(server_config.flight_sql_server_port, 12345);
+        assert_eq!(server_config.server_port, 12345);
 
         let config: LakeletConfig = toml::from_str(
             r#"
@@ -277,9 +278,6 @@ mod tests {
         .unwrap();
 
         let server_config = config.server_config.unwrap();
-        assert_eq!(
-            server_config.flight_sql_server_port,
-            DEFAULT_FLIGHT_SQL_SERVER_PORT
-        );
+        assert_eq!(server_config.server_port, DEFAULT_SERVER_PORT);
     }
 }

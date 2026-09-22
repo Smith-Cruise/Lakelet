@@ -1,18 +1,12 @@
-use crate::catalog::iceberg_rest::{IcebergRestCatalog, IcebergRestCatalogConfig};
-use crate::catalog::statistics::StatisticsManager;
-use crate::context::LakeletContext;
-use crate::glue_catalog::{GlueCatalog, GlueCatalogConfig};
-use crate::hms_catalog::{HMSCatalog, HMSCatalogConfig};
-use crate::internal_catalog::{INTERNAL_CATALOG, InternalCatalog};
-use crate::paimon_fs_catalog::{PaimonFSCatalog, PaimonFSCatalogConfig};
-use async_trait::async_trait;
-use datafusion::catalog::{AsyncCatalogProvider, AsyncCatalogProviderList};
+use crate::catalog::iceberg_rest::IcebergRestCatalogConfig;
+use crate::glue_catalog::GlueCatalogConfig;
+use crate::hms_catalog::HMSCatalogConfig;
+use crate::internal_catalog::INTERNAL_CATALOG;
+use crate::paimon_fs_catalog::PaimonFSCatalogConfig;
 use datafusion::common::Result;
 use datafusion::error::DataFusionError;
-use lakelet_common::runtime::RuntimeManager;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct CatalogConfigs {
@@ -108,149 +102,9 @@ impl CatalogManager {
             .collect()
     }
 
-    fn build_catalog_provider(
-        &self,
-        catalog_name: &str,
-    ) -> Result<Box<dyn LakeletCatalogProvider + Send + Sync>> {
-        let catalog_config = self
-            .get_catalog(catalog_name)
-            .ok_or_else(|| DataFusionError::Plan(format!("unknown catalog {}", catalog_name)))?;
-        let lakelet_context = Arc::new(LakeletContext {
-            server_config: Default::default(),
-            catalog_manager: Arc::new(self.clone()),
-            statistics_manager: Arc::new(StatisticsManager::default()),
-            runtime_manager: Arc::new(RuntimeManager::default()),
-            default_catalog: None,
-            default_schema: None,
-        });
-
-        match catalog_config {
-            CatalogConfig::IcebergRest(config) => {
-                Ok(Box::new(IcebergRestCatalog::new(Arc::new(config.clone()))))
-            }
-            CatalogConfig::Internal => Ok(Box::new(InternalCatalog::new(lakelet_context))),
-            CatalogConfig::HMS(hms_catalog) => Ok(Box::new(HMSCatalog::new(
-                lakelet_context,
-                Arc::new(hms_catalog.clone()),
-            ))),
-            CatalogConfig::GLUE(glue_catalog) => Ok(Box::new(GlueCatalog::new(
-                lakelet_context,
-                Arc::new(glue_catalog.clone()),
-            ))),
-            CatalogConfig::PaimonFS(paimon_fs_catalog) => Ok(Box::new(PaimonFSCatalog::try_new(
-                lakelet_context,
-                Arc::new(paimon_fs_catalog.clone()),
-            )?)),
-        }
-    }
-
     pub fn catalog_exists(&self, catalog_name: &str) -> bool {
         self.catalogs.contains_key(catalog_name)
     }
-
-    pub async fn list_schema_names(&self, catalog_name: &str) -> Result<Vec<String>> {
-        self.build_catalog_provider(catalog_name)?
-            .list_schema_names()
-            .await
-    }
-
-    pub async fn list_table_names(
-        &self,
-        catalog_name: &str,
-        schema_name: &str,
-    ) -> Result<Vec<String>> {
-        self.build_catalog_provider(catalog_name)?
-            .list_table_names(schema_name)
-            .await
-    }
-
-    pub async fn schema_exist(&self, catalog_name: &str, schema_name: &str) -> Result<bool> {
-        self.build_catalog_provider(catalog_name)?
-            .schema_exist(schema_name)
-            .await
-    }
-
-    pub async fn table_exists(
-        &self,
-        catalog_name: &str,
-        schema_name: &str,
-        table_name: &str,
-    ) -> Result<bool> {
-        self.build_catalog_provider(catalog_name)?
-            .table_exist(table_name, schema_name)
-            .await
-    }
-}
-
-pub struct LakeletCatalogProviderList {
-    lakelet_context: Arc<LakeletContext>,
-    // One catalog provider per configured catalog, built on first reference.
-    // Providers own their metastore clients, so caching them here keeps
-    // clients (and their connection pools) alive across statements.
-    catalogs: Mutex<HashMap<String, Arc<dyn AsyncCatalogProvider>>>,
-}
-
-impl LakeletCatalogProviderList {
-    pub fn new(lakelet_context: Arc<LakeletContext>) -> LakeletCatalogProviderList {
-        Self {
-            lakelet_context,
-            catalogs: Mutex::new(HashMap::new()),
-        }
-    }
-}
-
-#[async_trait]
-impl AsyncCatalogProviderList for LakeletCatalogProviderList {
-    async fn catalog(&self, catalog_name: &str) -> Result<Option<Arc<dyn AsyncCatalogProvider>>> {
-        let catalog_config = if let Some(catalog_config) = self
-            .lakelet_context
-            .catalog_manager
-            .get_catalog(catalog_name)
-        {
-            catalog_config.clone()
-        } else {
-            return Ok(None);
-        };
-
-        // All provider constructors are synchronous, so the lock is never
-        // held across an await point.
-        let mut catalogs = self.catalogs.lock().unwrap();
-        if let Some(catalog) = catalogs.get(catalog_name) {
-            return Ok(Some(catalog.clone()));
-        }
-
-        let catalog: Arc<dyn AsyncCatalogProvider> = match catalog_config {
-            CatalogConfig::IcebergRest(config) => {
-                Arc::new(IcebergRestCatalog::new(Arc::new(config)))
-            }
-            CatalogConfig::Internal => Arc::new(InternalCatalog::new(self.lakelet_context.clone())),
-            CatalogConfig::HMS(hms_catalog) => Arc::new(HMSCatalog::new(
-                self.lakelet_context.clone(),
-                Arc::new(hms_catalog),
-            )),
-            CatalogConfig::GLUE(glue_catalog) => Arc::new(GlueCatalog::new(
-                self.lakelet_context.clone(),
-                Arc::new(glue_catalog),
-            )),
-            CatalogConfig::PaimonFS(paimon_fs_catalog) => Arc::new(PaimonFSCatalog::try_new(
-                self.lakelet_context.clone(),
-                Arc::new(paimon_fs_catalog),
-            )?),
-        };
-        catalogs.insert(catalog_name.to_string(), catalog.clone());
-        Ok(Some(catalog))
-    }
-}
-
-#[async_trait]
-pub trait LakeletCatalogProvider {
-    async fn list_schema_names(&self) -> Result<Vec<String>>;
-
-    async fn list_table_names(&self, schema_name: &str) -> Result<Vec<String>>;
-
-    async fn schema_exist(&self, schema_name: &str) -> Result<bool>;
-
-    async fn table_exist(&self, table_name: &str, schema_name: &str) -> Result<bool>;
 }
 
 #[cfg(test)]
@@ -306,23 +160,5 @@ mod tests {
         let result = catalog_manager.load_catalogs(&configs);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
-    }
-
-    #[tokio::test]
-    async fn test_catalog_provider_list_caches_providers() {
-        let provider_list = LakeletCatalogProviderList::new(Arc::new(LakeletContext::default()));
-        let first = provider_list
-            .catalog(INTERNAL_CATALOG)
-            .await
-            .unwrap()
-            .unwrap();
-        let second = provider_list
-            .catalog(INTERNAL_CATALOG)
-            .await
-            .unwrap()
-            .unwrap();
-        // Repeated resolution returns the same cached provider instance.
-        assert!(Arc::ptr_eq(&first, &second));
-        assert!(provider_list.catalog("missing").await.unwrap().is_none());
     }
 }

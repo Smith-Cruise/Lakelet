@@ -71,12 +71,12 @@ python3 benchmark/run_benchmark.py \
   --config config.toml
 ```
 
-The Lakelet runner starts one `lakelet --flight-sql-server` process for the
+The Lakelet runner starts one `lakelet --server` process for the
 whole benchmark and reuses one ADBC Flight SQL connection for every query run.
 The connection sends the requested default catalog and schema as Flight SQL
 request headers.
 
-The runner reads the Flight SQL port from `flight-sql-server-port` under the
+The runner reads the Flight SQL port from `server-port` under the
 config file's `[server]` table. It uses port `32010` when the option is omitted.
 The configured port must be free before the benchmark starts.
 
