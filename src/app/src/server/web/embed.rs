@@ -16,6 +16,17 @@ struct WebAssets;
 
 const INDEX_HTML: &str = "index.html";
 
+/// Whether the bundle can be served right now.
+///
+/// A release build answers from what is compiled in. A debug build embeds
+/// nothing: it reads `web/dist` from the tree it was compiled in, which is
+/// what makes `pnpm -C web build` alone enough to refresh the UI. That also
+/// means the answer can change after the binary is built, so anything that
+/// reports on the UI has to ask here rather than assume.
+pub(crate) fn has_bundle() -> bool {
+    WebAssets::get(INDEX_HTML).is_some()
+}
+
 pub(crate) async fn serve_asset(uri: Uri, headers: HeaderMap) -> Response {
     let path = uri.path().trim_start_matches('/');
     let path = if path.is_empty() { INDEX_HTML } else { path };
@@ -85,7 +96,6 @@ fn etag(hash: &[u8; 32]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::web::IS_BUNDLED;
     use axum::body::to_bytes;
 
     fn css_asset() -> Asset {
@@ -163,13 +173,14 @@ mod tests {
         assert!(respond(None, &HeaderMap::new()).is_none());
     }
 
-    /// `/` has two legal outcomes, and `IS_BUNDLED` is a compile-time
-    /// constant, so each build still asserts exactly one of them — the other
-    /// arm is folded away before the test ever runs.
+    /// `/` has two legal outcomes and the test asserts exactly one of them,
+    /// picked the same way the server picks its own answer: by asking the
+    /// assets. A debug build reads them from disk, so the compile-time flag
+    /// would be the wrong question here.
     #[tokio::test]
     async fn index_is_served_or_explained() {
         let response = serve_asset("/".parse().unwrap(), HeaderMap::new()).await;
-        if IS_BUNDLED {
+        if has_bundle() {
             assert_eq!(response.status(), StatusCode::OK);
             assert!(
                 header(&response, header::CONTENT_TYPE)

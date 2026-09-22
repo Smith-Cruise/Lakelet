@@ -241,7 +241,7 @@ mod tests {
         );
 
         let response = http1_get(addr, "/").await?;
-        if web::IS_BUNDLED {
+        if web::has_bundle() {
             assert!(
                 response.starts_with("HTTP/1.1 200 "),
                 "unexpected response: {response}"

@@ -12,10 +12,11 @@ function csvField(value: string): string {
  * cells come through as empty fields because the rows already format them so.
  */
 export function toCsv(result: ResultSet): string {
-  const names = result.columns.map((column) => column.name);
-  const lines = [names.map(csvField).join(",")];
+  // Header from the label, cells from the positional key: two columns may
+  // share a name, and the export has to keep both.
+  const lines = [result.columns.map((column) => csvField(column.name)).join(",")];
   for (const row of result.rows) {
-    lines.push(names.map((name) => csvField(row[name] ?? "")).join(","));
+    lines.push(result.columns.map((column) => csvField(row[column.key] ?? "")).join(","));
   }
   return `${lines.join("\r\n")}\r\n`;
 }

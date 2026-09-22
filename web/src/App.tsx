@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { TopBar } from "./components/TopBar";
@@ -30,40 +30,57 @@ export function App() {
 
   const catalogs = useQuery({ queryKey: ["catalogs"], queryFn: listCatalogs });
 
+  // A ref, not the store's `run.status`: the guard has to be up before the
+  // next await point, and a state update would not be visible until the
+  // following render.
+  const runningRef = useRef(false);
+
   // Statements arrive one per array entry, already split by the editor, and
   // run in order: Flight SQL takes a single statement per request. The result
   // panel follows along and ends on the last one, or on the first failure.
   const onRun = useCallback(
     async (statements: string[]) => {
+      // The Run button is disabled while a statement is in flight, but the
+      // editor's Mod-Enter binding reaches this handler directly. Without a
+      // guard a second press starts a parallel run over the same run state,
+      // and whichever finishes last decides what the panel shows.
+      if (runningRef.current) {
+        return;
+      }
+      runningRef.current = true;
       // The tab's chips are what unqualified names resolve against, so they
       // have to reach the server rather than only steer the tree.
       const scope = { catalog: active.catalog, schema: active.schema };
-      for (const statement of statements) {
-        const sql = statement.trim();
-        if (sql === "") {
-          continue;
+      try {
+        for (const statement of statements) {
+          const sql = statement.trim();
+          if (sql === "") {
+            continue;
+          }
+          setRun({ status: "running", streamedRows: 0 });
+          try {
+            const outcome = await runQuery(sql, scope, (rows) =>
+              setRun({ status: "running", streamedRows: rows }),
+            );
+            setRun({
+              status: "done",
+              streamedRows: outcome.rowCount,
+              result: buildResultSet(
+                outcome.batches,
+                ROW_LIMIT,
+                outcome.elapsedMs,
+                outcome.truncated,
+              ),
+            });
+          } catch (error) {
+            // The server already classifies failures (invalid SQL, unimplemented,
+            // resources exhausted); showing its message beats re-deriving one here.
+            setRun({ status: "error", streamedRows: 0, error: describeError(error) });
+            return;
+          }
         }
-        setRun({ status: "running", streamedRows: 0 });
-        try {
-          const outcome = await runQuery(sql, scope, (rows) =>
-            setRun({ status: "running", streamedRows: rows }),
-          );
-          setRun({
-            status: "done",
-            streamedRows: outcome.rowCount,
-            result: buildResultSet(
-              outcome.batches,
-              ROW_LIMIT,
-              outcome.elapsedMs,
-              outcome.truncated,
-            ),
-          });
-        } catch (error) {
-          // The server already classifies failures (invalid SQL, unimplemented,
-          // resources exhausted); showing its message beats re-deriving one here.
-          setRun({ status: "error", streamedRows: 0, error: describeError(error) });
-          return;
-        }
+      } finally {
+        runningRef.current = false;
       }
     },
     [active.catalog, active.schema, setRun],

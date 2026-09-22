@@ -185,8 +185,11 @@ export async function runQuery(
     batches.push(batch);
     rowCount += batch.numRows;
     onProgress?.(Math.min(rowCount, ROW_LIMIT));
-    if (rowCount >= ROW_LIMIT) {
-      truncated = rowCount > ROW_LIMIT;
+    // Deciding at exactly the limit is wrong in both directions: a result
+    // whose last batch lands on the boundary would be cut short and still
+    // reported as complete. Read on until a row proves there was more.
+    if (rowCount > ROW_LIMIT) {
+      truncated = true;
       stream.cancel();
       break;
     }

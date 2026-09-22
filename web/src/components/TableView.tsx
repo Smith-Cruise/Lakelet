@@ -134,8 +134,11 @@ export function TableView({ result }: { result: ResultSet }) {
         cellClass: "text-right text-[11px] text-fg-faint",
         valueGetter: (params) => (params.node?.sourceRowIndex ?? 0) + 1,
       },
+      // `field` is the row key, which is positional; `headerName` is the
+      // label, which may repeat across columns.
       ...result.columns.map((meta) => ({
-        field: meta.name,
+        colId: meta.key,
+        field: meta.key,
         headerName: meta.name,
         width: estimateWidth(meta, result.rows),
         minWidth: MIN_WIDTH,

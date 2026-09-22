@@ -8,38 +8,43 @@
 //!
 //! The bundle is optional. `web/dist` is built out of band by
 //! `pnpm -C web build`, and a checkout without Node simply compiles a binary
-//! that has no UI and says so in plain text on `/` — `build.rs` records which
-//! of the two it is as `LAKELET_BUILD_WEB_UI`.
+//! that has no UI and says so in plain text on `/`.
 
 mod embed;
 
 use axum::Router;
 use axum::routing::get;
 
-/// The body served on `/` when no bundle was embedded. Plain text rather than
-/// a placeholder page: there is nothing to render, and the one thing a reader
-/// needs is the command that fixes it.
+/// Whether the bundle can be served right now; see [`embed::has_bundle`].
+/// Only the server's own tests reach for it: [`status_line`] is the one
+/// caller in a normal build, and it goes straight to `embed`.
+#[cfg(test)]
+pub(super) use embed::has_bundle;
+
+/// The body served on `/` when there is no bundle to serve. Plain text rather
+/// than a placeholder page: there is nothing to render, and the one thing a
+/// reader needs is the command that fixes it.
+///
+/// Recompiling is named as the release-only step it is: a debug build reads
+/// `web/dist` when the request arrives, so building the bundle is enough.
 pub(super) const MISSING_BUNDLE: &str =
-    "web UI is not bundled in this build; run `pnpm -C web build` and recompile";
+    "web UI is not available; run `pnpm -C web build`, then recompile for a release build";
 
 /// The same fact as [`MISSING_BUNDLE`], phrased for the one-line server startup
 /// banner. Kept beside it so the two cannot drift apart.
-const STATUS: &str = "not bundled (web/dist was missing at compile time)";
-
-/// Whether a bundle was embedded. `build.rs` reports it through
-/// `LAKELET_BUILD_WEB_UI`, the same `cargo:rustc-env` channel that carries the
-/// commit for `--version`.
-///
-/// A `const` rather than a `#[cfg]` so both arms of every caller stay compiled
-/// and linted no matter which kind of build this is; the branch still folds
-/// away at compile time.
-pub(super) const IS_BUNDLED: bool = matches!(env!("LAKELET_BUILD_WEB_UI").as_bytes(), b"on");
+const STATUS: &str = "not served (no bundle in web/dist; run `pnpm -C web build`)";
 
 /// Where the UI is reachable, or why it is not. Phrased for the one line the
 /// server prints on startup.
+///
+/// Announcing a URL that answers 404 is the one thing this line must never do,
+/// so it asks the assets. Whether a bundle existed when the binary was
+/// compiled is a different question and not the one worth answering here: a
+/// debug build reads `web/dist` at runtime, so that answer can already be
+/// stale by the time the server starts.
 pub(super) fn status_line(port: u16) -> String {
-    if IS_BUNDLED {
-        format!("http://localhost:{port}/")
+    if embed::has_bundle() {
+        format!("http://localhost:{port}")
     } else {
         STATUS.to_string()
     }

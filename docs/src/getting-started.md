@@ -111,7 +111,7 @@ lakelet --config config.toml --server
 ```text
 Lakelet server is running
   Flight SQL  grpc://localhost:32010
-  Web UI      http://localhost:32010/
+  Web UI      http://localhost:32010
 ```
 
 The port is `server-port` under `[server]` (default 32010).

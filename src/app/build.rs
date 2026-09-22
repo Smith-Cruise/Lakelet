@@ -78,14 +78,14 @@ fn emit_rerun_triggers() {
     }
 }
 
-/// Keeps `web/dist` present and records whether it holds a bundle.
+/// Keeps `web/dist` present so the crate always compiles, and complains about
+/// a bundle that is there but broken.
 ///
 /// The bundle is built out of band by `pnpm -C web build`; nothing here runs
 /// Node, so a plain `cargo build` needs no frontend toolchain. What this does
-/// is remove the three ways that arrangement used to fail silently: a
-/// half-built `web/dist` embedding zero files, a freshly built bundle that
-/// never triggered a recompile, and tests whose outcome depended on whatever
-/// happened to be on disk.
+/// is remove two ways that arrangement used to fail silently: a half-built
+/// `web/dist` embedding zero files, and a freshly built bundle that never
+/// triggered a recompile.
 fn prepare_web_bundle() {
     let dist =
         PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets this")).join(DIST);
@@ -111,13 +111,11 @@ fn prepare_web_bundle() {
     // tracks only for files that already existed.
     println!("cargo:rerun-if-changed={}", dist.display());
 
-    // Reported on every path, the way LAKELET_BUILD_PROVENANCE is: `env!` is a
-    // compile error when the variable is unset, and always writing it also
-    // means cargo's value shadows any same-named variable that happens to be
-    // in the build shell, so nothing outside this check can flip the answer.
+    // Whether a bundle was here at compile time is deliberately not reported
+    // to the crate: a debug build reads `web/dist` at runtime, so the answer
+    // can be stale by the time the server starts. The one place that cares
+    // asks the assets instead — see `server::web::embed::has_bundle`.
     let bundled = dist.join("index.html").is_file();
-    let bundled_value = if bundled { "on" } else { "off" };
-    println!("cargo:rustc-env=LAKELET_BUILD_WEB_UI={bundled_value}");
 
     if !bundled && has_entries(&dist) {
         // An empty directory is the ordinary "no bundle" case. Files without

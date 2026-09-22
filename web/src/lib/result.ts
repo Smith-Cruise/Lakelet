@@ -6,8 +6,19 @@ import { describeColumn, formatValue, type ColumnMeta } from "./values";
 /** Formatted cell text, or null so the grid can tell a NULL from an empty string. */
 export type Row = Record<string, string | null>;
 
+/**
+ * A result column, identified by its position rather than its name. SQL
+ * happily returns two columns with the same name — `select * from a join b`,
+ * or `select 1 as x, 2 as x` — and keying rows by name silently drops one of
+ * them and shows the other twice.
+ */
+export interface ResultColumn extends ColumnMeta {
+  /** Unique within one result: the row key and the grid's field. */
+  key: string;
+}
+
 export interface ResultSet {
-  columns: ColumnMeta[];
+  columns: ResultColumn[];
   rows: Row[];
   rowCount: number;
   elapsedMs: number;
@@ -22,7 +33,12 @@ export function buildResultSet(
   truncated: boolean,
 ): ResultSet {
   const first = batches[0];
-  const columns = first ? first.schema.fields.map(describeColumn) : [];
+  const columns: ResultColumn[] = first
+    ? first.schema.fields.map((field, position) => ({
+        ...describeColumn(field),
+        key: `c${position}`,
+      }))
+    : [];
 
   const rows: Row[] = [];
   outer: for (const batch of batches) {
@@ -31,10 +47,12 @@ export function buildResultSet(
         break outer;
       }
       const row: Row = {};
-      for (const column of columns) {
-        const value = batch.getChild(column.name)?.get(index) ?? null;
-        row[column.name] = value === null ? null : formatValue(value, column);
-      }
+      // By position: `getChild(name)` resolves to the first match, so a
+      // duplicate name would read the same vector twice.
+      columns.forEach((column, position) => {
+        const value = batch.getChildAt(position)?.get(index) ?? null;
+        row[column.key] = value === null ? null : formatValue(value, column);
+      });
       rows.push(row);
     }
   }
