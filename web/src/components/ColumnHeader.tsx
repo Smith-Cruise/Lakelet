@@ -41,7 +41,7 @@ export function ColumnHeader(params: IHeaderParams & HeaderContext) {
 
   const name = (
     <Tip label={meta.typeLabel}>
-      <span className="min-w-0 truncate text-[13px] font-semibold text-fg" title={meta.name}>
+      <span className="min-w-0 truncate text-[10.5px] font-bold tracking-[.12em] text-fg-muted uppercase" title={meta.name}>
         {meta.name}
       </span>
     </Tip>
@@ -52,16 +52,16 @@ export function ColumnHeader(params: IHeaderParams & HeaderContext) {
         type="button"
         aria-label={next}
         onClick={(event) => progressSort(event.shiftKey)}
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-muted hover:text-fg ${
+        className={`flex h-6 w-6 shrink-0 items-center justify-center text-fg-faint hover:text-fg ${
           sorted ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
         }`}
       >
         {sort === "asc" ? (
-          <ChevronUp size={14} />
+          <ChevronUp size={12} />
         ) : sort === "desc" ? (
-          <ChevronDown size={14} />
+          <ChevronDown size={12} />
         ) : (
-          <ChevronsUpDown size={14} />
+          <ChevronsUpDown size={12} />
         )}
       </button>
     </Tip>

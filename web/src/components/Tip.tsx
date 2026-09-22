@@ -13,7 +13,7 @@ export function Tip({ label, children }: { label: string; children: ReactNode })
           side="top"
           sideOffset={6}
           collisionPadding={8}
-          className="z-50 rounded-md border border-line bg-panel px-2.5 py-1.5 text-[12px] text-fg shadow-card"
+          className="z-50 border border-line-strong bg-panel-alt px-2.5 py-1.5 font-mono text-[11px] text-fg shadow-card"
         >
           {label}
         </Tooltip.Content>

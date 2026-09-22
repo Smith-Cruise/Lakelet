@@ -1,28 +1,27 @@
-import { Moon, Sun, Waves } from "lucide-react";
-import { useApp } from "../store";
+import { Logo } from "./Logo";
 
-/** Brand on the left, theme switch on the right; the tab strip below owns everything else. */
+const DOCS_URL = "https://lakelet.dev/";
+
+/** Ink band across the top: the mark and wordmark on the left, docs on the right. */
 export function TopBar() {
-  const { theme, setTheme } = useApp();
-  const nextTheme = theme === "dark" ? "light" : "dark";
-
   return (
-    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-panel px-3.5">
-      <span className="flex h-6 w-6 items-center justify-center rounded-[7px] bg-accent text-accent-contrast">
-        <Waves size={15} strokeWidth={2.25} />
+    <header className="flex h-11 shrink-0 items-center gap-2.5 border-b-2 border-line-strong bg-fg px-3">
+      <Logo size={22} />
+      <span className="font-mono text-[15px] font-extrabold tracking-tight text-page">Lakelet</span>
+      <span className="ml-1 border border-accent px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-[.14em] text-accent">
+        CONSOLE
       </span>
-      <span className="text-[16px] font-medium tracking-tight">Lakelet</span>
 
       <div className="flex-1" />
 
-      <button
-        type="button"
-        aria-label={`Switch to ${nextTheme} theme`}
-        onClick={() => setTheme(nextTheme)}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted hover:bg-hover hover:text-fg"
+      <a
+        href={DOCS_URL}
+        target="_blank"
+        rel="noreferrer"
+        className="border-b border-page/30 pb-0.5 font-mono text-[10px] font-bold tracking-[.14em] text-page/60 outline-none hover:border-accent hover:text-accent focus-visible:border-accent focus-visible:text-accent"
       >
-        {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
-      </button>
+        DOCS ↗
+      </a>
     </header>
   );
 }

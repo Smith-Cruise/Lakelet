@@ -27,7 +27,7 @@ function nodeKey(...parts: string[]): string {
 }
 
 const ROW =
-  "flex h-[30px] w-full items-center gap-2 rounded-[7px] px-2 text-left text-[13px] whitespace-nowrap hover:bg-hover";
+  "flex h-[26px] w-full items-center gap-1.5 px-2.5 text-left font-mono text-[12.5px] whitespace-nowrap hover:bg-hover";
 
 export function CatalogTree({
   catalogs,
@@ -44,34 +44,34 @@ export function CatalogTree({
     filter.trim() === "" || name.toLowerCase().includes(filter.trim().toLowerCase());
 
   return (
-    <aside className="flex h-full w-full flex-col bg-panel px-2 pt-2.5">
-      <div className="flex items-center justify-between px-1.5 pb-2 pt-0.5">
-        <span className="text-[12px] font-medium tracking-[.04em] text-fg-faint uppercase">
+    <aside className="flex h-full w-full flex-col bg-panel">
+      <div className="flex h-[30px] shrink-0 items-center border-b border-line px-2.5">
+        <span className="truncate font-mono text-[10px] font-bold tracking-[.16em] text-fg-faint uppercase">
           Data explorer
         </span>
         <button
           type="button"
           aria-label="Refresh catalogs"
           onClick={onRefresh}
-          className="flex h-6 w-6 items-center justify-center rounded text-fg-faint hover:bg-hover hover:text-fg"
+          className="ml-auto flex h-6 w-6 items-center justify-center text-fg-faint hover:bg-hover hover:text-fg"
         >
-          <RefreshCw size={14} className={loadingCatalogs ? "animate-spin" : undefined} />
+          <RefreshCw size={13} className={loadingCatalogs ? "animate-spin" : undefined} />
         </button>
       </div>
 
-      <div className="mb-2 flex h-[34px] items-center gap-2 rounded-lg border border-line bg-panel px-2.5 focus-within:border-accent">
-        <Search size={15} className="text-fg-faint" />
+      <div className="m-2 flex h-[30px] shrink-0 items-center gap-2 border border-line-strong bg-panel-alt px-2.5 focus-within:shadow-[0_0_0_2px_var(--lk-accent)]">
+        <Search size={13} className="text-fg-faint" />
         <input
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
-          placeholder="Search tables"
-          className="w-full bg-transparent text-[13px] outline-none placeholder:text-fg-faint"
+          placeholder="search tables"
+          className="w-full bg-transparent font-mono text-[12px] outline-none placeholder:text-fg-faint"
         />
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto pb-2">
         {catalogsError ? (
-          <p className="rounded-md bg-danger-bg px-2.5 py-2 text-[12px] text-danger-fg">
+          <p className="mx-2 bg-danger-bg px-2.5 py-2 text-[12px] text-danger-fg">
             {catalogsError}
           </p>
         ) : null}
@@ -124,7 +124,7 @@ function CatalogNode({
     <div>
       <button type="button" className={ROW} onClick={onToggle}>
         <Chevron expanded={expanded} />
-        <Database size={16} className="shrink-0 text-fg-faint" />
+        <Database size={14} className="shrink-0 text-fg-faint" />
         <span className="truncate">{catalog}</span>
       </button>
 
@@ -188,7 +188,7 @@ function SchemaNode({
     <div>
       <button type="button" className={`${ROW} pl-6`} onClick={onToggle}>
         <Chevron expanded={expanded} />
-        <Folder size={16} className="shrink-0 text-fg-faint" />
+        <Folder size={14} className="shrink-0 text-fg-faint" />
         <span className="truncate">{schema}</span>
       </button>
 
@@ -247,12 +247,12 @@ function TableNode({ catalog, schema, table, expanded, onToggle, selected, onPic
         onDoubleClick={() => onPickTable(catalog, schema, table)}
         className={`${ROW} pl-10 ${
           selected
-            ? "bg-accent-bg font-medium text-accent shadow-[inset_3px_0_0_var(--lk-accent)] hover:bg-accent-bg"
+            ? "bg-accent-bg font-medium text-fg shadow-[inset_3px_0_0_var(--lk-accent)] hover:bg-accent-bg"
             : ""
         }`}
       >
         <Chevron expanded={expanded} />
-        <Table2 size={16} className={`shrink-0 ${selected ? "text-accent" : "text-fg-faint"}`} />
+        <Table2 size={14} className={`shrink-0 ${selected ? "text-fg" : "text-fg-faint"}`} />
         <span className="truncate">{table}</span>
       </button>
 
@@ -264,12 +264,12 @@ function TableNode({ catalog, schema, table, expanded, onToggle, selected, onPic
         >
           {(columns.data ?? []).map((column) => (
             <div key={column.name} className={`${ROW} cursor-default pl-16 hover:bg-transparent`}>
-              <RectangleVertical size={14} className="shrink-0 text-fg-faint" />
+              <RectangleVertical size={12} className="shrink-0 text-fg-faint" />
               <span className="truncate" title={column.name}>
                 {column.name}
               </span>
               <span
-                className="ml-auto shrink-0 pl-3 font-mono text-[12px] text-fg-faint"
+                className="ml-auto shrink-0 pl-3 text-[11px] text-fg-faint"
                 title={column.typeLabel}
               >
                 {column.typeLabel}
@@ -277,7 +277,7 @@ function TableNode({ catalog, schema, table, expanded, onToggle, selected, onPic
             </div>
           ))}
           {columns.data && columns.data.length === 0 ? (
-            <p className="h-[30px] pl-[72px] leading-[30px] text-[12px] text-fg-faint">no columns</p>
+            <p className="h-[26px] pl-[72px] font-mono text-[12px] leading-[26px] text-fg-faint">no columns</p>
           ) : null}
         </NodeStatus>
       ) : null}
@@ -287,7 +287,7 @@ function TableNode({ catalog, schema, table, expanded, onToggle, selected, onPic
 
 function Chevron({ expanded }: { expanded: boolean }) {
   const Icon = expanded ? ChevronDown : ChevronRight;
-  return <Icon size={14} className="w-3.5 shrink-0 text-fg-faint" />;
+  return <Icon size={12} className="w-3 shrink-0 text-fg-faint" />;
 }
 
 function NodeStatus({
@@ -303,15 +303,18 @@ function NodeStatus({
 }) {
   if (pending) {
     return (
-      <p className="h-[30px] leading-[30px] text-[12px] text-fg-faint" style={{ paddingLeft: indent + 8 }}>
-        Loading…
+      <p
+        className="h-[26px] font-mono text-[12px] leading-[26px] text-fg-faint"
+        style={{ paddingLeft: indent + 8 }}
+      >
+        loading…
       </p>
     );
   }
   if (error) {
     return (
       <p
-        className="my-1 mr-1 rounded-md bg-danger-bg py-1.5 pr-2.5 text-[12px] text-danger-fg"
+        className="my-1 mr-2 bg-danger-bg py-1.5 pr-2.5 text-[12px] text-danger-fg"
         style={{ paddingLeft: indent + 8 }}
       >
         {error}

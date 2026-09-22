@@ -1,101 +1,91 @@
 @import "tailwindcss";
 
-/* Radix Colors: slate for the neutrals, blue for the single accent. The two
-   modes are paired scales, so every token below has exactly one counterpart.
-   `--lk-page` is the gray canvas the white cards sit on; keep them apart. */
+/* Self-hosted, because the console is embedded in the binary and often runs
+   with no internet. Only the latin subsets are referenced, so only those two
+   files end up in the bundle; importing the packages' own stylesheets would
+   pull in every script (~2 MB) for nothing. */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/inter/files/inter-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ---------------------------------------------------------------------------
+ * Lakebed: one theme, no dark mode.
+ *
+ * Near-black ink on warm paper, square corners, hard rules, and a single
+ * high-voltage accent. The same values drive the docs site, so a change here
+ * belongs in `docs/src/stylesheets/extra.css` too.
+ *
+ * `--lk-accent` is a FILL and MARK colour only. At 2:1 against paper it is
+ * unreadable as text, so anything sitting on it uses `--lk-accent-contrast`.
+ * ------------------------------------------------------------------------- */
 :root {
-  --lk-page: #f1f1f4;
-  --lk-panel: #ffffff;
-  --lk-sub: #f7f7f9;
-  --lk-border: #e0e1e6;
-  --lk-border-strong: #cdced7;
-  --lk-fg: #1c2024;
-  --lk-fg-muted: #60646c;
-  --lk-fg-faint: #8b8d98;
-  --lk-accent: #0d74ce;
-  --lk-accent-bg: #e6f1fb;
-  --lk-accent-contrast: #ffffff;
-  --lk-hover: rgba(28, 32, 36, 0.05);
-  --lk-danger-bg: #feebec;
-  --lk-danger-fg: #ce2c31;
-  --lk-success-bg: #e4f6ec;
-  --lk-success-fg: #1b6b45;
-  --lk-warning-bg: #fdf3dd;
-  --lk-warning-fg: #815300;
-  --lk-shadow: 0 1px 2px rgba(28, 32, 36, 0.05), 0 0 0 0.5px var(--lk-border);
-  --lk-syntax-keyword: #8e4ec6;
-  --lk-syntax-string: #17a47f;
-  --lk-syntax-number: #c77c1e;
-  --lk-syntax-comment: #8b8d98;
+  --lk-page: #ebe9de;
+  --lk-panel: #f7f6ef;
+  --lk-panel-alt: #ffffff;
+  --lk-sub: #e4e2d6;
+  --lk-border: rgba(20, 23, 15, 0.14);
+  --lk-border-soft: rgba(20, 23, 15, 0.07);
+  --lk-border-strong: #14170f;
+  --lk-fg: #14170f;
+  --lk-fg-muted: #5a5e4e;
+  --lk-fg-faint: #8c907e;
+  --lk-accent: #c8f135;
+  --lk-accent-deep: #a7ce1c;
+  --lk-accent-bg: #edf9c4;
+  --lk-accent-contrast: #14170f;
+  --lk-hover: rgba(20, 23, 15, 0.06);
+  --lk-danger-bg: #f7ded9;
+  --lk-danger-fg: #c4392b;
+  --lk-success-bg: #edf9c4;
+  --lk-success-fg: #14170f;
+  --lk-warning-bg: #f6e9c9;
+  --lk-warning-fg: #b8791a;
+  --lk-shadow: 4px 4px 0 rgba(20, 23, 15, 0.16);
+  --lk-shadow-press: 2px 2px 0 var(--lk-border-strong);
+  --lk-syntax-keyword: #b5451f;
+  --lk-syntax-string: #3d7a2e;
+  --lk-syntax-number: #8a6a1f;
+  --lk-syntax-comment: #8c907e;
+  --lk-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --lk-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas,
+    monospace;
   color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --lk-page: #111113;
-    --lk-panel: #18191b;
-    --lk-sub: #1f2023;
-    --lk-border: #2e3035;
-    --lk-border-strong: #43464e;
-    --lk-fg: #edeef0;
-    --lk-fg-muted: #b0b4ba;
-    --lk-fg-faint: #7e8289;
-    --lk-accent: #3b9eff;
-    --lk-accent-bg: #0d2847;
-    --lk-accent-contrast: #06121f;
-    --lk-hover: rgba(255, 255, 255, 0.06);
-    --lk-danger-bg: #3b1219;
-    --lk-danger-fg: #ff9592;
-    --lk-success-bg: #113123;
-    --lk-success-fg: #5bc489;
-    --lk-warning-bg: #302008;
-    --lk-warning-fg: #ffba18;
-    --lk-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 0.5px var(--lk-border);
-    --lk-syntax-keyword: #bf7af0;
-    --lk-syntax-string: #27b08b;
-    --lk-syntax-number: #ffba18;
-    --lk-syntax-comment: #7e8289;
-    color-scheme: dark;
-  }
-}
-
-:root[data-theme="dark"] {
-  --lk-page: #111113;
-  --lk-panel: #18191b;
-  --lk-sub: #1f2023;
-  --lk-border: #2e3035;
-  --lk-border-strong: #43464e;
-  --lk-fg: #edeef0;
-  --lk-fg-muted: #b0b4ba;
-  --lk-fg-faint: #7e8289;
-  --lk-accent: #3b9eff;
-  --lk-accent-bg: #0d2847;
-  --lk-accent-contrast: #06121f;
-  --lk-hover: rgba(255, 255, 255, 0.06);
-  --lk-danger-bg: #3b1219;
-  --lk-danger-fg: #ff9592;
-  --lk-success-bg: #113123;
-  --lk-success-fg: #5bc489;
-  --lk-warning-bg: #302008;
-  --lk-warning-fg: #ffba18;
-  --lk-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 0.5px var(--lk-border);
-  --lk-syntax-keyword: #bf7af0;
-  --lk-syntax-string: #27b08b;
-  --lk-syntax-number: #ffba18;
-  --lk-syntax-comment: #7e8289;
-  color-scheme: dark;
 }
 
 @theme inline {
   --color-page: var(--lk-page);
   --color-panel: var(--lk-panel);
+  --color-panel-alt: var(--lk-panel-alt);
   --color-sub: var(--lk-sub);
   --color-line: var(--lk-border);
+  --color-line-soft: var(--lk-border-soft);
   --color-line-strong: var(--lk-border-strong);
   --color-fg: var(--lk-fg);
   --color-fg-muted: var(--lk-fg-muted);
   --color-fg-faint: var(--lk-fg-faint);
   --color-accent: var(--lk-accent);
+  --color-accent-deep: var(--lk-accent-deep);
   --color-accent-bg: var(--lk-accent-bg);
   --color-accent-contrast: var(--lk-accent-contrast);
   --color-hover: var(--lk-hover);
@@ -106,6 +96,22 @@
   --color-warning-bg: var(--lk-warning-bg);
   --color-warning-fg: var(--lk-warning-fg);
   --shadow-card: var(--lk-shadow);
+  --shadow-press: var(--lk-shadow-press);
+
+  --font-sans: var(--lk-sans);
+  --font-mono: var(--lk-mono);
+
+  /* Nothing in Lakebed is rounded. Flattening the scale here saves editing
+     every `rounded-*` in the components; only arbitrary values need changing. */
+  --radius: 0px;
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
 }
 
 html,
@@ -118,7 +124,7 @@ body {
   margin: 0;
   background: var(--lk-page);
   color: var(--lk-fg);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--lk-sans);
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
 }
@@ -136,12 +142,6 @@ body {
   height: 100%;
   margin-left: 3px;
   background: var(--lk-accent);
-}
-.lk-run-mark-start {
-  border-radius: 2px 2px 0 0;
-}
-.lk-run-mark-end {
-  border-radius: 0 0 2px 2px;
 }
 
 /* NULL cells: dimmed so they read as absent, not as an empty string. */

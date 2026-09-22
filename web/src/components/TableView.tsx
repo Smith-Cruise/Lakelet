@@ -26,30 +26,34 @@ ModuleRegistry.registerModules([
 ]);
 
 /**
- * The grid reads the same tokens as the rest of the app, in both themes. The
- * look is a plain report table: a white bold header over one hairline, zebra
- * rows separated only by thin column lines, no row lines, no handles.
+ * The grid reads the same tokens as the rest of the app. The look is a printed
+ * data listing: every cell monospaced so digits line up down a column, the
+ * header sitting a shade back from the rows over one full-strength rule, and
+ * the finest possible lines between cells so the numbers carry the grid rather
+ * than the borders.
  */
 const gridTheme = themeQuartz.withParams({
-  backgroundColor: "var(--lk-panel)",
+  backgroundColor: "var(--lk-panel-alt)",
   foregroundColor: "var(--lk-fg)",
-  borderColor: "var(--lk-border)",
-  headerBackgroundColor: "var(--lk-panel)",
-  headerTextColor: "var(--lk-fg)",
-  headerFontWeight: 600,
+  borderColor: "var(--lk-border-soft)",
+  headerBackgroundColor: "var(--lk-page)",
+  headerTextColor: "var(--lk-fg-muted)",
+  headerFontWeight: 700,
+  headerRowBorder: { style: "solid", width: 1, color: "var(--lk-border-strong)" },
   headerColumnBorder: { style: "solid", width: 1, color: "var(--lk-border)" },
   headerColumnResizeHandleColor: "transparent",
-  columnBorder: { style: "solid", width: 1, color: "var(--lk-border)" },
-  rowBorder: false,
-  oddRowBackgroundColor: "var(--lk-sub)",
+  columnBorder: { style: "solid", width: 1, color: "var(--lk-border-soft)" },
+  rowBorder: { style: "solid", width: 1, color: "var(--lk-border-soft)" },
+  oddRowBackgroundColor: "var(--lk-panel-alt)",
   rowHoverColor: "var(--lk-hover)",
   selectedRowBackgroundColor: "var(--lk-accent-bg)",
-  fontFamily: "inherit",
-  fontSize: "13px",
-  headerFontSize: "13px",
-  cellHorizontalPadding: "12px",
-  rowHeight: "36px",
-  headerHeight: "40px",
+  fontFamily: "var(--lk-mono)",
+  fontSize: "12px",
+  headerFontFamily: "var(--lk-mono)",
+  headerFontSize: "10.5px",
+  cellHorizontalPadding: "11px",
+  rowHeight: "27px",
+  headerHeight: "30px",
   wrapperBorderRadius: "0px",
   wrapperBorder: false,
   borderRadius: "0px",
@@ -127,7 +131,7 @@ export function TableView({ result }: { result: ResultSet }) {
         sortable: false,
         resizable: false,
         suppressMovable: true,
-        cellClass: "font-mono text-right text-[12px] text-fg-faint",
+        cellClass: "text-right text-[11px] text-fg-faint",
         valueGetter: (params) => (params.node?.sourceRowIndex ?? 0) + 1,
       },
       ...result.columns.map((meta) => ({
@@ -139,7 +143,7 @@ export function TableView({ result }: { result: ResultSet }) {
         headerComponentParams: { meta },
         valueFormatter: (params: ValueFormatterParams<Row, string | null>) =>
           params.value ?? NULL_TEXT,
-        cellClass: meta.kind === "numeric" ? "font-mono text-right tabular-nums" : undefined,
+        cellClass: meta.kind === "numeric" ? "text-right tabular-nums" : undefined,
         comparator: meta.kind === "numeric" ? compareNumeric : undefined,
         cellClassRules: { "lk-null": (params: CellClassParams<Row>) => params.value === null },
       })),

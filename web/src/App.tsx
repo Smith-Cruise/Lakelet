@@ -5,17 +5,18 @@ import { TopBar } from "./components/TopBar";
 import { CatalogTree } from "./components/CatalogTree";
 import { SqlEditor } from "./components/SqlEditor";
 import { ResultPanel } from "./components/ResultPanel";
+import { StatusBar } from "./components/StatusBar";
 import { describeError, listCatalogs, runQuery, ROW_LIMIT } from "./flight/client";
 import { buildResultSet } from "./lib/result";
 import { qualifiedName } from "./lib/sql";
 import { useApp } from "./store";
 
-/** A hairline between panels with an 8px grab area; it turns accent while hovered or dragged. */
+/** A hairline between panels with an 8px grab area; it goes full ink while hovered or dragged. */
 function Gutter({ direction }: { direction: "horizontal" | "vertical" }) {
   const horizontal = direction === "horizontal";
   return (
     <Separator
-      className={`group relative outline-none ${horizontal ? "w-px" : "h-px"} bg-line data-[separator=active]:bg-accent data-[separator=hover]:bg-accent`}
+      className={`group relative outline-none ${horizontal ? "w-px" : "h-px"} bg-line data-[separator=active]:bg-line-strong data-[separator=hover]:bg-line-strong`}
     >
       <div className={`absolute ${horizontal ? "inset-y-0 -left-1 w-2" : "inset-x-0 -top-1 h-2"}`} />
     </Separator>
@@ -105,6 +106,8 @@ export function App() {
           </Group>
         </Panel>
       </Group>
+
+      <StatusBar connected={catalogs.isSuccess} busy={catalogs.isFetching} />
     </div>
   );
 }

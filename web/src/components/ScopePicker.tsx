@@ -6,9 +6,9 @@ import { listCatalogs, listSchemas } from "../flight/client";
 import { useApp, type EditorTab } from "../store";
 
 const MENU_CLASS =
-  "z-50 max-h-80 min-w-48 overflow-auto rounded-lg border border-line bg-panel p-1 text-[13px] shadow-card";
+  "z-50 max-h-80 min-w-48 overflow-auto border border-line-strong bg-panel-alt p-1 font-mono text-[12px] shadow-card";
 const ITEM_CLASS =
-  "flex h-8 cursor-default items-center rounded-md px-2.5 outline-none data-[highlighted]:bg-accent-bg data-[highlighted]:text-accent";
+  "flex h-7 cursor-default items-center px-2.5 outline-none data-[highlighted]:bg-accent-bg data-[highlighted]:text-fg";
 
 /**
  * The catalog and schema this tab's statements resolve against, as two
@@ -64,13 +64,13 @@ function Chip({ icon: Icon, label, muted, options, onSelect }: ChipProps) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
-        className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent ${
+        className={`flex h-[26px] items-center gap-1.5 border border-line px-2.5 font-mono text-[12px] outline-none hover:border-line-strong focus-visible:shadow-[0_0_0_2px_var(--lk-accent)] ${
           muted ? "text-fg-faint" : "text-fg"
         }`}
       >
-        <Icon size={15} className="text-fg-muted" />
+        <Icon size={13} className="text-fg-faint" />
         {label}
-        <ChevronDown size={13} className="text-fg-faint" />
+        <ChevronDown size={11} className="text-fg-faint" />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className={MENU_CLASS} align="start" sideOffset={6}>

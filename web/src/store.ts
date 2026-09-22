@@ -1,8 +1,6 @@
 import { create } from "zustand";
 import type { ResultSet } from "./lib/result";
 
-export type Theme = "system" | "light" | "dark";
-
 /** One editor tab. Each carries the catalog and schema its statements resolve against. */
 export interface EditorTab {
   id: string;
@@ -26,9 +24,6 @@ interface RunState {
 }
 
 interface AppState {
-  theme: Theme;
-  setTheme: (theme: Theme) => void;
-
   /** The table last picked in the explorer; drives its highlight. */
   activeTable?: TableRef;
   setActiveTable: (table: TableRef) => void;
@@ -45,8 +40,9 @@ interface AppState {
   setRun: (run: RunState) => void;
 }
 
-const THEME_KEY = "lakelet.theme";
 const TABS_KEY = "lakelet.tabs";
+/** Lakebed has a single theme; drop the key earlier versions wrote. */
+const RETIRED_THEME_KEY = "lakelet.theme";
 
 /** Mirrors the server's own defaults, so an unqualified name resolves the
  * same way from a fresh tab as from a client that sends no scope at all. */
@@ -70,23 +66,11 @@ function writeStorage(key: string, value: string): void {
   }
 }
 
-function storedTheme(): Theme {
-  const value = readStorage(THEME_KEY);
-  return value === "light" || value === "dark" || value === "system" ? value : "system";
+try {
+  localStorage.removeItem(RETIRED_THEME_KEY);
+} catch {
+  // Nothing to clean up when storage is unavailable.
 }
-
-/**
- * Writes the theme to the document.
- *
- * This runs from the store rather than a React effect: a child's effect fires
- * before its parent's, so the editor would read the previous theme's tokens
- * and render itself in the wrong colours.
- */
-function applyTheme(theme: Theme): void {
-  document.documentElement.dataset.theme = theme === "system" ? "" : theme;
-}
-
-applyTheme(storedTheme());
 
 /** Tabs are named after the moment they were opened, e.g. `2026/9/19 14:12`. */
 function tabName(now = new Date()): string {
@@ -153,13 +137,6 @@ function storedTabs(): Pick<AppState, "tabs" | "activeTabId"> {
 }
 
 export const useApp = create<AppState>((set, get) => ({
-  theme: storedTheme(),
-  setTheme: (theme) => {
-    writeStorage(THEME_KEY, theme);
-    applyTheme(theme);
-    set({ theme });
-  },
-
   setActiveTable: (activeTable) => set({ activeTable }),
 
   ...storedTabs(),
