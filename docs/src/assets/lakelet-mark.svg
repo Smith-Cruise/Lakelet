@@ -1,5 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Lakelet">
   <rect width="32" height="32" fill="#C8F135"/>
-  <rect x="6" y="5" width="6.5" height="22" fill="#14170F"/>
-  <rect x="6" y="20.5" width="20" height="6.5" fill="#14170F"/>
+  <polygon points="18.5,3.5 8,18 15,18 13,28.5 24,13.5 17,13.5" fill="#14170F"/>
+  <rect y="9" width="32" height="1.5" fill="#C8F135"/>
+  <rect y="15" width="32" height="1.5" fill="#C8F135"/>
+  <rect y="21" width="32" height="1.5" fill="#C8F135"/>
 </svg>

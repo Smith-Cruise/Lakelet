@@ -595,6 +595,22 @@ body:has(.ll-home) .md-footer-meta__inner {
   margin: 1.5rem 0.5rem 0 0;
 }
 
+/* The mark's bolt, blown up to fill the empty right half of the hero. It uses
+   the same geometry as `assets/lakelet-mark.svg`, cropped to the bolt's
+   bounding box. The cuts are masked out so the grid shows through them. */
+.md-typeset .ll-hero::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 8%;
+  height: 66%;
+  aspect-ratio: 256 / 400;
+  max-width: 30%;
+  transform: translateY(-50%);
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 400'%3E%3Cmask id='c'%3E%3Crect width='256' height='400' fill='%23fff'/%3E%3Cg fill='%23000'%3E%3Crect y='96' width='256' height='14'/%3E%3Crect y='192' width='256' height='14'/%3E%3Crect y='288' width='256' height='14'/%3E%3C/g%3E%3C/mask%3E%3Cpolygon points='168,0 0,232 112,232 80,400 256,160 144,160' fill='%2314170F' mask='url(%23c)'/%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
+}
+
 /* The install card straddles the band's bottom edge. */
 .md-typeset .ll-install {
   position: relative;
@@ -1101,7 +1117,13 @@ body:has(.ll-home) .md-footer-meta__inner {
   padding-top: 0.4rem;
 }
 
+/* inline-block keeps the command in one bordered box. As a plain inline
+   element it wraps on phones and every line fragment draws its own
+   overlapping border. */
 .md-typeset .ll-close code {
+  display: inline-block;
+  max-width: 100%;
+  line-height: 1.6;
   padding: 0.6rem 0.8rem;
   background: transparent;
   border: 2px solid var(--ll-volt);
@@ -1141,6 +1163,11 @@ body:has(.ll-home) .md-footer-meta__inner {
   .md-typeset .ll-note {
     margin-left: 1.2rem;
     margin-right: 1.2rem;
+  }
+
+  /* One column: the bolt would sit on top of the headline. */
+  .md-typeset .ll-hero::after {
+    display: none;
   }
 
   .md-typeset .ll-modes {
