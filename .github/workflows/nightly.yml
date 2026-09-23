@@ -27,7 +27,7 @@ jobs:
       short_sha: ${{ steps.compare.outputs.short_sha }}
       date: ${{ steps.compare.outputs.date }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Compare HEAD with last nightly
         id: compare
         run: |
@@ -51,13 +51,13 @@ jobs:
     if: needs.check.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.check.outputs.sha }}
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: web/package.json
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: pnpm
@@ -70,7 +70,7 @@ jobs:
         run: pnpm build
       # Built once and shared by every target below, so all binaries embed
       # the identical bundle.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: web-dist
           path: web/dist
@@ -104,7 +104,7 @@ jobs:
     env:
       RUSTFLAGS: ${{ matrix.rustflags }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.check.outputs.sha }}
       - uses: dtolnay/rust-toolchain@stable
@@ -113,12 +113,26 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      # NASM and the MSVC environment are set up inline rather than via
+      # ilammy/setup-nasm and ilammy/msvc-dev-cmd, which still run on Node 20.
       - name: Install NASM (aws-lc-sys)
         if: runner.os == 'Windows'
-        uses: ilammy/setup-nasm@v1
+        shell: pwsh
+        run: |
+          choco install nasm -y --no-progress
+          "C:\Program Files\NASM" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
       - name: Set up MSVC environment (aws-lc-sys)
         if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw "Visual Studio with the x64 C++ toolset not found" }
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') {
+              "$($matches[1])=$($matches[2])" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+            }
+          }
       - name: Force Ninja cmake generator (aws-lc-sys)
         # The cmake crate cannot map the Visual Studio version on the runner
         # image to a generator; Ninja sidesteps the VS generator entirely.
@@ -138,7 +152,7 @@ jobs:
           sudo swapon "$swapfile"
           free -h
       - name: Download web UI bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: web-dist
           path: web/dist
@@ -173,7 +187,7 @@ jobs:
           Copy-Item "target/${{ matrix.target }}/release/lakelet.exe" "dist/$pkg/"
           Copy-Item LICENSE, config_demo.toml "dist/$pkg/"
           Compress-Archive -Path "dist/$pkg" -DestinationPath "dist/$pkg.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: lakelet-nightly-${{ matrix.target }}
           path: |
@@ -187,8 +201,8 @@ jobs:
     needs: [check, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
           # Only the packaged binaries; web-dist is a build input, not a release asset.
           pattern: lakelet-nightly-*
