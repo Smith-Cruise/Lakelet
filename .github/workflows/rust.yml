@@ -18,7 +18,7 @@ jobs:
       integration_changed: ${{ steps.changes.outputs.integration_changed }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
     - name: Check changed files
@@ -53,12 +53,12 @@ jobs:
     # same artifact so the embed path is what gets tested.
     - name: Install pnpm
       if: steps.changes.outputs.src_changed == 'true' || steps.changes.outputs.integration_changed == 'true'
-      uses: pnpm/action-setup@v4
+      uses: pnpm/action-setup@v5
       with:
         package_json_file: web/package.json
     - name: Install Node.js
       if: steps.changes.outputs.src_changed == 'true' || steps.changes.outputs.integration_changed == 'true'
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: 24
         cache: pnpm
@@ -77,7 +77,7 @@ jobs:
       run: pnpm build
     - name: Upload web UI bundle
       if: steps.changes.outputs.src_changed == 'true' || steps.changes.outputs.integration_changed == 'true'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: web-dist
         path: web/dist
@@ -96,7 +96,7 @@ jobs:
 
     - name: Upload Lakelet binary
       if: steps.changes.outputs.integration_changed == 'true'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: lakelet-debug-bin
         path: target/debug/lakelet
@@ -108,7 +108,7 @@ jobs:
     needs: build
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       if: needs.build.outputs.src_changed == 'true'
     - name: Install Rust toolchain
       if: needs.build.outputs.src_changed == 'true'
@@ -136,7 +136,7 @@ jobs:
 
     - name: Download web UI bundle
       if: needs.build.outputs.src_changed == 'true'
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v7
       with:
         name: web-dist
         path: web/dist
@@ -151,18 +151,18 @@ jobs:
     needs: build
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       if: needs.build.outputs.integration_changed == 'true'
     - name: Set up Python
       if: needs.build.outputs.integration_changed == 'true'
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: "3.12"
         cache: pip
         cache-dependency-path: integration-tests/requirements.txt
     - name: Integration test jar cache
       if: needs.build.outputs.integration_changed == 'true'
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: integration-tests/.jars
         key: integration-test-jars-${{ runner.os }}-${{ hashFiles('integration-tests/download-jars.sh') }}
@@ -171,7 +171,7 @@ jobs:
       run: docker compose version
     - name: Download Lakelet binary
       if: needs.build.outputs.integration_changed == 'true'
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v7
       with:
         name: lakelet-debug-bin
         path: target/debug

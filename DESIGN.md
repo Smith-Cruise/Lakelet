@@ -114,24 +114,28 @@ JetBrains Mono 800, because the theme's own font link stops at 700.
 
 ## The mark
 
-A bold `L` in ink on a volt tile, on a 32×32 artboard:
+An ink bolt on a volt tile, cut into three rows, on a 32×32 artboard:
 
 ```
 <rect width="32" height="32" fill="#C8F135"/>
-<rect x="6" y="5" width="6.5" height="22" fill="#14170F"/>
-<rect x="6" y="20.5" width="20" height="6.5" fill="#14170F"/>
+<polygon points="18.5,3.5 8,18 15,18 13,28.5 24,13.5 17,13.5" fill="#14170F"/>
+<rect y="9" width="32" height="1.5" fill="#C8F135"/>
+<rect y="15" width="32" height="1.5" fill="#C8F135"/>
+<rect y="21" width="32" height="1.5" fill="#C8F135"/>
 ```
 
-It is deliberately typographic rather than pictorial. The mark has to survive a 16px
-favicon, where any symbol carrying an idea — ripples, a wave, layers, a depth profile —
-collapses into a blur; a letter degrades into a legible letter. It also rhymes with the
-mono wordmark beside it, so the lockup reads as one thing. The personality lives in the
-volt tile and the type, not in the glyph.
+The bolt says what the engine is for: fast queries from one small binary. Its bounding
+box is centred on the artboard. The cuts are tile-coloured bars drawn over the bolt
+rather than a mask, so every copy stays plain shapes with no ids. They hint at table rows
+and are the one detail allowed in the mark. At 1.5 units thick they still show as thin
+lines in a 16px favicon on a retina screen, and at 1x they fade out while the bolt's
+silhouette stays readable. Don't add anything finer than the cuts.
 
 The tile is square and full-bleed: it carries its own background, so never pad it into a
-circle, add a radius, or drop the tile and use the bare `L`. It lives in four places and
+circle, add a radius, or drop the tile and use the bare bolt. The docs header is ink, so
+an ink tile would vanish into it. It lives in four places and
 they must stay identical — `docs/src/assets/lakelet-mark.svg` (the docs header),
-`docs/src/assets/favicon.png` (64×64, generated from the same rectangles),
+`docs/src/assets/favicon.png` (64×64, rendered from the same SVG),
 `web/public/favicon.svg`, and `web/src/components/Logo.tsx`, which is the only copy that
 draws from CSS variables rather than literal hexes.
 

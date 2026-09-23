@@ -1,7 +1,7 @@
 /**
- * The Lakelet mark: a bold `L` on a volt tile. Purely typographic, so it reads
- * at every size the app uses — down to a 16px favicon, where anything with
- * more detail turns to mush. Same geometry as `docs/src/assets/lakelet-mark.svg`.
+ * The Lakelet mark: a bolt on a volt tile, cut into three rows. The cuts are
+ * tile-coloured bars drawn over the bolt, so no mask or id is needed. Same
+ * geometry as `docs/src/assets/lakelet-mark.svg`.
  */
 export function Logo({ size = 22 }: { size?: number }) {
   return (
@@ -14,8 +14,13 @@ export function Logo({ size = 22 }: { size?: number }) {
       className="shrink-0"
     >
       <rect width="32" height="32" fill="var(--lk-accent)" />
-      <rect x="6" y="5" width="6.5" height="22" fill="var(--lk-accent-contrast)" />
-      <rect x="6" y="20.5" width="20" height="6.5" fill="var(--lk-accent-contrast)" />
+      <polygon
+        points="18.5,3.5 8,18 15,18 13,28.5 24,13.5 17,13.5"
+        fill="var(--lk-accent-contrast)"
+      />
+      <rect y="9" width="32" height="1.5" fill="var(--lk-accent)" />
+      <rect y="15" width="32" height="1.5" fill="var(--lk-accent)" />
+      <rect y="21" width="32" height="1.5" fill="var(--lk-accent)" />
     </svg>
   );
 }
