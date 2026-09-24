@@ -44,11 +44,22 @@ pub(super) async fn list_files_by_directories_grouped(
         .collect()
 }
 
+/// Recursively lists the visible, non-empty data files under a table or
+/// partition directory.
+///
+/// `object_store` is the store registered for the location's scheme and
+/// authority (e.g. `s3://bucket`), so every path it takes and returns is
+/// relative to that root, without a leading `/`.
 pub(super) async fn list_files(
     state: &dyn Session,
     object_store: &Arc<dyn ObjectStore>,
+    // The full table or partition location from the metastore, e.g.
+    // `s3://bucket/warehouse/db.db/t/dt=2024-01-01` or
+    // `hdfs://namenode:8020/user/hive/warehouse/db.db/t`.
     directory_full_location: &str,
 ) -> Result<Vec<ObjectMeta>> {
+    // The same directory relative to the object store root, e.g.
+    // `warehouse/db.db/t/dt=2024-01-01` or `user/hive/warehouse/db.db/t`.
     let relative_path = location_to_object_store_path(directory_full_location)?;
     let cache_key = TableScopedPath {
         table: None,
@@ -70,13 +81,11 @@ pub(super) async fn list_files(
     let mut results = Vec::new();
     for file_object_meta in file_object_metas {
         let meta = file_object_meta.map_err(|e| DataFusionError::External(Box::new(e)))?;
-        let file_name = meta.location.filename().unwrap_or("");
-
-        if meta.size == 0 {
-            continue;
-        }
-
-        if file_name.starts_with('_') || file_name.starts_with('.') {
+        // `meta.location` is the file path relative to the object store root,
+        // including files in subdirectories, e.g.
+        // `warehouse/db.db/t/dt=2024-01-01/000000_0` or
+        // `warehouse/db.db/t/dt=2024-01-01/_temporary/0/part-00000`.
+        if meta.size == 0 || is_hidden_file(&meta.location, &relative_path) {
             continue;
         }
         results.push(meta);
@@ -89,6 +98,29 @@ pub(super) async fn list_files(
     Ok(results)
 }
 
+/// Hive skips files whose name, or any directory between the listed root and
+/// the file, starts with `_` or `.` (e.g. `_SUCCESS`, `_temporary/`,
+/// `.hive-staging_*/`).
+///
+/// Both paths are relative to the object store root, e.g. `location` is
+/// `warehouse/db.db/t/_temporary/0/part-00000` and `root` is
+/// `warehouse/db.db/t`. Only the segments below `root` (`_temporary`, `0`,
+/// `part-00000`) are checked, so a table stored under a directory like
+/// `_warehouse/` is not hidden as a whole.
+fn is_hidden_file(location: &Path, root: &Path) -> bool {
+    match location.prefix_match(root) {
+        Some(mut parts) => parts.any(|part| {
+            let part = part.as_ref();
+            part.starts_with('_') || part.starts_with('.')
+        }),
+        None => location
+            .filename()
+            .is_some_and(|name| name.starts_with('_') || name.starts_with('.')),
+    }
+}
+
+/// Strips the scheme and authority from a full location, e.g.
+/// `s3://bucket/warehouse/db.db/t` becomes `warehouse/db.db/t`.
 fn location_to_object_store_path(location: &str) -> Result<Path> {
     let parsed = Url::parse(location).map_err(|e| DataFusionError::External(e.into()))?;
     Ok(Path::from(parsed.path().trim_start_matches('/')))
@@ -132,16 +164,47 @@ mod tests {
         put_test_object(&store, "table/dt=2024-01-01/_temporary", b"a").await;
         put_test_object(&store, "table/dt=2024-01-01/.metadata", b"a").await;
         put_test_object(&store, "table/dt=2024-01-01/empty.parquet", b"").await;
+        put_test_object(&store, "table/dt=2024-01-01/_temporary/0/part-0", b"a").await;
+        put_test_object(
+            &store,
+            "table/dt=2024-01-01/.hive-staging_1/-ext-1/000000_0",
+            b"a",
+        )
+        .await;
+        put_test_object(
+            &store,
+            "table/dt=2024-01-01/HIVE_UNION_SUBDIR_1/000000_0",
+            b"a",
+        )
+        .await;
 
         let files = list_files(&state, &store, "memory:///table/dt=2024-01-01")
             .await
             .unwrap();
 
-        assert_eq!(files.len(), 1);
+        let mut paths: Vec<&str> = files.iter().map(|f| f.location.as_ref()).collect();
+        paths.sort();
         assert_eq!(
-            files[0].location.as_ref(),
-            "table/dt=2024-01-01/file1.parquet"
+            paths,
+            vec![
+                "table/dt=2024-01-01/HIVE_UNION_SUBDIR_1/000000_0",
+                "table/dt=2024-01-01/file1.parquet",
+            ]
         );
+    }
+
+    #[tokio::test]
+    async fn test_list_files_under_hidden_table_root() {
+        // Only the part below the listed root is checked.
+        let ctx = SessionContext::new();
+        let state = ctx.state();
+        let store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        put_test_object(&store, "_warehouse/table/file1.parquet", b"a").await;
+
+        let files = list_files(&state, &store, "memory:///_warehouse/table")
+            .await
+            .unwrap();
+        assert_eq!(files.len(), 1);
     }
 
     #[tokio::test]

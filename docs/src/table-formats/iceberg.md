@@ -5,7 +5,8 @@ icon: lucide/mountain-snow
 # Iceberg
 
 An HMS or Glue table is treated as Iceberg when its properties contain
-`metadata_location`. Lakelet loads the table directly from that metadata file.
+`table_type` with value `ICEBERG`, case-insensitively. Lakelet loads the table
+directly from the metadata file in the `metadata_location` property.
 
 Only Parquet data files are currently supported.
 

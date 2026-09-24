@@ -6,9 +6,8 @@ use crate::table_format::TableFormat;
 use crate::table_format::hive::GlueTableSchemaBuilder;
 use crate::table_format::hive::hive_partition::HivePartition;
 use crate::table_format::hive::hive_storage_info::HiveStorageInfo;
-use crate::table_format::table_provider_factory::{
-    TableProviderBuilder, deduce_table_format, parse_table_reference,
-};
+use crate::table_format::table_format_detector::TableFormatDetector;
+use crate::table_format::table_provider_factory::{TableProviderBuilder, parse_table_reference};
 use async_trait::async_trait;
 use aws_config::Region;
 use aws_sdk_glue::Client;
@@ -171,7 +170,11 @@ impl AsyncSchemaProvider for GlueSchema {
             .location()
             .map(ToString::to_string)
             .ok_or_else(|| DataFusionError::Internal("location not existed".to_string()))?;
-        let table_format = deduce_table_format(&glue_table_properties)?;
+        let table_format = TableFormatDetector::default()
+            .with_table_properties(&glue_table_properties)
+            .with_table_type(glue_table.table_type())
+            .with_input_format(storage_descriptor.input_format())
+            .detect()?;
         let (hive_storage_info, hive_partitions) = if table_format == TableFormat::Hive {
             let table_schema = GlueTableSchemaBuilder::new(&glue_table).build()?;
             let table_statistics = if metadata_table_type.is_none() {

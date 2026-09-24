@@ -5,9 +5,8 @@ use crate::table_format::TableFormat;
 use crate::table_format::hive::HMSTableSchemaBuilder;
 use crate::table_format::hive::hive_partition::HivePartition;
 use crate::table_format::hive::hive_storage_info::HiveStorageInfo;
-use crate::table_format::table_provider_factory::{
-    TableProviderBuilder, deduce_table_format, parse_table_reference,
-};
+use crate::table_format::table_format_detector::TableFormatDetector;
+use crate::table_format::table_provider_factory::{TableProviderBuilder, parse_table_reference};
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
 use datafusion::common::TableReference;
@@ -218,7 +217,11 @@ impl AsyncSchemaProvider for HMSSchema {
             .as_ref()
             .map(ToString::to_string)
             .ok_or_else(|| DataFusionError::Internal("location not existed".to_string()))?;
-        let table_format = deduce_table_format(&hms_table_properties)?;
+        let table_format = TableFormatDetector::default()
+            .with_table_properties(&hms_table_properties)
+            .with_table_type(hms_table.table_type.as_deref())
+            .with_input_format(storage_descriptor.input_format.as_deref())
+            .detect()?;
         let (hive_storage_info, hive_partitions) = if table_format == TableFormat::Hive {
             let table_schema = HMSTableSchemaBuilder::new(&hms_table).build()?;
             let mut table_statistics = Statistics::new_unknown(table_schema.table_schema());

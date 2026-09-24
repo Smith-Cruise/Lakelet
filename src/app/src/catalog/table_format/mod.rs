@@ -3,6 +3,7 @@ pub mod hive;
 pub mod iceberg;
 mod metadata_table;
 pub mod paimon;
+pub mod table_format_detector;
 pub mod table_provider_factory;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

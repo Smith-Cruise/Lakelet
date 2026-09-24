@@ -4,6 +4,7 @@ pub mod hive_partition;
 mod hive_schema_utils;
 pub mod hive_storage_info;
 mod hive_table_provider;
+pub mod hive_textfile_serde;
 mod hive_type;
 mod hive_utils;
 pub(crate) use hive_schema_utils::{GlueTableSchemaBuilder, HMSTableSchemaBuilder};

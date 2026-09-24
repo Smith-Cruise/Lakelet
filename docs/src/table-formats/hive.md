@@ -11,11 +11,32 @@ partition locations.
 
 ## Supported Data File Formats
 
-| Input format | Status
+| Input format | SerDe | Status
+| --- | --- | --- |
+| TextFile | `LazySimpleSerDe` | Supported
+| Parquet | `ParquetHiveSerDe` | Supported
+| ORC | `OrcSerde` | Not supported(Will support soon)
+
+Column names are matched against data files case-insensitively.
+
+### TextFile
+
+These table and SerDe properties are honored:
+
+| Property | Behavior |
 | --- | --- |
-| TextFile | Supported
-| Parquet | Supported
-| ORC | Not supported
+| `field.delim`, `serialization.format` | Field delimiter, default `\001` |
+| `serialization.null.format` | Text that reads as `NULL`, default `\N` |
+| `skip.header.line.count` | `0` or `1` |
+
+A value that cannot be parsed as its column type is read as `NULL`, as in
+Hive. Empty fields are also read as `NULL`.
+
+### Parquet
+
+`INT96` timestamps, as written by Hive, Impala and older Spark versions, are
+read as microsecond timestamps. Their values are taken as UTC, with no timezone
+conversion.
 
 ## Data Types
 
@@ -48,8 +69,6 @@ The `data_files` metadata table lists visible, non-empty data files:
 ```sql
 SELECT * FROM `table_name$data_files`;
 ```
-
-Files whose names start with `_` or `.` and zero-byte files are excluded.
 
 | Column | Description |
 | --- | --- |
