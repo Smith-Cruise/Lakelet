@@ -295,6 +295,16 @@ fn build_csv_exec(
             let column = datafusion::logical_expr::col(Column::from_name(scan_field.name()));
             let expr = if *table_index < file_schema.fields().len() {
                 let target_type = table_schema.field(*table_index).data_type();
+                if target_type.is_nested() {
+                    // Complex values are not decoded from text yet, so they read as NULL.
+                    return Ok((
+                        state.create_physical_expr(
+                            lit(ScalarValue::try_from(target_type)?),
+                            &scan_df_schema,
+                        )?,
+                        scan_field.name().to_string(),
+                    ));
+                }
                 let value = if target_type == &DataType::Utf8 {
                     column.clone()
                 } else {
@@ -859,6 +869,7 @@ fn parse_partition_value(s: &str, data_type: &DataType) -> Result<ScalarValue> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::table_format::hive::hive_type::hive_type_to_arrow_type;
     use datafusion::arrow::datatypes::Field;
     use datafusion::assert_batches_eq;
     use datafusion::logical_expr::expr::InList;
@@ -1312,6 +1323,87 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_scan_textfile_reads_complex_types_as_null() -> Result<()> {
+        let fields = hive_fields(&[
+            ("id", "int"),
+            ("tags", "array<string>"),
+            ("props", "map<string,int>"),
+            ("s", "struct<a:int>"),
+            ("u", "uniontype<int,string>"),
+        ]);
+        let files = [(
+            "hive/table/000000_0",
+            "1\x01a\x02b\x01k\x031\x015\x01text\n",
+        )];
+        let batches = scan_hive_table(
+            text_file(&[]),
+            fields.clone(),
+            &files,
+            "SELECT id, tags, props, s FROM t",
+        )
+        .await?;
+        assert_eq!(
+            batches[0]
+                .schema()
+                .fields()
+                .iter()
+                .map(|f| f.data_type().clone())
+                .collect::<Vec<_>>(),
+            fields[..4]
+                .iter()
+                .map(|f| f.data_type().clone())
+                .collect::<Vec<_>>()
+        );
+        assert_batches_eq!(
+            [
+                "+----+------+-------+---+",
+                "| id | tags | props | s |",
+                "+----+------+-------+---+",
+                "| 1  |      |       |   |",
+                "+----+------+-------+---+",
+            ],
+            &batches
+        );
+
+        let description =
+            scan_hive_table(text_file(&[]), fields.clone(), &files, "DESCRIBE t").await?;
+        let described_types = description[0]
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert_eq!(described_types.value(1), "List(Utf8, field: 'element')");
+        assert_eq!(
+            described_types.value(2),
+            "Map(\"key_value\": non-null Struct(\"key\": non-null Utf8, \"value\": Int32), unsorted)"
+        );
+        assert_eq!(described_types.value(3), "Struct(\"a\": Int32)");
+        assert_eq!(
+            described_types.value(4),
+            "Union(Sparse, 0: (\"_union_0\": Int32), 1: (\"_union_1\": Utf8))"
+        );
+
+        let union =
+            scan_hive_table(text_file(&[]), fields.clone(), &files, "SELECT u FROM t").await?;
+        assert_eq!(
+            union[0].schema().field(0).data_type(),
+            fields[4].data_type()
+        );
+        // Union arrays have no top-level validity bitmap.
+        assert!(union[0].column(0).logical_nulls().unwrap().is_null(0));
+
+        let batches = scan_hive_table(
+            text_file(&[]),
+            fields,
+            &files,
+            "SELECT id FROM t WHERE tags IS NULL AND s IS NULL AND u IS NULL",
+        )
+        .await?;
+        assert_batches_eq!(["+----+", "| id |", "+----+", "| 1  |", "+----+"], &batches);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_scan_textfile_custom_serde_properties() -> Result<()> {
         // Tab delimiter, custom null format, a header line, no quoting and a
         // row with missing trailing columns.
@@ -1463,6 +1555,192 @@ mod tests {
                 "+--------+-----------+",
                 "| 2      | close     |",
                 "+--------+-----------+",
+            ],
+            &batches
+        );
+        Ok(())
+    }
+
+    fn hive_fields(columns: &[(&str, &str)]) -> Vec<Field> {
+        columns
+            .iter()
+            .map(|(name, hive_type)| {
+                Field::new(*name, hive_type_to_arrow_type(hive_type).unwrap(), true)
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn test_scan_parquet_nested_types() -> Result<()> {
+        use datafusion::arrow::array::{
+            Int32Builder, ListBuilder, MapBuilder, StringBuilder, StructArray,
+        };
+        use datafusion::arrow::buffer::NullBuffer;
+
+        // arrow-rs names the children `item`, `entries`, `keys` and `values`,
+        // unlike the table types, and the struct field keeps Spark's casing.
+        let mut arr = ListBuilder::new(Int32Builder::new());
+        arr.append_value([Some(1), Some(2)]);
+        arr.append_null();
+        let mut m = MapBuilder::new(None, StringBuilder::new(), Int32Builder::new());
+        m.keys().append_value("k");
+        m.values().append_value(10);
+        m.append(true).unwrap();
+        m.append(false).unwrap();
+        let s = StructArray::new(
+            vec![Arc::new(Field::new("userId", DataType::Int32, true))].into(),
+            vec![Arc::new(Int32Array::from(vec![7, 8]))],
+            Some(NullBuffer::from(vec![true, false])),
+        );
+        let item = StructArray::new(
+            vec![Arc::new(Field::new("Name", DataType::Utf8, true))].into(),
+            vec![Arc::new(StringArray::from(vec!["x", "y"]))],
+            None,
+        );
+        let items = datafusion::arrow::array::ListArray::new(
+            Arc::new(Field::new("item", item.data_type().clone(), true)),
+            datafusion::arrow::buffer::OffsetBuffer::from_lengths([2, 0]),
+            Arc::new(item),
+            None,
+        );
+        let batch = RecordBatch::try_from_iter([
+            ("id", Arc::new(Int32Array::from(vec![1, 2])) as ArrayRef),
+            ("arr", Arc::new(arr.finish()) as ArrayRef),
+            ("m", Arc::new(m.finish()) as ArrayRef),
+            ("s", Arc::new(s) as ArrayRef),
+            ("items", Arc::new(items) as ArrayRef),
+        ])?;
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Parquet,
+            hive_fields(&[
+                ("id", "int"),
+                ("arr", "array<int>"),
+                ("m", "map<string,int>"),
+                // `extra` is not in the file.
+                ("s", "struct<userid:int,extra:string>"),
+                ("items", "array<struct<name:string>>"),
+            ]),
+            vec![],
+            vec![],
+            &[("hive/table/part-0.parquet", write_parquet(&batch))],
+            "SELECT id, arr, arr[2] AS second, m['k'] AS k, s, s['userid'] AS userid, \
+             items[1]['name'] AS first_name FROM t ORDER BY id",
+        )
+        .await?;
+        assert_batches_eq!(
+            [
+                "+----+--------+--------+----+----------------------+--------+------------+",
+                "| id | arr    | second | k  | s                    | userid | first_name |",
+                "+----+--------+--------+----+----------------------+--------+------------+",
+                "| 1  | [1, 2] | 2      | 10 | {userid: 7, extra: } | 7      | x          |",
+                "| 2  |        |        |    |                      |        |            |",
+                "+----+--------+--------+----+----------------------+--------+------------+",
+            ],
+            &batches
+        );
+
+        // Filters on nested columns are pushed into the parquet scan, which
+        // must still evaluate them after the columns are converted.
+        for (struct_type, filter, expected) in [
+            (
+                "struct<userid:int,extra:string>",
+                "s['userid'] = 7",
+                vec![1],
+            ),
+            ("struct<userid:bigint>", "s['userid'] = 7", vec![1]),
+            (
+                "struct<userid:int,extra:string>",
+                "s['extra'] IS NULL",
+                vec![1, 2],
+            ),
+            ("struct<userid:int>", "s IS NOT NULL", vec![1]),
+            ("struct<userid:int>", "array_has(arr, 2)", vec![1]),
+        ] {
+            let batches = scan_hive_table_bytes(
+                HiveInputFormat::Parquet,
+                hive_fields(&[("id", "int"), ("arr", "array<int>"), ("s", struct_type)]),
+                vec![],
+                vec![],
+                &[("hive/table/part-0.parquet", write_parquet(&batch))],
+                &format!("SELECT id FROM t WHERE {filter} ORDER BY id"),
+            )
+            .await?;
+            let ids: Vec<i32> = batches
+                .iter()
+                .flat_map(|batch| {
+                    batch
+                        .column(0)
+                        .as_any()
+                        .downcast_ref::<Int32Array>()
+                        .unwrap()
+                        .values()
+                        .to_vec()
+                })
+                .collect();
+            assert_eq!(ids, expected, "{struct_type} WHERE {filter}");
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_parquet_legacy_two_level_list() -> Result<()> {
+        use datafusion::parquet::data_type::Int32Type;
+        use datafusion::parquet::file::properties::WriterProperties;
+        use datafusion::parquet::file::writer::SerializedFileWriter;
+        use datafusion::parquet::schema::parser::parse_message_type;
+
+        // Hive and Spark's legacy format write lists without the middle
+        // repeated group.
+        let schema = Arc::new(
+            parse_message_type(
+                "message hive_schema {
+                    required int32 id;
+                    optional group arr (LIST) { repeated int32 array; }
+                }",
+            )
+            .unwrap(),
+        );
+        let mut buffer = Vec::new();
+        let mut writer = SerializedFileWriter::new(
+            &mut buffer,
+            schema,
+            Arc::new(WriterProperties::builder().build()),
+        )?;
+        let mut row_group = writer.next_row_group()?;
+        let mut column = row_group.next_column()?.unwrap();
+        column
+            .typed::<Int32Type>()
+            .write_batch(&[1, 2, 3], None, None)?;
+        column.close()?;
+        // Rows: [1, 2], NULL, [].
+        let mut column = row_group.next_column()?.unwrap();
+        column.typed::<Int32Type>().write_batch(
+            &[1, 2],
+            Some(&[2, 2, 0, 1]),
+            Some(&[0, 1, 0, 0]),
+        )?;
+        column.close()?;
+        row_group.close()?;
+        writer.close()?;
+
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Parquet,
+            hive_fields(&[("id", "int"), ("arr", "array<bigint>")]),
+            vec![],
+            vec![],
+            &[("hive/table/000000_0", buffer)],
+            "SELECT id, arr, cardinality(arr) AS n FROM t ORDER BY id",
+        )
+        .await?;
+        assert_batches_eq!(
+            [
+                "+----+--------+---+",
+                "| id | arr    | n |",
+                "+----+--------+---+",
+                "| 1  | [1, 2] | 2 |",
+                "| 2  |        |   |",
+                "| 3  | []     | 0 |",
+                "+----+--------+---+",
             ],
             &batches
         );
