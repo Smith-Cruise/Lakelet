@@ -1,4 +1,5 @@
 use crate::data_file_format::case_insensitive_adapter::CaseInsensitivePhysicalExprAdapterFactory;
+use crate::data_file_format::orc::OrcSource;
 use crate::data_file_format::parquet::{
     ExtendedParquetFileReaderFactory, ExtendedParquetReaderOptions,
 };
@@ -193,11 +194,17 @@ impl TableProvider for HiveTableProvider {
                 projection,
                 limit,
             ),
-            HiveInputFormat::Orc => {
-                return Err(DataFusionError::NotImplemented(
-                    "orc not implemented".to_string(),
-                ));
-            }
+            HiveInputFormat::Orc => build_orc_exec(
+                self.io_handle.clone(),
+                store_url,
+                self.hive_storage_info.table_schema.clone(),
+                file_group,
+                state,
+                filters,
+                statistics,
+                projection,
+                limit,
+            ),
         }?;
 
         Ok(exec)
@@ -524,6 +531,36 @@ fn build_parquet_exec(
     }
     let config = builder.build();
     Ok(DataSourceExec::from_data_source(config))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_orc_exec(
+    io_handle: Handle,
+    store_url: ObjectStoreUrl,
+    table_schema: TableSchema,
+    file_group: FileGroup,
+    state: &dyn Session,
+    filters: &[Expr],
+    statistics: Statistics,
+    projection: Option<&Vec<usize>>,
+    limit: Option<usize>,
+) -> Result<Arc<dyn ExecutionPlan>> {
+    let df_schema = table_schema.table_schema().as_ref().clone().to_dfschema()?;
+    let pruning_filters = filters
+        .iter()
+        .map(|filter| state.create_physical_expr(filter.clone(), &df_schema))
+        .collect::<Result<Vec<_>>>()?;
+    let source =
+        Arc::new(OrcSource::new(table_schema, io_handle).with_pruning_filters(pruning_filters));
+    let mut builder = FileScanConfigBuilder::new(store_url, source)
+        .with_file_group(file_group)
+        .with_statistics(statistics)
+        .with_limit(limit)
+        .with_expr_adapter(Some(Arc::new(CaseInsensitivePhysicalExprAdapterFactory)));
+    if let Some(projection) = projection {
+        builder = builder.with_projection_indices(Some(projection.clone()))?;
+    }
+    Ok(DataSourceExec::from_data_source(builder.build()))
 }
 
 fn prune_partitions(
@@ -1526,9 +1563,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_scan_parquet_matches_columns_case_insensitively() -> Result<()> {
+    async fn test_scan_columnar_matches_columns_case_insensitively() -> Result<()> {
         // Hive and Glue lowercase column names, while Spark keeps the original
-        // case in the parquet files it writes.
+        // case in the columnar files it writes.
         let batch = RecordBatch::try_from_iter([
             ("userId", Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef),
             (
@@ -1536,28 +1573,33 @@ mod tests {
                 Arc::new(StringArray::from(vec!["open", "close"])) as ArrayRef,
             ),
         ])?;
-        let batches = scan_hive_table_bytes(
-            HiveInputFormat::Parquet,
-            vec![
-                Field::new("userid", DataType::Int64, true),
-                Field::new("eventname", DataType::Utf8, true),
-            ],
-            vec![],
-            vec![],
-            &[("hive/table/part-0.parquet", write_parquet(&batch))],
-            "SELECT userid, eventname FROM t WHERE userid > 1",
-        )
-        .await?;
-        assert_batches_eq!(
-            [
-                "+--------+-----------+",
-                "| userid | eventname |",
-                "+--------+-----------+",
-                "| 2      | close     |",
-                "+--------+-----------+",
-            ],
-            &batches
-        );
+        for (format, bytes) in [
+            (HiveInputFormat::Parquet, write_parquet(&batch)),
+            (HiveInputFormat::Orc, write_orc(&batch)),
+        ] {
+            let batches = scan_hive_table_bytes(
+                format,
+                vec![
+                    Field::new("userid", DataType::Int64, true),
+                    Field::new("eventname", DataType::Utf8, true),
+                ],
+                vec![],
+                vec![],
+                &[("hive/table/part-0", bytes)],
+                "SELECT userid, eventname FROM t WHERE userid > 1",
+            )
+            .await?;
+            assert_batches_eq!(
+                [
+                    "+--------+-----------+",
+                    "| userid | eventname |",
+                    "+--------+-----------+",
+                    "| 2      | close     |",
+                    "+--------+-----------+",
+                ],
+                &batches
+            );
+        }
         Ok(())
     }
 
@@ -1906,6 +1948,459 @@ mod tests {
         .await
     }
 
+    fn write_orc(batch: &RecordBatch) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut writer = orc_rust::ArrowWriterBuilder::new(&mut bytes, batch.schema())
+            .with_batch_size(2)
+            .with_stripe_byte_size(1)
+            .try_build()
+            .unwrap();
+        writer.write(batch).unwrap();
+        writer.close().unwrap();
+        bytes
+    }
+
+    #[tokio::test]
+    async fn test_scan_orc_real_types_and_timestamps() -> Result<()> {
+        let files = [(
+            "hive/table/000000_0",
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/data/hive-orc.orc"
+            ))
+            .to_vec(),
+        )];
+        let fields = hive_fields(&[
+            ("id", "int"),
+            ("flag", "boolean"),
+            ("tiny", "tinyint"),
+            ("small", "smallint"),
+            ("big", "bigint"),
+            ("f", "float"),
+            ("d", "double"),
+            ("text", "string"),
+            ("blob", "binary"),
+            ("price", "decimal(10,2)"),
+            ("day", "date"),
+            ("createdat", "timestamp"),
+            ("instant", "timestamp with local time zone"),
+            ("arr", "array<int>"),
+            ("m", "map<string,int>"),
+            ("s", "struct<userid:bigint,name:string,extra:string>"),
+            ("items", "array<struct<name:string,qty:bigint>>"),
+            ("u", "uniontype<int,string>"),
+        ]);
+        let scan = |sql: &'static str| {
+            scan_hive_table_bytes(
+                HiveInputFormat::Orc,
+                fields.clone(),
+                vec![],
+                vec![],
+                &files,
+                sql,
+            )
+        };
+        let batches =
+            scan("SELECT createdat, instant FROM t WHERE id IN (1, 2, 4) ORDER BY id").await?;
+        assert_batches_eq!(
+            [
+                "+----------------------------+-----------------------------+",
+                "| createdat                  | instant                     |",
+                "+----------------------------+-----------------------------+",
+                "| 1970-01-02T12:34:56.123456 | 1970-01-02T12:34:56.123456Z |",
+                "| 1960-01-01T00:00:00.123456 | 1960-01-01T00:00:00.123456Z |",
+                "| 2500-01-01T00:00:00        | 2500-01-01T00:00:00Z        |",
+                "+----------------------------+-----------------------------+",
+            ],
+            &batches
+        );
+        let batches = scan("SELECT id, cardinality(arr) AS n, arr[3] AS third, m['k'] AS k, s['userid'] AS userid, s['extra'] AS extra, items[1]['name'] AS first_name FROM t ORDER BY id").await?;
+        assert_batches_eq!(
+            [
+                "+----+---+-------+----+--------+-------+------------+",
+                "| id | n | third | k  | userid | extra | first_name |",
+                "+----+---+-------+----+--------+-------+------------+",
+                "| 1  | 3 | 3     | 10 | 7      |       | x          |",
+                "| 2  | 0 |       |    |        |       |            |",
+                "| 3  |   |       |    |        |       |            |",
+                "| 4  | 1 |       | 40 | 8      |       |            |",
+                "+----+---+-------+----+--------+-------+------------+",
+            ],
+            &batches
+        );
+        let batches = scan("SELECT id FROM t WHERE s['userid'] > 7 AND m['k'] = 40").await?;
+        assert_batches_eq!(["+----+", "| id |", "+----+", "| 4  |", "+----+"], &batches);
+        let batches = scan(
+            "SELECT id, flag, tiny, small, big, f, d, text, blob, price, day FROM t WHERE id = 1",
+        )
+        .await?;
+        assert_batches_eq!(
+            [
+                "+----+------+------+--------+---------------+-----+------+-------+--------+-------+------------+",
+                "| id | flag | tiny | small  | big           | f   | d    | text  | blob   | price | day        |",
+                "+----+------+------+--------+---------------+-----+------+-------+--------+-------+------------+",
+                "| 1  | true | -128 | -32768 | 1234567890123 | 1.5 | 2.25 | first | 616263 | 12.34 | 1970-01-02 |",
+                "+----+------+------+--------+---------------+-----+------+-------+--------+-------+------------+",
+            ],
+            &batches
+        );
+        let batches = scan("SELECT u FROM t ORDER BY id").await?;
+        let union = batches[0]
+            .column(0)
+            .as_any()
+            .downcast_ref::<datafusion::arrow::array::UnionArray>()
+            .unwrap();
+        assert_eq!(union.type_ids().as_ref(), &[0, 1, 0, 0]);
+        assert_eq!(
+            union
+                .child(0)
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .unwrap()
+                .value(0),
+            42
+        );
+        assert_eq!(
+            union
+                .child(1)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(1),
+            "branch"
+        );
+        assert!(union.logical_nulls().unwrap().is_null(2));
+        let batches = scan("SELECT count(*) AS c FROM t WHERE u IS NULL").await?;
+        assert_batches_eq!(["+---+", "| c |", "+---+", "| 1 |", "+---+"], &batches);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_orc_projection_and_schema_evolution() -> Result<()> {
+        let batch = RecordBatch::try_from_iter([
+            (
+                "unused",
+                Arc::new(StringArray::from(vec!["x", "y", "z"])) as ArrayRef,
+            ),
+            (
+                "UserId",
+                Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef,
+            ),
+            (
+                "Name",
+                Arc::new(StringArray::from(vec![Some("a"), None, Some("c")])) as ArrayRef,
+            ),
+        ])?;
+        let files = [("hive/table/000000_0", write_orc(&batch))];
+        let fields = hive_fields(&[
+            ("name", "string"),
+            ("userid", "bigint"),
+            ("missing", "string"),
+        ]);
+        let scan = |sql: &'static str| {
+            scan_hive_table_bytes(
+                HiveInputFormat::Orc,
+                fields.clone(),
+                vec![],
+                vec![],
+                &files,
+                sql,
+            )
+        };
+        let batches =
+            scan("SELECT name, userid + 10 AS n, missing FROM t WHERE userid > 1 ORDER BY userid")
+                .await?;
+        assert_batches_eq!(
+            [
+                "+------+----+---------+",
+                "| name | n  | missing |",
+                "+------+----+---------+",
+                "|      | 12 |         |",
+                "| c    | 13 |         |",
+                "+------+----+---------+",
+            ],
+            &batches
+        );
+        let batches = scan("SELECT count(*) AS c FROM t").await?;
+        assert_batches_eq!(["+---+", "| c |", "+---+", "| 3 |", "+---+"], &batches);
+        let batches = scan("SELECT missing FROM t LIMIT 2").await?;
+        assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 2);
+        assert!(
+            batches
+                .iter()
+                .all(|b| b.column(0).null_count() == b.num_rows())
+        );
+        let batches = scan("SELECT count(*) AS c FROM t WHERE name IS NULL").await?;
+        assert_batches_eq!(["+---+", "| c |", "+---+", "| 1 |", "+---+"], &batches);
+        let reader =
+            orc_rust::ArrowReaderBuilder::try_new(bytes::Bytes::from(files[0].1.clone())).unwrap();
+        assert!(reader.file_metadata().stripe_metadatas().len() > 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_orc_predicates_keep_complete_sql_filtering() -> Result<()> {
+        let fixtures: [&[u8]; 3] = [
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/data/hive-orc-pruning-index.orc"
+            )),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/data/hive-orc-pruning-bloom.orc"
+            )),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/data/hive-orc-pruning-no-index.orc"
+            )),
+        ];
+        let fields = hive_fields(&[
+            ("id", "bigint"),
+            ("text", "string"),
+            ("flag", "boolean"),
+            ("payload", "string"),
+            ("nullable", "boolean"),
+            ("missing", "string"),
+        ]);
+        for bytes in fixtures {
+            let files = [("hive/table/pruning.orc", bytes.to_vec())];
+            for (filter, expected) in [
+                ("id = 500", 1),
+                ("500 = id", 1),
+                ("id IN (500, NULL)", 1),
+                ("text = '目标'", 1),
+                ("text != '目标'", 2999),
+                ("flag = true", 1000),
+                ("NOT flag", 2000),
+                ("flag IS NULL", 0),
+                ("flag IS NOT NULL", 3000),
+                ("nullable IS NULL", 1000),
+                ("nullable IS NOT NULL", 2000),
+                ("nullable = true", 1000),
+                ("id IS NULL", 0),
+                ("id IS NOT NULL", 3000),
+                ("missing IS NULL", 3000),
+                ("missing IS NOT NULL", 0),
+                ("id = 500 AND payload = 'row-1-500'", 1),
+                ("id = 500 AND length(payload) > 0", 1),
+                ("id = 500 OR length(payload) > 0", 3000),
+                ("NOT (id = 500 AND length(payload) > 0)", 2999),
+                ("id = 500 OR missing IS NULL", 3000),
+                ("CAST(id AS VARCHAR) = '500'", 1),
+            ] {
+                let batches = scan_hive_table_bytes(
+                    HiveInputFormat::Orc,
+                    fields.clone(),
+                    vec![],
+                    vec![],
+                    &files,
+                    &format!("SELECT count(*) AS c FROM t WHERE {filter}"),
+                )
+                .await?;
+                let count: i64 = batches
+                    .iter()
+                    .map(|batch| {
+                        batch
+                            .column(0)
+                            .as_any()
+                            .downcast_ref::<Int64Array>()
+                            .unwrap()
+                            .value(0)
+                    })
+                    .sum();
+                assert_eq!(count, expected, "{filter}");
+            }
+            let batches = scan_hive_table_bytes(
+                HiveInputFormat::Orc,
+                fields.clone(),
+                vec![],
+                vec![],
+                &files,
+                "SELECT payload FROM t WHERE id = 500 LIMIT 10",
+            )
+            .await?;
+            assert_batches_eq!(
+                [
+                    "+-----------+",
+                    "| payload   |",
+                    "+-----------+",
+                    "| row-1-500 |",
+                    "+-----------+",
+                ],
+                &batches
+            );
+            let batches = scan_hive_table_bytes(
+                HiveInputFormat::Orc,
+                fields.clone(),
+                vec![],
+                vec![],
+                &files,
+                "SELECT missing FROM t WHERE id = 500 LIMIT 2",
+            )
+            .await?;
+            assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 1);
+            assert!(
+                batches
+                    .iter()
+                    .all(|batch| batch.column(0).null_count() == batch.num_rows())
+            );
+            // The SDK may retain extra rows when a selected run exceeds its
+            // batch size. DataFusion must still apply the complete condition.
+            for (filter, expected) in [("flag = true", 1000), ("id = 500", 1)] {
+                let ctx = SessionContext::new_with_config(
+                    datafusion::execution::context::SessionConfig::new().with_batch_size(128),
+                );
+                let batches = scan_hive_table_bytes_with_context(
+                    ctx,
+                    HiveInputFormat::Orc,
+                    fields.clone(),
+                    vec![],
+                    vec![],
+                    &files,
+                    &format!("SELECT count(*) AS c FROM t WHERE {filter}"),
+                )
+                .await?;
+                assert_eq!(
+                    batches[0]
+                        .column(0)
+                        .as_any()
+                        .downcast_ref::<Int64Array>()
+                        .unwrap()
+                        .value(0),
+                    expected
+                );
+            }
+        }
+
+        let files = [
+            ("hive/table/dt=a/part.orc", fixtures[1].to_vec()),
+            ("hive/table/dt=b/part.orc", fixtures[2].to_vec()),
+        ];
+        let partitions = ["a", "b"]
+            .into_iter()
+            .map(|dt| HivePartition {
+                location: format!("s3://warehouse/hive/table/dt={dt}"),
+                partition_values: vec![dt.into()],
+            })
+            .collect::<Vec<_>>();
+        for (filter, expected) in [("dt = 'a' AND id = 500", 1), ("dt = 'a' OR id = 500", 3001)] {
+            let batches = scan_hive_table_bytes(
+                HiveInputFormat::Orc,
+                fields.clone(),
+                vec![Field::new("dt", DataType::Utf8, true)],
+                partitions.clone(),
+                &files,
+                &format!("SELECT count(*) AS c FROM t WHERE {filter}"),
+            )
+            .await?;
+            assert_eq!(
+                batches[0]
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .value(0),
+                expected
+            );
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_orc_partitions_and_empty_tables() -> Result<()> {
+        let batch = RecordBatch::try_from_iter([(
+            "id",
+            Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef,
+        )])?;
+        let partitions = ["a", "__HIVE_DEFAULT_PARTITION__"]
+            .into_iter()
+            .map(|dt| HivePartition {
+                location: format!("s3://warehouse/hive/table/dt={dt}"),
+                partition_values: vec![dt.to_string()],
+            })
+            .collect::<Vec<_>>();
+        let files = [
+            ("hive/table/dt=a/000000_0", write_orc(&batch)),
+            (
+                "hive/table/dt=__HIVE_DEFAULT_PARTITION__/000000_0",
+                write_orc(&batch),
+            ),
+        ];
+        let scan = |sql: &'static str| {
+            scan_hive_table_bytes(
+                HiveInputFormat::Orc,
+                hive_fields(&[("id", "int")]),
+                hive_fields(&[("dt", "string")]),
+                partitions.clone(),
+                &files,
+                sql,
+            )
+        };
+        let batches =
+            scan("SELECT dt, count(*) AS c FROM t GROUP BY dt ORDER BY dt NULLS LAST").await?;
+        assert_batches_eq!(
+            [
+                "+----+---+",
+                "| dt | c |",
+                "+----+---+",
+                "| a  | 3 |",
+                "|    | 3 |",
+                "+----+---+"
+            ],
+            &batches
+        );
+        let batches =
+            scan("SELECT dt, id FROM t WHERE dt IS NULL AND id > 1 ORDER BY id LIMIT 1").await?;
+        assert_batches_eq!(
+            [
+                "+----+----+",
+                "| dt | id |",
+                "+----+----+",
+                "|    | 2  |",
+                "+----+----+"
+            ],
+            &batches
+        );
+        // A corrupt file in the excluded partition must never be opened.
+        let corrupt_files = [
+            (files[0].0, files[0].1.clone()),
+            (files[1].0, b"not an ORC file".to_vec()),
+        ];
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Orc,
+            hive_fields(&[("id", "int")]),
+            hive_fields(&[("dt", "string")]),
+            partitions,
+            &corrupt_files,
+            "SELECT dt FROM t WHERE dt = 'a'",
+        )
+        .await?;
+        assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 3);
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Orc,
+            hive_fields(&[("id", "int")]),
+            vec![],
+            vec![],
+            &[],
+            "SELECT count(*) AS c FROM t",
+        )
+        .await?;
+        assert_batches_eq!(["+---+", "| c |", "+---+", "| 0 |", "+---+"], &batches);
+        assert!(
+            scan_hive_table_bytes(
+                HiveInputFormat::Orc,
+                hive_fields(&[("id", "int")]),
+                vec![],
+                vec![],
+                &[("hive/table/corrupt.orc", b"not an ORC file".to_vec())],
+                "SELECT * FROM t"
+            )
+            .await
+            .is_err()
+        );
+        Ok(())
+    }
+
     async fn scan_hive_table_bytes(
         input_format: HiveInputFormat,
         fields: Vec<Field>,
@@ -1914,7 +2409,27 @@ mod tests {
         files: &[(&str, Vec<u8>)],
         sql: &str,
     ) -> Result<Vec<RecordBatch>> {
-        let ctx = SessionContext::new();
+        scan_hive_table_bytes_with_context(
+            SessionContext::new(),
+            input_format,
+            fields,
+            partition_fields,
+            partitions,
+            files,
+            sql,
+        )
+        .await
+    }
+
+    async fn scan_hive_table_bytes_with_context(
+        ctx: SessionContext,
+        input_format: HiveInputFormat,
+        fields: Vec<Field>,
+        partition_fields: Vec<Field>,
+        partitions: Vec<HivePartition>,
+        files: &[(&str, Vec<u8>)],
+        sql: &str,
+    ) -> Result<Vec<RecordBatch>> {
         let store = Arc::new(InMemory::new());
         for (path, data) in files {
             store.put(&Path::from(*path), data.clone().into()).await?;

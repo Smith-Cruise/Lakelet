@@ -9,6 +9,7 @@ comfy-table = "7.1.2"
 clap = { version = "4.5.48", features = ["derive"] }
 datafusion = { workspace = true }
 datafusion-cli = { workspace = true }
+orc-rust = { workspace = true }
 sqlparser = { workspace = true }
 arrow-flight = { workspace = true }
 tonic = { workspace = true }

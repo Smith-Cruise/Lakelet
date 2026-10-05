@@ -15,7 +15,7 @@ partition locations.
 | --- | --- | --- |
 | TextFile | `LazySimpleSerDe` | Supported
 | Parquet | `ParquetHiveSerDe` | Supported
-| ORC | `OrcSerde` | Not supported(Will support soon)
+| ORC | `OrcSerde` | Supported
 
 Column names are matched against data files case-insensitively.
 
@@ -40,6 +40,10 @@ read as `NULL`. The other columns of the table are read as usual.
 `INT96` timestamps, as written by Hive, Impala and older Spark versions, are
 read as microsecond timestamps. Their values are taken as UTC, with no timezone
 conversion.
+
+### ORC
+
+Hive ACID tables are not supported.
 
 ## Data Types
 

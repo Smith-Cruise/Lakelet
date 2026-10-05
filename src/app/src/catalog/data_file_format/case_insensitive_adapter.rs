@@ -278,7 +278,9 @@ fn validate_nested_cast(name: &str, source: &DataType, target: &DataType) -> Res
             validate_nested_cast(name, source_key.data_type(), target_key.data_type())?;
             validate_nested_cast(name, source_value.data_type(), target_value.data_type())
         }
-        (source, target) if !supports_nested_cast(target) && can_cast_types(source, target) => Ok(()),
+        (source, target) if !supports_nested_cast(target) && can_cast_types(source, target) => {
+            Ok(())
+        }
         _ => Err(DataFusionError::Plan(format!(
             "cannot read column `{name}` of type {source} as {target}"
         ))),
