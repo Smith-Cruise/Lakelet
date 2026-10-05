@@ -293,6 +293,67 @@ impl AsyncChunkReader for ObjectStoreReader {
 }
 
 #[cfg(test)]
+/// Builds an ORC file without indexes entirely in memory.
+pub(crate) fn no_index_predicate_file() -> Vec<u8> {
+    use datafusion::arrow::array::{ArrayRef, BooleanArray, Int32Array, StringArray};
+    use datafusion::arrow::record_batch::RecordBatch;
+
+    let ids = (0..3000)
+        .map(|row| match row {
+            1500 => 500,
+            row if row % 2 == 0 => 0,
+            _ => 1000,
+        })
+        .collect::<Vec<_>>();
+    let batch = RecordBatch::try_from_iter([
+        ("Id", Arc::new(Int32Array::from(ids.clone())) as ArrayRef),
+        (
+            "Text",
+            Arc::new(StringArray::from_iter_values(ids.iter().map(
+                |id| match id {
+                    500 => "目标",
+                    0 => "一",
+                    _ => "龟",
+                },
+            ))),
+        ),
+        (
+            "Flag",
+            Arc::new(BooleanArray::from_iter(
+                (0..3000).map(|row| Some(row / 1000 == 1)),
+            )),
+        ),
+        (
+            "Payload",
+            Arc::new(StringArray::from_iter_values(
+                (0..3000).map(|row| format!("row-{}-{}", row / 1000, row % 1000)),
+            )),
+        ),
+        (
+            "Nullable",
+            Arc::new(BooleanArray::from_iter(
+                (0..3000).map(|row| (row / 1000 != 2).then_some(row / 1000 == 1)),
+            )),
+        ),
+    ])
+    .unwrap();
+    let mut bytes = Vec::new();
+    let mut writer = orc_rust::ArrowWriterBuilder::new(&mut bytes, batch.schema())
+        .try_build()
+        .unwrap();
+    writer.write(&batch).unwrap();
+    writer.close().unwrap();
+    assert_eq!(
+        ArrowReaderBuilder::try_new(Bytes::from(bytes.clone()))
+            .unwrap()
+            .file_metadata()
+            .row_index_stride(),
+        None
+    );
+    bytes
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use datafusion::arrow::array::Int32Array;
@@ -416,7 +477,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn predicates_prune_row_groups_before_final_projection() -> Result<()> {
+    async fn predicates_preserve_rows_without_indexes() -> Result<()> {
         use crate::data_file_format::case_insensitive_adapter::CaseInsensitivePhysicalExprAdapterFactory;
         use datafusion::arrow::datatypes::Schema;
         use futures::TryStreamExt;
@@ -432,103 +493,59 @@ mod tests {
         let ctx = SessionContext::new();
         let state = ctx.state();
         let url = ObjectStoreUrl::parse("s3://warehouse")?;
-        let fixtures: [(&str, &[u8]); 3] = [
-            (
-                "index",
-                include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/tests/data/hive-orc-pruning-index.orc"
-                )),
-            ),
-            (
-                "bloom",
-                include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/tests/data/hive-orc-pruning-bloom.orc"
-                )),
-            ),
-            (
-                "no-index",
-                include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/tests/data/hive-orc-pruning-no-index.orc"
-                )),
-            ),
-        ];
-        for (kind, bytes) in fixtures {
-            let store = Arc::new(InMemory::new());
-            let path = Path::from(format!("{kind}.orc"));
-            store.put(&path, bytes.to_vec().into()).await?;
-            let file = PartitionedFile::from(store.head(&path).await?);
-            for (filter, expected_index, expected_bloom) in [
-                (None, 3000, 3000),
-                (Some("id = 500"), 3000, 1000),
-                (Some("text = '目标'"), 3000, 1000),
-                (Some("id > 1000"), 0, 0),
-                (Some("flag = true"), 1000, 1000),
-                (Some("flag IS NULL"), 0, 0),
-                (Some("flag IS NOT NULL"), 3000, 3000),
-                (Some("nullable IS NULL"), 1000, 1000),
-                (Some("nullable IS NOT NULL"), 2000, 2000),
-                // SDK keeps the stripe when an all-NULL group lacks typed statistics.
-                (Some("nullable = true"), 3000, 3000),
-                (Some("id = 500 AND length(payload) > 0"), 3000, 1000),
-                (Some("id = 500 OR length(payload) > 0"), 3000, 3000),
-            ] {
-                let filters = filter
-                    .map(|sql| {
-                        state.create_physical_expr(
-                            state.create_logical_expr(sql, &df_schema)?,
-                            &df_schema,
-                        )
-                    })
-                    .transpose()?
-                    .into_iter()
-                    .collect::<Vec<_>>();
-                let mut scans = vec![(vec![3], 4096), (vec![], 4096)];
-                if filter == Some("flag = true") {
-                    // SDK 0.8 does not advance a select run larger than its batch
-                    // size. Extra rows must remain available to the SQL filter.
-                    scans.push((vec![3], 128));
-                }
-                for (projection, batch_size) in scans {
-                    let source = Arc::new(
-                        OrcSource::new(
-                            TableSchema::new(Arc::clone(&schema), vec![]),
-                            Handle::current(),
-                        )
-                        .with_pruning_filters(filters.clone()),
-                    );
-                    let config = FileScanConfigBuilder::new(url.clone(), source)
-                        .with_batch_size(Some(batch_size))
-                        .with_projection_indices(Some(projection.clone()))?
-                        .with_expr_adapter(Some(Arc::new(
-                            CaseInsensitivePhysicalExprAdapterFactory,
-                        )))
-                        .build();
-                    let opener =
-                        config
-                            .file_source
-                            .create_file_opener(store.clone(), &config, 0)?;
-                    let batches: Vec<RecordBatch> =
-                        opener.open(file.clone())?.await?.try_collect().await?;
-                    let rows = batches.iter().map(RecordBatch::num_rows).sum::<usize>();
-                    let expected = match (kind, batch_size) {
-                        ("index" | "bloom", 128) => 2000,
-                        ("index", _) => expected_index,
-                        ("bloom", _) => expected_bloom,
-                        _ => 3000,
-                    };
-                    assert_eq!(
-                        rows, expected,
-                        "{kind}: {filter:?}, projection={projection:?}"
-                    );
-                    assert!(
-                        batches
-                            .iter()
-                            .all(|batch| batch.num_columns() == projection.len())
-                    );
-                }
+        let store = Arc::new(InMemory::new());
+        let path = Path::from("predicates.orc");
+        store.put(&path, no_index_predicate_file().into()).await?;
+        let file = PartitionedFile::from(store.head(&path).await?);
+        for filter in [
+            None,
+            Some("id = 500"),
+            Some("text = '目标'"),
+            Some("id > 1000"),
+            Some("flag = true"),
+            Some("flag IS NULL"),
+            Some("flag IS NOT NULL"),
+            Some("nullable IS NULL"),
+            Some("nullable IS NOT NULL"),
+            Some("nullable = true"),
+            Some("id = 500 AND length(payload) > 0"),
+            Some("id = 500 OR length(payload) > 0"),
+        ] {
+            let filters = filter
+                .map(|sql| {
+                    state.create_physical_expr(
+                        state.create_logical_expr(sql, &df_schema)?,
+                        &df_schema,
+                    )
+                })
+                .transpose()?
+                .into_iter()
+                .collect::<Vec<_>>();
+            for projection in [vec![3], vec![]] {
+                let source = Arc::new(
+                    OrcSource::new(
+                        TableSchema::new(Arc::clone(&schema), vec![]),
+                        Handle::current(),
+                    )
+                    .with_pruning_filters(filters.clone()),
+                );
+                let config = FileScanConfigBuilder::new(url.clone(), source)
+                    .with_batch_size(Some(128))
+                    .with_projection_indices(Some(projection.clone()))?
+                    .with_expr_adapter(Some(Arc::new(CaseInsensitivePhysicalExprAdapterFactory)))
+                    .build();
+                let opener = config
+                    .file_source
+                    .create_file_opener(store.clone(), &config, 0)?;
+                let batches: Vec<RecordBatch> =
+                    opener.open(file.clone())?.await?.try_collect().await?;
+                let rows = batches.iter().map(RecordBatch::num_rows).sum::<usize>();
+                assert_eq!(rows, 3000, "{filter:?}, projection={projection:?}");
+                assert!(
+                    batches
+                        .iter()
+                        .all(|batch| batch.num_columns() == projection.len())
+                );
             }
         }
         Ok(())

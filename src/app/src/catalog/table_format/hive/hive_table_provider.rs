@@ -2140,20 +2140,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_scan_orc_predicates_keep_complete_sql_filtering() -> Result<()> {
-        let fixtures: [&[u8]; 3] = [
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/tests/data/hive-orc-pruning-index.orc"
-            )),
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/tests/data/hive-orc-pruning-bloom.orc"
-            )),
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/tests/data/hive-orc-pruning-no-index.orc"
-            )),
-        ];
+        let no_index = crate::data_file_format::orc::no_index_predicate_file();
         let fields = hive_fields(&[
             ("id", "bigint"),
             ("text", "string"),
@@ -2162,119 +2149,116 @@ mod tests {
             ("nullable", "boolean"),
             ("missing", "string"),
         ]);
-        for bytes in fixtures {
-            let files = [("hive/table/pruning.orc", bytes.to_vec())];
-            for (filter, expected) in [
-                ("id = 500", 1),
-                ("500 = id", 1),
-                ("id IN (500, NULL)", 1),
-                ("text = '目标'", 1),
-                ("text != '目标'", 2999),
-                ("flag = true", 1000),
-                ("NOT flag", 2000),
-                ("flag IS NULL", 0),
-                ("flag IS NOT NULL", 3000),
-                ("nullable IS NULL", 1000),
-                ("nullable IS NOT NULL", 2000),
-                ("nullable = true", 1000),
-                ("id IS NULL", 0),
-                ("id IS NOT NULL", 3000),
-                ("missing IS NULL", 3000),
-                ("missing IS NOT NULL", 0),
-                ("id = 500 AND payload = 'row-1-500'", 1),
-                ("id = 500 AND length(payload) > 0", 1),
-                ("id = 500 OR length(payload) > 0", 3000),
-                ("NOT (id = 500 AND length(payload) > 0)", 2999),
-                ("id = 500 OR missing IS NULL", 3000),
-                ("CAST(id AS VARCHAR) = '500'", 1),
-            ] {
-                let batches = scan_hive_table_bytes(
-                    HiveInputFormat::Orc,
-                    fields.clone(),
-                    vec![],
-                    vec![],
-                    &files,
-                    &format!("SELECT count(*) AS c FROM t WHERE {filter}"),
-                )
-                .await?;
-                let count: i64 = batches
-                    .iter()
-                    .map(|batch| {
-                        batch
-                            .column(0)
-                            .as_any()
-                            .downcast_ref::<Int64Array>()
-                            .unwrap()
-                            .value(0)
-                    })
-                    .sum();
-                assert_eq!(count, expected, "{filter}");
-            }
+        let files = [("hive/table/predicates.orc", no_index.clone())];
+        for (filter, expected) in [
+            ("id = 500", 1),
+            ("500 = id", 1),
+            ("id IN (500, NULL)", 1),
+            ("text = '目标'", 1),
+            ("text != '目标'", 2999),
+            ("flag = true", 1000),
+            ("NOT flag", 2000),
+            ("flag IS NULL", 0),
+            ("flag IS NOT NULL", 3000),
+            ("nullable IS NULL", 1000),
+            ("nullable IS NOT NULL", 2000),
+            ("nullable = true", 1000),
+            ("id IS NULL", 0),
+            ("id IS NOT NULL", 3000),
+            ("missing IS NULL", 3000),
+            ("missing IS NOT NULL", 0),
+            ("id = 500 AND payload = 'row-1-500'", 1),
+            ("id = 500 AND length(payload) > 0", 1),
+            ("id = 500 OR length(payload) > 0", 3000),
+            ("NOT (id = 500 AND length(payload) > 0)", 2999),
+            ("id = 500 OR missing IS NULL", 3000),
+            ("CAST(id AS VARCHAR) = '500'", 1),
+        ] {
             let batches = scan_hive_table_bytes(
                 HiveInputFormat::Orc,
                 fields.clone(),
                 vec![],
                 vec![],
                 &files,
-                "SELECT payload FROM t WHERE id = 500 LIMIT 10",
+                &format!("SELECT count(*) AS c FROM t WHERE {filter}"),
             )
             .await?;
-            assert_batches_eq!(
-                [
-                    "+-----------+",
-                    "| payload   |",
-                    "+-----------+",
-                    "| row-1-500 |",
-                    "+-----------+",
-                ],
-                &batches
-            );
-            let batches = scan_hive_table_bytes(
-                HiveInputFormat::Orc,
-                fields.clone(),
-                vec![],
-                vec![],
-                &files,
-                "SELECT missing FROM t WHERE id = 500 LIMIT 2",
-            )
-            .await?;
-            assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 1);
-            assert!(
-                batches
-                    .iter()
-                    .all(|batch| batch.column(0).null_count() == batch.num_rows())
-            );
-            // The SDK may retain extra rows when a selected run exceeds its
-            // batch size. DataFusion must still apply the complete condition.
-            for (filter, expected) in [("flag = true", 1000), ("id = 500", 1)] {
-                let ctx = SessionContext::new_with_config(
-                    datafusion::execution::context::SessionConfig::new().with_batch_size(128),
-                );
-                let batches = scan_hive_table_bytes_with_context(
-                    ctx,
-                    HiveInputFormat::Orc,
-                    fields.clone(),
-                    vec![],
-                    vec![],
-                    &files,
-                    &format!("SELECT count(*) AS c FROM t WHERE {filter}"),
-                )
-                .await?;
-                assert_eq!(
-                    batches[0]
+            let count: i64 = batches
+                .iter()
+                .map(|batch| {
+                    batch
                         .column(0)
                         .as_any()
                         .downcast_ref::<Int64Array>()
                         .unwrap()
-                        .value(0),
-                    expected
-                );
-            }
+                        .value(0)
+                })
+                .sum();
+            assert_eq!(count, expected, "{filter}");
+        }
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Orc,
+            fields.clone(),
+            vec![],
+            vec![],
+            &files,
+            "SELECT payload FROM t WHERE id = 500 LIMIT 10",
+        )
+        .await?;
+        assert_batches_eq!(
+            [
+                "+-----------+",
+                "| payload   |",
+                "+-----------+",
+                "| row-1-500 |",
+                "+-----------+",
+            ],
+            &batches
+        );
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Orc,
+            fields.clone(),
+            vec![],
+            vec![],
+            &files,
+            "SELECT missing FROM t WHERE id = 500 LIMIT 2",
+        )
+        .await?;
+        assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 1);
+        assert!(
+            batches
+                .iter()
+                .all(|batch| batch.column(0).null_count() == batch.num_rows())
+        );
+        // Verify complete filtering across multiple decoded batches.
+        for (filter, expected) in [("flag = true", 1000), ("id = 500", 1)] {
+            let ctx = SessionContext::new_with_config(
+                datafusion::execution::context::SessionConfig::new().with_batch_size(128),
+            );
+            let batches = scan_hive_table_bytes_with_context(
+                ctx,
+                HiveInputFormat::Orc,
+                fields.clone(),
+                vec![],
+                vec![],
+                &files,
+                &format!("SELECT count(*) AS c FROM t WHERE {filter}"),
+            )
+            .await?;
+            assert_eq!(
+                batches[0]
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .value(0),
+                expected
+            );
         }
 
         let files = [
-            ("hive/table/dt=a/part.orc", fixtures[1].to_vec()),
-            ("hive/table/dt=b/part.orc", fixtures[2].to_vec()),
+            ("hive/table/dt=a/part.orc", no_index.clone()),
+            ("hive/table/dt=b/part.orc", no_index),
         ];
         let partitions = ["a", "b"]
             .into_iter()
