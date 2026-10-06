@@ -175,10 +175,8 @@ where
 mod tests {
     use super::*;
     use crate::table_format::hive::HMSTableSchemaBuilder;
-    use datafusion::arrow::datatypes::{DataType, Field, Schema};
     use datafusion::common::stats::Precision;
     use hive_metastore::{FieldSchema, SerDeInfo, StorageDescriptor as HMSStorageDescriptor};
-    use std::sync::Arc;
 
     const PARQUET_INPUT_FORMAT: &str =
         "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat";
