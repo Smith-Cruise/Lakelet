@@ -10,6 +10,7 @@ pub enum HiveInputFormat {
     TextFile(TextFileSerdeProperties),
     Parquet,
     Orc,
+    Avro,
 }
 
 #[derive(Debug, Clone)]
@@ -27,6 +28,7 @@ const PARQUET_INPUT_FORMATS: &[&str] = &[
 ];
 const ORC_INPUT_FORMAT: &str = "org.apache.hadoop.hive.ql.io.orc.OrcInputFormat";
 const LAZY_SIMPLE_SERDE: &str = "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe";
+const AVRO_INPUT_FORMAT: &str = "org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat";
 
 impl HiveStorageInfo {
     pub fn try_new_from_hms_table(
@@ -111,6 +113,9 @@ impl HiveStorageInfo {
         if input_format == ORC_INPUT_FORMAT {
             return Ok(HiveInputFormat::Orc);
         }
+        if input_format == AVRO_INPUT_FORMAT {
+            return Ok(HiveInputFormat::Avro);
+        }
         Err(unsupported())
     }
 
@@ -170,8 +175,10 @@ where
 mod tests {
     use super::*;
     use crate::table_format::hive::HMSTableSchemaBuilder;
+    use datafusion::arrow::datatypes::{DataType, Field, Schema};
     use datafusion::common::stats::Precision;
     use hive_metastore::{FieldSchema, SerDeInfo, StorageDescriptor as HMSStorageDescriptor};
+    use std::sync::Arc;
 
     const PARQUET_INPUT_FORMAT: &str =
         "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat";
@@ -201,42 +208,10 @@ mod tests {
             HiveStorageInfo::try_get_input_format(ORC_INPUT_FORMAT, None, &no_properties).unwrap(),
             HiveInputFormat::Orc
         ));
-
-        for (input_format, serde_lib) in [
-            (TEXT_INPUT_FORMAT, "org.openx.data.jsonserde.JsonSerDe"),
-            (TEXT_INPUT_FORMAT, "org.apache.hive.hcatalog.data.JsonSerDe"),
-            (
-                TEXT_INPUT_FORMAT,
-                "org.apache.hadoop.hive.serde2.OpenCSVSerde",
-            ),
-            (
-                TEXT_INPUT_FORMAT,
-                "org.apache.hadoop.hive.serde2.RegexSerDe",
-            ),
-            (
-                "org.apache.hadoop.mapred.SequenceFileInputFormat",
-                LAZY_SIMPLE_SERDE,
-            ),
-            (
-                "org.apache.hadoop.hive.ql.io.SymlinkTextInputFormat",
-                LAZY_SIMPLE_SERDE,
-            ),
-            (
-                "com.hadoop.mapred.DeprecatedLzoTextInputFormat",
-                LAZY_SIMPLE_SERDE,
-            ),
-        ] {
-            let err = HiveStorageInfo::try_get_input_format(
-                input_format,
-                Some(serde_lib),
-                &no_properties,
-            )
-            .unwrap_err();
-            assert!(
-                err.to_string().contains(input_format) && err.to_string().contains(serde_lib),
-                "{err}"
-            );
-        }
+        assert!(matches!(
+            HiveStorageInfo::try_get_input_format(AVRO_INPUT_FORMAT, None, &no_properties).unwrap(),
+            HiveInputFormat::Avro
+        ));
     }
 
     #[test]

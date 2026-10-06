@@ -27,7 +27,7 @@ use datafusion::datasource::TableType;
 use datafusion::datasource::file_format::file_compression_type::FileCompressionType;
 use datafusion::datasource::listing::PartitionedFile;
 use datafusion::datasource::physical_plan::{
-    CsvSource, FileGroup, FileScanConfigBuilder, ParquetSource,
+    AvroSource, CsvSource, FileGroup, FileScanConfigBuilder, ParquetSource,
 };
 use datafusion::datasource::table_schema::TableSchema;
 use datafusion::error::DataFusionError;
@@ -201,6 +201,14 @@ impl TableProvider for HiveTableProvider {
                 file_group,
                 state,
                 filters,
+                statistics,
+                projection,
+                limit,
+            ),
+            HiveInputFormat::Avro => build_avro_exec(
+                store_url,
+                self.hive_storage_info.table_schema.clone(),
+                file_group,
                 statistics,
                 projection,
                 limit,
@@ -557,6 +565,25 @@ fn build_orc_exec(
         .with_statistics(statistics)
         .with_limit(limit)
         .with_expr_adapter(Some(Arc::new(CaseInsensitivePhysicalExprAdapterFactory)));
+    if let Some(projection) = projection {
+        builder = builder.with_projection_indices(Some(projection.clone()))?;
+    }
+    Ok(DataSourceExec::from_data_source(builder.build()))
+}
+
+fn build_avro_exec(
+    store_url: ObjectStoreUrl,
+    table_schema: TableSchema,
+    file_group: FileGroup,
+    statistics: Statistics,
+    projection: Option<&Vec<usize>>,
+    limit: Option<usize>,
+) -> Result<Arc<dyn ExecutionPlan>> {
+    let source = Arc::new(AvroSource::new(table_schema));
+    let mut builder = FileScanConfigBuilder::new(store_url, source)
+        .with_file_group(file_group)
+        .with_statistics(statistics)
+        .with_limit(limit);
     if let Some(projection) = projection {
         builder = builder.with_projection_indices(Some(projection.clone()))?;
     }

@@ -11,9 +11,9 @@ hide:
 
 <span class="ll-kicker">DATAFUSION · RUST · ARROW</span>
 
-# Speed Up Data Lake Queries
+# Simple, Fast Lakehouse Query Engine
 
-<p class="ll-lead">One engine across Iceberg, Delta Lake, Paimon and Hive. A single binary, no JVM, no cluster to stand up.</p>
+<p class="ll-lead">A lightweight alternative to Trino for querying Iceberg, Delta Lake, Paimon and Hive.</p>
 
 [Getting Started](getting-started.md){ .md-button .md-button--primary }
 [View on GitHub](https://github.com/Smith-Cruise/Lakelet){ .md-button }

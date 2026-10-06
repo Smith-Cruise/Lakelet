@@ -16,8 +16,7 @@ partition locations.
 | TextFile | `LazySimpleSerDe` | Supported
 | Parquet | `ParquetHiveSerDe` | Supported
 | ORC | `OrcSerde` | Supported
-
-Column names are matched against data files case-insensitively.
+| Avro | `AvroSerDe` | Supported
 
 ### TextFile
 
@@ -44,6 +43,10 @@ conversion.
 ### ORC
 
 Hive ACID tables are not supported.
+
+### Avro
+
+Everything is good.
 
 ## Data Types
 
