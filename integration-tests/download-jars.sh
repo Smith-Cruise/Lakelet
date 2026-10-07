@@ -12,6 +12,7 @@ DELTA_STORAGE_JAR="delta-storage-4.0.0.jar"
 ANTLR_RUNTIME_JAR="antlr4-runtime-4.13.1.jar"
 HADOOP_AWS_JAR="hadoop-aws-3.4.1.jar"
 AWS_SDK_BUNDLE_JAR="bundle-2.24.6.jar"
+SPARK_AVRO_JAR="spark-avro_2.13-4.0.3.jar"
 MAVEN_BASE="https://repo.maven.apache.org/maven2"
 
 mkdir -p "${JAR_DIR}"
@@ -63,3 +64,7 @@ download_if_missing \
 download_if_missing \
   "${AWS_SDK_BUNDLE_JAR}" \
   "${MAVEN_BASE}/software/amazon/awssdk/bundle/2.24.6/${AWS_SDK_BUNDLE_JAR}"
+
+download_if_missing \
+  "${SPARK_AVRO_JAR}" \
+  "${MAVEN_BASE}/org/apache/spark/spark-avro_2.13/4.0.3/${SPARK_AVRO_JAR}"
