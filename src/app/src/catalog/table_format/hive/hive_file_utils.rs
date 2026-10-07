@@ -122,8 +122,18 @@ fn is_hidden_file(location: &Path, root: &Path) -> bool {
 /// Strips the scheme and authority from a full location, e.g.
 /// `s3://bucket/warehouse/db.db/t` becomes `warehouse/db.db/t`.
 fn location_to_object_store_path(location: &str) -> Result<Path> {
-    let parsed = Url::parse(location).map_err(|e| DataFusionError::External(e.into()))?;
-    Ok(Path::from(parsed.path().trim_start_matches('/')))
+    Url::parse(location).map_err(|e| DataFusionError::External(e.into()))?;
+    let (_, authority_and_path) = location.split_once("://").ok_or_else(|| {
+        DataFusionError::Plan(format!(
+            "Expected a fully qualified Hive location: {location}"
+        ))
+    })?;
+    // Hive locations contain literal object keys. OpendalStore decodes Path
+    // once, so encode the raw key rather than URL's normalized path.
+    let path = authority_and_path
+        .split_once('/')
+        .map_or("", |(_, path)| path);
+    Ok(Path::from(path))
 }
 
 #[cfg(test)]
@@ -136,23 +146,37 @@ mod tests {
 
     #[test]
     fn test_location_to_object_store_path() {
-        let path = location_to_object_store_path(
-            "s3://warehouse/hive/tpch_hive.db/textfile_no_partition_table",
-        )
-        .unwrap();
-        assert_eq!(
-            path.as_ref(),
-            "hive/tpch_hive.db/textfile_no_partition_table"
-        );
-
-        let path = location_to_object_store_path(
-            "s3://warehouse/hive/tpch_hive.db/textfile_partition_table/p=1",
-        )
-        .unwrap();
-        assert_eq!(
-            path.as_ref(),
-            "hive/tpch_hive.db/textfile_partition_table/p=1"
-        );
+        for (location, expected) in [
+            (
+                "s3://warehouse/hive/tpch_hive.db/textfile_no_partition_table",
+                "hive/tpch_hive.db/textfile_no_partition_table",
+            ),
+            (
+                "s3://warehouse/hive/tpch_hive.db/textfile_partition_table/p=1",
+                "hive/tpch_hive.db/textfile_partition_table/p=1",
+            ),
+            (
+                "s3://warehouse/hive/table/region=中文%2F%3D%25",
+                "hive/table/region=中文%2F%3D%25",
+            ),
+            (
+                "s3://warehouse/hive/table/region=50%/value=%252F",
+                "hive/table/region=50%/value=%252F",
+            ),
+            (
+                "hdfs://namenode:8020/user/hive/warehouse/region=中文%25",
+                "user/hive/warehouse/region=中文%25",
+            ),
+            ("s3://warehouse/", ""),
+        ] {
+            let path = location_to_object_store_path(location).unwrap();
+            // Match the object key OpendalStore receives after decoding once.
+            let raw_path = percent_encoding::percent_decode_str(path.as_ref())
+                .decode_utf8()
+                .unwrap();
+            assert_eq!(raw_path, expected, "{location}");
+        }
+        assert!(location_to_object_store_path("not a location").is_err());
     }
 
     #[tokio::test]
@@ -160,37 +184,44 @@ mod tests {
         let ctx = SessionContext::new();
         let state = ctx.state();
         let store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
-        put_test_object(&store, "table/dt=2024-01-01/file1.parquet", b"a").await;
-        put_test_object(&store, "table/dt=2024-01-01/_temporary", b"a").await;
-        put_test_object(&store, "table/dt=2024-01-01/.metadata", b"a").await;
-        put_test_object(&store, "table/dt=2024-01-01/empty.parquet", b"").await;
-        put_test_object(&store, "table/dt=2024-01-01/_temporary/0/part-0", b"a").await;
-        put_test_object(
-            &store,
-            "table/dt=2024-01-01/.hive-staging_1/-ext-1/000000_0",
-            b"a",
-        )
-        .await;
-        put_test_object(
-            &store,
-            "table/dt=2024-01-01/HIVE_UNION_SUBDIR_1/000000_0",
-            b"a",
-        )
-        .await;
+        for root in [
+            "table/dt=2024-01-01",
+            "table/region=中文%2F%3D%25",
+            "table/region=50%",
+        ] {
+            for (name, data) in [
+                ("file1.parquet", b"a".as_slice()),
+                ("_temporary", b"a".as_slice()),
+                (".metadata", b"a".as_slice()),
+                ("empty.parquet", b"".as_slice()),
+                ("_temporary/0/part-0", b"a".as_slice()),
+                (".hive-staging_1/-ext-1/000000_0", b"a".as_slice()),
+                ("HIVE_UNION_SUBDIR_1/000000_0", b"a".as_slice()),
+            ] {
+                put_test_object(&store, &format!("{root}/{name}"), data).await;
+            }
+            let files = list_files(&state, &store, &format!("memory:///{root}"))
+                .await
+                .unwrap();
 
-        let files = list_files(&state, &store, "memory:///table/dt=2024-01-01")
-            .await
-            .unwrap();
-
-        let mut paths: Vec<&str> = files.iter().map(|f| f.location.as_ref()).collect();
-        paths.sort();
-        assert_eq!(
-            paths,
-            vec![
-                "table/dt=2024-01-01/HIVE_UNION_SUBDIR_1/000000_0",
-                "table/dt=2024-01-01/file1.parquet",
-            ]
-        );
+            let mut paths: Vec<String> = files
+                .iter()
+                .map(|file| {
+                    percent_encoding::percent_decode_str(file.location.as_ref())
+                        .decode_utf8()
+                        .unwrap()
+                        .into_owned()
+                })
+                .collect();
+            paths.sort();
+            assert_eq!(
+                paths,
+                vec![
+                    format!("{root}/HIVE_UNION_SUBDIR_1/000000_0"),
+                    format!("{root}/file1.parquet"),
+                ]
+            );
+        }
     }
 
     #[tokio::test]

@@ -32,6 +32,7 @@ use datafusion::datasource::physical_plan::{
 use datafusion::datasource::table_schema::TableSchema;
 use datafusion::error::DataFusionError;
 use datafusion::execution::object_store::ObjectStoreUrl;
+use datafusion::functions::encoding::expr_fn::decode;
 use datafusion::logical_expr::{Expr, TableProviderFilterPushDown, lit, try_cast, when};
 use datafusion::object_store::path::Path;
 use datafusion::physical_plan::ExecutionPlan;
@@ -310,8 +311,8 @@ fn build_csv_exec(
             let column = datafusion::logical_expr::col(Column::from_name(scan_field.name()));
             let expr = if *table_index < file_schema.fields().len() {
                 let target_type = table_schema.field(*table_index).data_type();
-                if target_type.is_nested() {
-                    // Complex values are not decoded from text yet, so they read as NULL.
+                if target_type == &DataType::Null || target_type.is_nested() {
+                    // VOID has no values; complex text values are not decoded yet.
                     return Ok((
                         state.create_physical_expr(
                             lit(ScalarValue::try_from(target_type)?),
@@ -320,16 +321,16 @@ fn build_csv_exec(
                         scan_field.name().to_string(),
                     ));
                 }
-                let value = if target_type == &DataType::Utf8 {
-                    column.clone()
-                } else {
-                    try_cast(column.clone(), target_type.clone())
-                };
-                when(
-                    column.eq(lit(null_format)),
-                    lit(ScalarValue::try_from(target_type)?),
+                let text_expr = when(
+                    column.clone().eq(lit(null_format)),
+                    lit(ScalarValue::Utf8(None)),
                 )
-                .otherwise(value)?
+                .otherwise(column)?;
+                match target_type {
+                    DataType::Utf8 => text_expr,
+                    DataType::Binary => decode(text_expr, lit("base64")),
+                    _ => try_cast(text_expr, target_type.clone()),
+                }
             } else {
                 column
             };
@@ -1383,6 +1384,65 @@ mod tests {
             ],
             &batches
         );
+
+        // LazySimpleSerDe writes BINARY as Base64 and VOID as the NULL marker.
+        for null_format in ["\\N", "NULL", "NA=="] {
+            let fields =
+                hive_fields(&[("id", "int"), ("bytes_col", "binary"), ("void_col", "void")]);
+            let data = format!(
+                "1\x01AP9B\x01{null_format}\n2\x01QQA=\x01{null_format}\n\
+                 3\x01/w==\x01{null_format}\n4\x01{null_format}\x01{null_format}\n\
+                 5\x01\x01{null_format}\n"
+            );
+            let files = [("hive/table/000000_0", data.as_str())];
+            let serde = text_file(&[("serialization.null.format", null_format)]);
+            let batches = scan_hive_table(
+                serde.clone(),
+                fields.clone(),
+                &files,
+                "SELECT id, bytes_col, void_col FROM t WHERE void_col IS NULL ORDER BY id",
+            )
+            .await?;
+            assert_eq!(batches.len(), 1);
+            let batch = &batches[0];
+            assert_eq!(batch.num_rows(), 5);
+            assert_eq!(batch.schema().field(1).data_type(), &DataType::Binary);
+            assert_eq!(batch.schema().field(2).data_type(), &DataType::Null);
+            assert_eq!(batch.column(2).logical_null_count(), 5);
+            let bytes = batch
+                .column(1)
+                .as_any()
+                .downcast_ref::<datafusion::arrow::array::BinaryArray>()
+                .unwrap();
+            assert_eq!(
+                bytes.iter().collect::<Vec<_>>(),
+                vec![
+                    Some(b"\0\xffA".as_slice()),
+                    Some(b"A\0".as_slice()),
+                    Some(b"\xff".as_slice()),
+                    None,
+                    None,
+                ],
+                "NULL marker: {null_format}"
+            );
+            let batches = scan_hive_table(
+                serde,
+                fields,
+                &files,
+                "SELECT count(bytes_col) AS bytes_count, count(void_col) AS void_count FROM t",
+            )
+            .await?;
+            assert_batches_eq!(
+                [
+                    "+-------------+------------+",
+                    "| bytes_count | void_count |",
+                    "+-------------+------------+",
+                    "| 3           | 0          |",
+                    "+-------------+------------+",
+                ],
+                &batches
+            );
+        }
         Ok(())
     }
 
