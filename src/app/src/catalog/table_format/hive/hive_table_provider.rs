@@ -387,7 +387,8 @@ fn build_textfile_csv_options(
     Ok(CsvOptions {
         has_header: Some(serde_properties.skip_header_line_count == 1),
         delimiter: serde_properties.field_delimiter,
-        // LazySimpleSerDe has no quoting; NUL effectively disables it.
+        // LazySimpleSerDe has no quoting. Use NUL as a placeholder quote;
+        // literal NUL bytes still have CSV quoting semantics (GitHub issue #52).
         quote: b'\0',
         // Hive fills missing trailing columns with NULL.
         truncated_rows: Some(true),
