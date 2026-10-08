@@ -1,0 +1,609 @@
+-- TEST: hive_parquet
+-- DATABASE: hive_db
+
+-- QUERY
+SELECT arrow_typeof(tiny) AS tiny_type, arrow_typeof(small) AS small_type,
+arrow_typeof(integer_col) AS int_type, arrow_typeof(big) AS big_type,
+arrow_typeof(real_col) AS float_type, arrow_typeof(double_col) AS double_type,
+arrow_typeof(flag) AS bool_type, arrow_typeof(amount) AS decimal_type,
+arrow_typeof(wide) AS wide_type, arrow_typeof(fraction) AS fraction_type,
+arrow_typeof(name) AS string_type, arrow_typeof(fixed) AS char_type,
+arrow_typeof(variable) AS varchar_type,
+arrow_typeof(bytes_col) AS binary_type, arrow_typeof(day) AS date_type,
+arrow_typeof(ts) AS timestamp_type FROM parquet_types WHERE id = 1;
+-- EXPECTED
+tiny_type,small_type,int_type,big_type,float_type,double_type,bool_type,decimal_type,wide_type,fraction_type,string_type,char_type,varchar_type,binary_type,date_type,timestamp_type
+Int8,Int16,Int32,Int64,Float32,Float64,Boolean,Decimal128(10, 2),Decimal128(38, 0),Decimal128(38, 18),Utf8,Utf8,Utf8,Binary,Date32,Timestamp(µs)
+
+-- QUERY
+SELECT id, tiny, small, integer_col, big, real_col, double_col, flag FROM parquet_types ORDER BY id;
+-- EXPECTED
+id,tiny,small,integer_col,big,real_col,double_col,flag
+1,-128,-32768,-2147483648,-9223372036854775808,-1.5,-2.25,true
+2,127,32767,2147483647,9223372036854775807,1.5,2.25,false
+3,0,0,0,9007199254740993,0.0,0.0,
+4,,,,,,,
+
+-- QUERY
+SELECT id, amount, wide, fraction FROM parquet_types ORDER BY id;
+-- EXPECTED
+id,amount,wide,fraction
+1,-10.50,-99999999999999999999999999999999999999,-12345678901234567890.123456789012345678
+2,99999999.99,99999999999999999999999999999999999999,12345678901234567890.123456789012345678
+3,0.00,0,0E-18
+4,,,
+
+-- QUERY
+SELECT id, name IS NULL AS name_null, length(name) AS name_length,
+length(fixed) AS char_length, length(variable) AS varchar_length,
+fixed = CASE id WHEN 1 THEN 'ab   ' WHEN 2 THEN 'abcde' WHEN 3 THEN 'a b  ' END AS char_value,
+name = '中文' AS unicode_value, variable = 'quote"' AS quote_value
+FROM parquet_types ORDER BY id;
+-- EXPECTED
+id,name_null,name_length,char_length,varchar_length,char_value,unicode_value,quote_value
+1,false,2,5,5,true,true,false
+2,false,0,5,0,true,false,false
+3,false,2,5,6,true,false,true
+4,true,,,,,,
+
+-- QUERY
+SELECT id, day, ts FROM parquet_types ORDER BY id;
+-- EXPECTED
+id,day,ts
+1,1960-01-02,1960-01-02T03:04:05.123456
+2,2000-02-29,2000-02-29T00:00:00.000001
+3,1970-01-01,1969-12-31T23:59:59.999999
+4,,
+
+-- QUERY
+SELECT count(*) AS rows, count(name) AS names, count(amount) AS amounts FROM parquet_types;
+-- EXPECTED
+rows,names,amounts
+4,3,3
+
+-- QUERY
+SELECT id, cardinality(tags) AS tag_count, cardinality(map_keys(attrs)) AS attr_count,
+tags[1] AS first_tag, map_keys(attrs)[1] AS first_key,
+attrs['x'] AS x, shipto['zipcode'] AS zipcode,
+lineitems[1]['skuid'] AS first_sku, lineitems[2]['qty'] AS second_qty
+FROM nested_orders ORDER BY id;
+-- EXPECTED
+id,tag_count,attr_count,first_tag,first_key,x,zipcode,first_sku,second_qty
+1,2,1,a,x,1,10001,s1,1
+2,0,0,,,,94105,,
+3,,,,,,,,
+4,2,1,,x,,,,
+5,1,1,,x,2,,,
+6,,1,,x,3,,s4,
+
+-- QUERY
+SELECT arrow_typeof(tags) LIKE 'List(%Utf8%' AS array_type,
+arrow_typeof(attrs) LIKE 'Map(%' AS map_type,
+arrow_typeof(shipto) LIKE 'Struct(%' AS struct_type,
+arrow_typeof(lineitems) LIKE 'List(%Struct(%' AS nested_type FROM nested_orders WHERE id = 1;
+-- EXPECTED
+array_type,map_type,struct_type,nested_type
+true,true,true,true
+
+-- QUERY
+SELECT id, tags IS NULL AS tags_null, attrs IS NULL AS attrs_null,
+shipto IS NULL AS shipto_null, lineitems IS NULL AS items_null,
+shipto['cityname'] IS NULL AS city_null, tags[1] IS NULL AS element_null
+FROM nested_orders ORDER BY id;
+-- EXPECTED
+id,tags_null,attrs_null,shipto_null,items_null,city_null,element_null
+1,false,false,false,false,false,false
+2,false,false,false,false,false,true
+3,true,true,true,true,true,true
+4,false,false,false,false,false,true
+5,false,false,false,false,true,false
+6,true,false,true,false,true,true
+
+-- QUERY
+SELECT id, cardinality(lineitems) AS items,
+lineitems[1] IS NULL AS first_item_null, lineitems[2]['skuid'] AS second_sku,
+lineitems[2]['qty'] IS NULL AS second_qty_null FROM nested_orders ORDER BY id;
+-- EXPECTED
+id,items,first_item_null,second_sku,second_qty_null
+1,2,false,s2,false
+2,0,true,,true
+3,,true,,true
+4,2,true,s3,true
+5,0,true,,true
+6,1,false,,true
+
+-- QUERY
+SELECT id FROM nested_orders WHERE id >= 2 AND shipto['cityname'] = 'sf' ORDER BY id;
+-- EXPECTED
+id
+2
+4
+
+-- QUERY
+SELECT id FROM nested_orders WHERE id = 1 OR shipto IS NULL ORDER BY id;
+-- EXPECTED
+id
+1
+3
+6
+
+-- QUERY
+SELECT id FROM nested_orders WHERE tags[1] = 'a' OR attrs['x'] = 3 ORDER BY id;
+-- EXPECTED
+id
+1
+6
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id >= 5997 AND id = 5998 ORDER BY id;
+-- EXPECTED
+id
+5998
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id >= 5997 AND id != 5998 ORDER BY id;
+-- EXPECTED
+id
+5997
+5999
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id >= 5997 AND id < 5998 ORDER BY id;
+-- EXPECTED
+id
+5997
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id >= 5997 AND id <= 5998 ORDER BY id;
+-- EXPECTED
+id
+5997
+5998
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id >= 5997 AND id > 5998 ORDER BY id;
+-- EXPECTED
+id
+5999
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id >= 5997 AND id >= 5998 ORDER BY id;
+-- EXPECTED
+id
+5998
+5999
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id BETWEEN 5997 AND 5998 ORDER BY id;
+-- EXPECTED
+id
+5997
+5998
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE 5998 < id ORDER BY id;
+-- EXPECTED
+id
+5999
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id IN (42, 2500, NULL) ORDER BY id;
+-- EXPECTED
+id
+42
+2500
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE nullable IN (42, NULL) ORDER BY id;
+-- EXPECTED
+id
+42
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE nullable NOT IN (42, NULL) ORDER BY id;
+-- EXPECTED
+id
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE nullable = NULL ORDER BY id;
+-- EXPECTED
+id
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id IN (42, 2500, 5998) AND nullable IS NULL ORDER BY id;
+-- EXPECTED
+id
+2500
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id IN (42, 2500, 5998) AND nullable IS NOT NULL ORDER BY id;
+-- EXPECTED
+id
+42
+5998
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id IN (42, 2500, 5998) AND length(name) > 2 ORDER BY id;
+-- EXPECTED
+id
+2500
+5998
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id = 42 OR (length(name) > 2 AND id IN (2500, 5998)) ORDER BY id;
+-- EXPECTED
+id
+42
+2500
+5998
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id IN (42, 2500, 5998) AND NOT (id = 2500 AND length(name) > 2) ORDER BY id;
+-- EXPECTED
+id
+42
+5998
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id >= 5997 AND NOT (id = 5998) ORDER BY id;
+-- EXPECTED
+id
+5997
+5999
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE CAST(id AS BIGINT) >= 5998 ORDER BY id;
+-- EXPECTED
+id
+5998
+5999
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE CAST(id AS VARCHAR) = '2500' ORDER BY id;
+-- EXPECTED
+id
+2500
+
+-- QUERY
+-- Known incorrect result tracked in https://github.com/Smith-Cruise/Lakelet/issues/50.
+-- DataFusion removes the lossy CAST; the correct IDs are 5997, 5998, 5999.
+-- Expect the current empty result so an upstream fix fails this case.
+SELECT id FROM parquet_scan WHERE id >= 5997 AND CAST(amount AS INT) = 59 ORDER BY id;
+-- EXPECTED
+id
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE amount > 59.97 AND flag = true ORDER BY id;
+-- EXPECTED
+id
+5998
+
+-- QUERY
+SELECT id FROM parquet_types WHERE amount < 0 AND day < DATE '1970-01-01' AND ts < TIMESTAMP '1970-01-01 00:00:00' ORDER BY id;
+-- EXPECTED
+id
+1
+
+-- QUERY
+SELECT id FROM parquet_types WHERE big = 9007199254740993 ORDER BY id;
+-- EXPECTED
+id
+3
+
+-- QUERY
+SELECT id, dt, bucket, region, price FROM parquet_partitions ORDER BY id;
+-- EXPECTED
+id,dt,bucket,region,price
+1,2026-06-24,2,CN,2.00
+2,2026-06-24,10,US,10.00
+3,2026-06-25,2,CN,2.00
+4,2026-06-25,10,US,10.00
+5,2026-06-26,2,中文/=%,2.00
+6,2026-06-26,10,US,10.00
+7,,,,
+
+-- QUERY
+SELECT id FROM parquet_partitions WHERE dt = DATE '2026-06-25' ORDER BY id;
+-- EXPECTED
+id
+3
+4
+
+-- QUERY
+SELECT id FROM parquet_partitions WHERE dt IN (DATE '2026-06-24', DATE '2026-06-26') AND bucket = 2 ORDER BY id;
+-- EXPECTED
+id
+1
+5
+
+-- QUERY
+SELECT id FROM parquet_partitions WHERE bucket > 2 ORDER BY id;
+-- EXPECTED
+id
+2
+4
+6
+
+-- QUERY
+SELECT id FROM parquet_partitions WHERE price BETWEEN 2.00 AND 2.00 ORDER BY id;
+-- EXPECTED
+id
+1
+3
+5
+
+-- QUERY
+SELECT id FROM parquet_partitions WHERE dt >= DATE '2026-06-25' AND bucket = 10 ORDER BY id;
+-- EXPECTED
+id
+4
+6
+
+-- QUERY
+SELECT id FROM parquet_partitions WHERE dt = DATE '2026-06-24' OR region = '中文/=%' ORDER BY id;
+-- EXPECTED
+id
+1
+2
+5
+
+-- QUERY
+SELECT id FROM parquet_partitions WHERE dt IS NULL AND bucket IS NULL AND price IS NULL ORDER BY id;
+-- EXPECTED
+id
+7
+
+-- QUERY
+SELECT id FROM parquet_partitions WHERE dt IS NOT NULL AND bucket IS NULL ORDER BY id;
+-- EXPECTED
+id
+
+-- QUERY
+SELECT id FROM parquet_partitions WHERE dt = DATE '2026-06-25' AND amount > 10 ORDER BY id;
+-- EXPECTED
+id
+4
+
+-- QUERY
+SELECT id FROM parquet_partitions WHERE dt = DATE '2026-06-25' OR id = 6 ORDER BY id;
+-- EXPECTED
+id
+3
+4
+6
+
+-- QUERY
+SELECT id FROM parquet_partitions WHERE dt = DATE '2026-06-28' ORDER BY id;
+-- EXPECTED
+id
+
+-- QUERY
+SELECT id FROM parquet_partitions WHERE dt = DATE '2030-01-01' ORDER BY id;
+-- EXPECTED
+id
+
+-- QUERY
+SELECT region AS r, id, bucket AS b, name, price AS p FROM parquet_partitions WHERE dt = DATE '2026-06-26' ORDER BY id;
+-- EXPECTED
+r,id,b,name,p
+中文/=%,5,2,中文,2.00
+US,6,10,custom,10.00
+
+-- QUERY
+SELECT dt, bucket FROM parquet_partitions WHERE region = 'CN' ORDER BY dt;
+-- EXPECTED
+dt,bucket
+2026-06-24,2
+2026-06-25,2
+
+-- QUERY
+SELECT dt, count(*) AS rows, sum(amount) AS total FROM parquet_partitions GROUP BY dt ORDER BY dt NULLS LAST;
+-- EXPECTED
+dt,rows,total
+2026-06-24,2,30.75
+2026-06-25,2,19.30
+2026-06-26,2,-1.00
+,1,
+
+-- QUERY
+SELECT count(*) AS rows, count(name) AS names FROM parquet_partitions WHERE dt = DATE '2026-06-28';
+-- EXPECTED
+rows,names
+0,0
+
+-- QUERY
+SELECT count(*) AS rows, sum(amount) AS total FROM parquet_partitions WHERE dt = DATE '2030-01-01';
+-- EXPECTED
+rows,total
+0,
+
+-- QUERY
+SELECT nullable AS value, id + 10 AS shifted, name AS label FROM parquet_scan WHERE id >= 5998 ORDER BY id LIMIT 1;
+-- EXPECTED
+value,shifted,label
+5998,6008,row
+
+-- QUERY
+SELECT name AS label FROM parquet_scan WHERE id = 2500 LIMIT 1;
+-- EXPECTED
+label
+row
+
+-- QUERY
+SELECT count(*) AS rows,
+sum(CASE WHEN id >= 5995 THEN 0 ELSE 1 END) AS invalid
+FROM (SELECT id FROM parquet_scan WHERE id >= 5995 LIMIT 3) AS limited;
+-- EXPECTED
+rows,invalid
+3,0
+
+-- QUERY
+SELECT count(*) AS rows, count(nullable) AS non_null FROM parquet_scan;
+-- EXPECTED
+rows,non_null
+6000,4800
+
+-- QUERY
+SELECT id FROM parquet_scan WHERE id > 6000;
+-- EXPECTED
+id
+
+-- QUERY
+SELECT count(*) AS rows, min(id) AS first_id, sum(nullable) AS total FROM parquet_scan WHERE id > 6000;
+-- EXPECTED
+rows,first_id,total
+0,,
+
+-- QUERY
+SELECT count(*) AS rows, count(name) AS names FROM parquet_empty;
+-- EXPECTED
+rows,names
+0,0
+
+-- QUERY
+SELECT id, name FROM parquet_empty ORDER BY id;
+-- EXPECTED
+id,name
+
+-- QUERY
+SELECT extra, name, id FROM parquet_evolution ORDER BY id;
+-- EXPECTED
+extra,name,id
+,old,1
+20,new,2
+
+-- QUERY
+SELECT name FROM parquet_evolution WHERE extra IS NULL ORDER BY id;
+-- EXPECTED
+name
+old
+
+-- QUERY
+SELECT extra IS NULL AS extra_null FROM parquet_evolution WHERE id = 1 LIMIT 1;
+-- EXPECTED
+extra_null
+true
+
+-- QUERY
+SELECT name, userid, info['label'] AS label, info['value'] AS value,
+missing IS NULL AS missing_null FROM parquet_adaptation ORDER BY userid;
+-- EXPECTED
+name,userid,label,value,missing_null
+old,1,v1,10,true
+new,2,v2,20,true
+
+-- QUERY
+SELECT name FROM parquet_adaptation WHERE info['value'] >= 20 AND userid > 1 ORDER BY userid;
+-- EXPECTED
+name
+new
+
+-- QUERY
+SELECT arrow_typeof(userid) AS id_type,
+arrow_typeof(info['value']) AS value_type FROM parquet_adaptation WHERE userid = 1;
+-- EXPECTED
+id_type,value_type
+Int64,Int64
+
+-- QUERY
+SELECT count(*) >= 3 AS multiple_files,
+sum(CASE WHEN file_path LIKE '%/_hidden/%' OR file_path LIKE '%/_SUCCESS' THEN 1 ELSE 0 END) AS hidden_files,
+min(file_size) > 0 AS non_empty FROM `parquet_scan$data_files`;
+-- EXPECTED
+multiple_files,hidden_files,non_empty
+true,0,true
+
+-- QUERY
+SELECT count(*) AS partitions,
+sum(CASE WHEN data_file_count = 0 THEN 1 ELSE 0 END) AS empty_partitions,
+min(total_data_file_size) AS minimum_size FROM `parquet_partitions$partitions`;
+-- EXPECTED
+partitions,empty_partitions,minimum_size
+8,1,0
+
+-- QUERY
+SELECT count(*) AS partitions FROM `parquet_empty$partitions`;
+-- EXPECTED
+partitions
+0
+
+-- QUERY
+SELECT id, name FROM orders WHERE dt = '2026-06-25' ORDER BY id;
+-- EXPECTED
+id,name
+1,alice
+2,bob
+
+-- QUERY
+SELECT count(*) AS rows FROM orders;
+-- EXPECTED
+rows
+4
+
+-- QUERY
+SELECT dt, sum(amount) AS total FROM orders GROUP BY dt ORDER BY dt;
+-- EXPECTED
+dt,total
+2026-06-24,19.30
+2026-06-25,30.75
+
+-- QUERY
+SHOW CREATE TABLE orders;
+-- EXPECTED
+definition
+CREATE TABLE `moto_glue`.`hive_db`.`orders`
+(
+`id` Int32,
+`name` Utf8,
+`amount` Decimal128(10, 2),
+`dt` Utf8
+)
+PARTITIONED BY (`dt`)
+USING HIVE
+LOCATION 's3://lakelet-e2e/warehouse/hive_db.db/orders'
+
+-- QUERY
+SELECT id, cardinality(tags) AS tags, attrs['x'] AS x, lineitems[1]['skuid'] AS sku FROM parquet_modern_nested ORDER BY id;
+-- EXPECTED
+id,tags,x,sku
+1,2,1,s1
+2,0,,
+3,,,
+4,2,,
+5,1,2,
+6,,3,s4
+
+-- QUERY
+SELECT id, ts FROM parquet_int96 ORDER BY id;
+-- EXPECTED
+id,ts
+1,1969-12-31T23:59:59.999999
+2,2500-01-01T00:00:00.123456
+
+-- QUERY
+SELECT id FROM parquet_pruning WHERE id IN (0, 2999, 5999) ORDER BY id;
+-- EXPECTED
+id
+0
+2999
+5999
+
+-- QUERY
+SELECT count(*) AS rows FROM parquet_pruning;
+-- EXPECTED
+rows
+6000
+
+-- QUERY
+SELECT id FROM parquet_pruning WHERE id > 5999;
+-- EXPECTED
+id
+
+-- QUERY
+SELECT id, encode(bytes_col, 'hex') AS bytes, bytes_col IS NULL AS bytes_null FROM parquet_types ORDER BY id;
+-- EXPECTED
+id,bytes,bytes_null
+1,00ff41,false
+2,,false
+3,4100,false
+4,,true

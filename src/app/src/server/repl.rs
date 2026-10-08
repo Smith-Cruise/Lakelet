@@ -23,7 +23,7 @@ pub async fn exec_from_repl(ctx: &ExtendedSessionContext, print_options: &PrintO
 
     let mut sql_buffer = String::new();
 
-    println!("Enter SQL ending with ';'. Type 'quit;' to disconnect.\n");
+    println!("Enter SQL ending with ';'. Type 'quit;' to quit.\n");
 
     loop {
         // 根据是否有未完成的语句选择提示符

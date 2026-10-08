@@ -164,25 +164,6 @@ pub fn parse_table_reference(tbl_name: &str) -> Result<(String, Option<MetadataT
     Ok((table_name.to_string(), metadata_table_type))
 }
 
-pub fn deduce_table_format(table_properties: &HashMap<String, String>) -> Result<TableFormat> {
-    if table_properties.contains_key("metadata_location") {
-        return Ok(TableFormat::Iceberg);
-    }
-    if let Some(table_type) = table_properties.get("table_type")
-        && table_type.eq_ignore_ascii_case("PAIMON")
-    {
-        return Ok(TableFormat::Paimon);
-    }
-    if let Some(spark_provider) = table_properties.get("spark.sql.sources.provider")
-        && spark_provider.eq_ignore_ascii_case("DELTA")
-    {
-        return Ok(TableFormat::Delta);
-    }
-
-    // other table format fallback to hive format
-    Ok(TableFormat::Hive)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,48 +171,6 @@ mod tests {
     use datafusion::arrow::datatypes::{DataType, Field, Schema};
     use datafusion::common::Statistics;
     use datafusion::datasource::table_schema::TableSchema;
-
-    #[test]
-    fn test_deduce_table_format() {
-        let table_properties =
-            HashMap::from([("metadata_location".to_string(), "path".to_string())]);
-        assert_eq!(
-            TableFormat::Iceberg,
-            deduce_table_format(&table_properties).unwrap()
-        );
-        let table_properties = HashMap::from([(
-            "spark.sql.sources.provider".to_string(),
-            "DELTA".to_string(),
-        )]);
-        assert_eq!(
-            TableFormat::Delta,
-            deduce_table_format(&table_properties).unwrap()
-        );
-        let table_properties = HashMap::from([(
-            "spark.sql.sources.provider".to_string(),
-            "delta".to_string(),
-        )]);
-        assert_eq!(
-            TableFormat::Delta,
-            deduce_table_format(&table_properties).unwrap()
-        );
-        let table_properties = HashMap::from([]);
-        assert_eq!(
-            TableFormat::Hive,
-            deduce_table_format(&table_properties).unwrap()
-        );
-
-        let table_properties = HashMap::from([("table_type".to_string(), "PAIMON".to_string())]);
-        assert_eq!(
-            TableFormat::Paimon,
-            deduce_table_format(&table_properties).unwrap()
-        );
-        let table_properties = HashMap::from([("table_type".to_string(), "paimon".to_string())]);
-        assert_eq!(
-            TableFormat::Paimon,
-            deduce_table_format(&table_properties).unwrap()
-        );
-    }
 
     #[tokio::test]
     async fn test_build_hive_provider_generates_table_definition() -> Result<()> {
@@ -271,7 +210,6 @@ mod tests {
             input_format: HiveInputFormat::Parquet,
             table_schema,
             table_statistics,
-            serde_properties: HashMap::new(),
         }
     }
 }

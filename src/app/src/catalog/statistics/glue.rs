@@ -61,12 +61,7 @@ async fn load_glue_columns_statistics(
     table_name: &str,
     table_schema: &TableSchema,
 ) -> LoadedGlueColumnStatistics {
-    let column_names: Vec<_> = table_schema
-        .file_schema()
-        .fields()
-        .iter()
-        .map(|field| field.name().to_string())
-        .collect();
+    let column_names = statistics_column_names(table_schema);
     if column_names.is_empty() {
         return LoadedGlueColumnStatistics {
             column_statistics: unknown_column_statistics(table_schema),
@@ -97,6 +92,18 @@ async fn load_glue_columns_statistics(
         .await;
 
     collect_glue_columns_statistics(table_schema, responses)
+}
+
+/// Glue only keeps statistics for primitive columns and reports an error for
+/// nested ones, so those are not requested.
+fn statistics_column_names(table_schema: &TableSchema) -> Vec<String> {
+    table_schema
+        .file_schema()
+        .fields()
+        .iter()
+        .filter(|field| !field.data_type().is_nested())
+        .map(|field| field.name().to_string())
+        .collect()
 }
 
 fn collect_glue_columns_statistics(
@@ -677,6 +684,26 @@ mod tests {
         assert_eq!(converted[0].distinct_count, Precision::Inexact(80));
         assert_eq!(converted[1].distinct_count, Precision::Inexact(20));
         assert_eq!(converted[2], ColumnStatistics::new_unknown());
+    }
+
+    #[test]
+    fn skips_nested_columns_in_statistics_requests() {
+        let table_schema = TableSchema::new(
+            std::sync::Arc::new(Schema::new(vec![
+                Field::new("id", DataType::Int64, true),
+                Field::new(
+                    "tags",
+                    DataType::List(std::sync::Arc::new(Field::new(
+                        "element",
+                        DataType::Utf8,
+                        true,
+                    ))),
+                    true,
+                ),
+            ])),
+            vec![],
+        );
+        assert_eq!(statistics_column_names(&table_schema), vec!["id"]);
     }
 
     #[test]

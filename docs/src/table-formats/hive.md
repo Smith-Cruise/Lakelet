@@ -11,11 +11,42 @@ partition locations.
 
 ## Supported Data File Formats
 
-| Input format | Status
+| Input format | SerDe | Status
+| --- | --- | --- |
+| TextFile | `LazySimpleSerDe` | Supported
+| Parquet | `ParquetHiveSerDe` | Supported
+| ORC | `OrcSerde` | Supported
+| Avro | `AvroSerDe` | Supported
+
+### TextFile
+
+These table and SerDe properties are honored:
+
+| Property | Behavior |
 | --- | --- |
-| TextFile | Supported
-| Parquet | Supported
-| ORC | Not supported
+| `field.delim`, `serialization.format` | Field delimiter, default `\001` |
+| `serialization.null.format` | Text that reads as `NULL`, default `\N` |
+| `skip.header.line.count` | `0` or `1` |
+
+A value that cannot be parsed as its column type is read as `NULL`, as in
+Hive. Empty fields are also read as `NULL`.
+
+Complex type columns (`array`, `map`, `struct` and `uniontype`) are currently
+read as `NULL`. The other columns of the table are read as usual.
+
+### Parquet
+
+`INT96` timestamps, as written by Hive, Impala and older Spark versions, are
+read as microsecond timestamps. Their values are taken as UTC, with no timezone
+conversion.
+
+### ORC
+
+Hive ACID tables are not supported.
+
+### Avro
+
+Everything is good.
 
 ## Data Types
 
@@ -23,21 +54,25 @@ partition locations.
 | --- | --- |
 | `tinyint` | `Int8` |
 | `smallint` | `Int16` |
-| `int`, `integer` | `Int32` |
-| `bigint`, `long` | `Int64` |
+| `int` | `Int32` |
+| `bigint` | `Int64` |
 | `float` | `Float32` |
-| `double`, `double precision` | `Float64` |
+| `double` | `Float64` |
 | `boolean` | `Boolean` |
-| `string`, `binary string` | `Utf8` |
-| `varchar(...)`, `char(...)` | `Utf8` |
+| `string` | `Utf8` |
+| `varchar(n)`, `char(n)` | `Utf8` |
 | `binary` | `Binary` |
 | `date` | `Date32` |
 | `timestamp` | Microsecond timestamp without a timezone |
+| `timestamp with local time zone` | Microsecond timestamp in UTC |
 | `decimal(p,s)` | `Decimal128(p,s)` |
-| `decimal` or an unparseable decimal declaration | `Decimal128(38,10)` |
-
-Types not listed above, including Hive complex types, are not currently
-supported.
+| `decimal(p)` | `Decimal128(p,0)` |
+| `decimal` | `Decimal128(10,0)` |
+| `void` | `Null` |
+| `array<T>` | `List` |
+| `map<K,V>` | `Map` |
+| `struct<name:T,...>` | `Struct` |
+| `uniontype<T,...>` | Sparse `Union` |
 
 ## Metadata Table
 
@@ -48,8 +83,6 @@ The `data_files` metadata table lists visible, non-empty data files:
 ```sql
 SELECT * FROM `table_name$data_files`;
 ```
-
-Files whose names start with `_` or `.` and zero-byte files are excluded.
 
 | Column | Description |
 | --- | --- |

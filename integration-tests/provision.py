@@ -23,7 +23,6 @@ DELTA_DATABASE = "delta_db"
 HIVE_DATABASE = "hive_db"
 PAIMON_LOCATION = f"s3://{BUCKET}/warehouse/{PAIMON_DATABASE}.db/{TABLE}"
 DELTA_LOCATION = f"s3://{BUCKET}/warehouse/{DELTA_DATABASE}.db/{TABLE}"
-HIVE_LOCATION = f"s3://{BUCKET}/warehouse/{HIVE_DATABASE}.db/{TABLE}"
 PAIMON_JARS = ",".join(
     [
         "/opt/spark/extra-jars/paimon-spark-4.0_2.13-1.4.1.jar",
@@ -291,7 +290,9 @@ def create_hive_data() -> None:
             "spark",
             "/opt/spark/bin/spark-sql",
             "--jars",
-            DELTA_JARS,
+            f"{DELTA_JARS},/opt/spark/extra-jars/spark-avro_2.13-4.0.3.jar",
+            "--conf",
+            "spark.hadoop.hive.exec.dynamic.partition.mode=nonstrict",
             "--conf",
             "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem",
             "--conf",
@@ -317,55 +318,182 @@ def create_hive_data() -> None:
     )
 
 
-def register_hive_table() -> None:
+def hive_file_format(file_format: str) -> dict:
+    if file_format == "textfile":
+        return {
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe",
+                "Parameters": {},
+            },
+        }
+    if file_format == "avro":
+        return {
+            "InputFormat": "org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.avro.AvroSerDe",
+                "Parameters": {},
+            },
+        }
+    if file_format == "orc":
+        return {
+            "InputFormat": "org.apache.hadoop.hive.ql.io.orc.OrcInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.orc.OrcOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.ql.io.orc.OrcSerde",
+                "Parameters": {},
+            },
+        }
+    return {
+        "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+        "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+        "SerdeInfo": {
+            "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+            "Parameters": {},
+        },
+    }
+
+
+def register_hive_table(
+    table: str,
+    file_format: str,
+    columns: list[tuple[str, str]],
+    partition_keys: list[tuple[str, str]] | None = None,
+    partitions: list[tuple[list[str], str]] | None = None,
+    serde_parameters: dict | None = None,
+    table_parameters: dict | None = None,
+) -> None:
     glue = client("glue")
+    location = f"s3://{BUCKET}/warehouse/{HIVE_DATABASE}.db/{table}"
     try:
-        glue.delete_table(DatabaseName=HIVE_DATABASE, Name=TABLE)
+        glue.delete_table(DatabaseName=HIVE_DATABASE, Name=table)
     except ClientError as error:
         if error.response.get("Error", {}).get("Code") != "EntityNotFoundException":
             raise
 
-    columns = [
-        {"Name": "id", "Type": "int"},
-        {"Name": "name", "Type": "string"},
-        {"Name": "amount", "Type": "decimal(10,2)"},
-    ]
-    serde_info = {
-        "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
-        "Parameters": {},
-    }
+    columns = [{"Name": name, "Type": kind} for name, kind in columns]
+    formats = hive_file_format(file_format)
+    formats["SerdeInfo"]["Parameters"] = serde_parameters or {}
     glue.create_table(
         DatabaseName=HIVE_DATABASE,
         TableInput={
-            "Name": TABLE,
+            "Name": table,
             "TableType": "EXTERNAL_TABLE",
-            "Parameters": {"EXTERNAL": "TRUE"},
-            "PartitionKeys": [{"Name": "dt", "Type": "string"}],
+            "Parameters": {"EXTERNAL": "TRUE", **(table_parameters or {})},
+            "PartitionKeys": [
+                {"Name": name, "Type": kind} for name, kind in (partition_keys or [])
+            ],
             "StorageDescriptor": {
                 "Columns": columns,
-                "Location": HIVE_LOCATION,
-                "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
-                "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
-                "SerdeInfo": serde_info,
+                "Location": location,
+                **formats,
             },
         },
     )
-    glue.batch_create_partition(
+    if not partitions:
+        return
+    response = glue.batch_create_partition(
         DatabaseName=HIVE_DATABASE,
-        TableName=TABLE,
+        TableName=table,
         PartitionInputList=[
             {
-                "Values": [dt],
+                "Values": values,
                 "StorageDescriptor": {
                     "Columns": columns,
-                    "Location": f"{HIVE_LOCATION}/dt={dt}",
-                    "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
-                    "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
-                    "SerdeInfo": serde_info,
+                    "Location": partition_location,
+                    **formats,
                 },
             }
-            for dt in ("2026-06-24", "2026-06-25")
+            for values, partition_location in partitions
         ],
+    )
+    if response.get("Errors"):
+        raise AssertionError(f"Hive partition registration failed: {response['Errors']}")
+
+
+def register_hive_tables() -> None:
+    order_columns = [("id", "int"), ("name", "string"), ("amount", "decimal(10,2)")]
+    scalar_columns = [
+        ("id", "int"), ("tiny", "tinyint"), ("small", "smallint"),
+        ("integer_col", "int"), ("big", "bigint"), ("real_col", "float"),
+        ("double_col", "double"), ("flag", "boolean"), ("amount", "decimal(10,2)"),
+        ("wide", "decimal(38,0)"), ("fraction", "decimal(38,18)"),
+        ("name", "string"), ("fixed", "char(5)"), ("variable", "varchar(10)"),
+        ("bytes_col", "binary"), ("day", "date"), ("ts", "timestamp"),
+    ]
+    nested_columns = [
+        ("id", "int"), ("tags", "array<string>"), ("attrs", "map<string,int>"),
+        ("shipto", "struct<zipcode:string,cityname:string>"),
+        ("lineitems", "array<struct<skuid:string,qty:int>>"),
+    ]
+    for file_format in ("parquet", "orc", "avro", "textfile"):
+        if file_format != "textfile":
+            orders = "orders" if file_format == "parquet" else f"{file_format}_orders"
+            register_hive_table(
+                orders, file_format, order_columns, [("dt", "string")],
+                [([dt], f"s3://{BUCKET}/warehouse/{HIVE_DATABASE}.db/{orders}/dt={dt}")
+                 for dt in ("2026-06-24", "2026-06-25")],
+            )
+        nested = "nested_orders" if file_format == "parquet" else f"{file_format}_nested_orders"
+        register_hive_table(nested, file_format, nested_columns)
+        columns = scalar_columns + ([("void_col", "void")] if file_format in ("avro", "textfile") else [])
+        register_hive_table(f"{file_format}_types", file_format, columns)
+        register_hive_table(
+            f"{file_format}_scan", file_format,
+            [("id", "int"), ("name", "string"), ("flag", "boolean"),
+             ("amount", "decimal(10,2)"), ("nullable", "int")],
+        )
+        register_hive_table(f"{file_format}_empty", file_format, [("id", "int"), ("name", "string")])
+        register_hive_table(
+            f"{file_format}_evolution", file_format,
+            [("id", "int"), ("name", "string"), ("extra", "int")],
+        )
+        if file_format != "textfile":
+            register_hive_table(
+                f"{file_format}_adaptation", file_format,
+                [("name", "string"), ("userid", "bigint"),
+                 ("info", "struct<label:string,value:bigint>"), ("missing", "string")],
+            )
+        table = f"{file_format}_partitions"
+        location = f"s3://{BUCKET}/warehouse/{HIVE_DATABASE}.db/{table}"
+        partition_values = [
+            ["2026-06-24", "2", "CN", "2.00"],
+            ["2026-06-24", "10", "US", "10.00"],
+            ["2026-06-25", "2", "CN", "2.00"],
+            ["2026-06-25", "10", "US", "10.00"],
+            ["2026-06-26", "2", "中文/=%", "2.00"],
+            ["2026-06-26", "10", "US", "10.00"],
+            ["__HIVE_DEFAULT_PARTITION__"] * 4,
+            ["2026-06-28", "2", "empty", "2.00"],
+        ]
+        partitions = []
+        keys = [("dt", "date"), ("bucket", "int"), ("region", "string"), ("price", "decimal(6,2)")]
+        for values in partition_values:
+            # Hive escapes reserved ASCII characters but preserves Unicode names.
+            escaped = [value.replace("%", "%25").replace("/", "%2F").replace("=", "%3D") for value in values]
+            suffix = "/".join(f"{key}={value}" for (key, _), value in zip(keys, escaped))
+            partition_location = f"{location}/{suffix}"
+            if values[:2] == ["2026-06-26", "10"]:
+                partition_location = f"s3://{BUCKET}/warehouse/{HIVE_DATABASE}.db/{file_format}_custom_partition"
+            partitions.append((values, partition_location))
+        register_hive_table(table, file_format, order_columns, keys, partitions)
+
+    register_hive_table("parquet_modern_nested", "parquet", nested_columns)
+    register_hive_table("parquet_int96", "parquet", [("id", "int"), ("ts", "timestamp")])
+    register_hive_table("parquet_pruning", "parquet", [("id", "int"), ("payload", "string")])
+    register_hive_table(
+        "textfile_custom", "textfile", order_columns,
+        serde_parameters={"field.delim": "|", "serialization.null.format": "NULL"},
+        table_parameters={"field.delim": ","},
+    )
+    register_hive_table("textfile_short", "textfile", order_columns)
+    register_hive_table("textfile_gzip", "textfile", [("id", "int"), ("name", "string")])
+    register_hive_table(
+        "textfile_header", "textfile", [("id", "int"), ("name", "string")],
+        serde_parameters={"field.delim": "|"},
+        table_parameters={"skip.header.line.count": "1"},
     )
 
 
@@ -414,7 +542,7 @@ def main() -> None:
     create_delta_data()
     register_delta_table()
     create_hive_data()
-    register_hive_table()
+    register_hive_tables()
 
 
 if __name__ == "__main__":

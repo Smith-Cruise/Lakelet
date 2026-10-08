@@ -1,3 +1,5 @@
+use crate::data_file_format::case_insensitive_adapter::CaseInsensitivePhysicalExprAdapterFactory;
+use crate::data_file_format::orc::OrcSource;
 use crate::data_file_format::parquet::{
     ExtendedParquetFileReaderFactory, ExtendedParquetReaderOptions,
 };
@@ -5,6 +7,7 @@ use crate::table_format::hive::HiveStorageInfo;
 use crate::table_format::hive::hive_file_utils::{list_files, list_files_by_directories};
 use crate::table_format::hive::hive_partition::HivePartition;
 use crate::table_format::hive::hive_storage_info::HiveInputFormat;
+use crate::table_format::hive::hive_textfile_serde::TextFileSerdeProperties;
 use async_trait::async_trait;
 use datafusion::arrow::array::{
     Array, ArrayRef, BooleanArray, Date32Array, Float32Array, Float64Array, Int8Array, Int16Array,
@@ -18,25 +21,28 @@ use datafusion::catalog::{Session, TableProvider};
 use datafusion::common::config::CsvOptions;
 use datafusion::common::parsers::CompressionTypeVariant;
 use datafusion::common::stats::Precision;
-use datafusion::common::{Result, Statistics, ToDFSchema};
+use datafusion::common::{Column, ColumnStatistics, Result, Statistics, ToDFSchema};
 use datafusion::config::TableParquetOptions;
 use datafusion::datasource::TableType;
 use datafusion::datasource::file_format::file_compression_type::FileCompressionType;
 use datafusion::datasource::listing::PartitionedFile;
 use datafusion::datasource::physical_plan::{
-    CsvSource, FileGroup, FileScanConfigBuilder, ParquetSource,
+    AvroSource, CsvSource, FileGroup, FileScanConfigBuilder, ParquetSource,
 };
 use datafusion::datasource::table_schema::TableSchema;
 use datafusion::error::DataFusionError;
 use datafusion::execution::object_store::ObjectStoreUrl;
-use datafusion::logical_expr::{Expr, TableProviderFilterPushDown};
+use datafusion::functions::encoding::expr_fn::decode;
+use datafusion::logical_expr::{Expr, TableProviderFilterPushDown, lit, try_cast, when};
+use datafusion::object_store::path::Path;
 use datafusion::physical_plan::ExecutionPlan;
+use datafusion::physical_plan::projection::ProjectionExec;
 use datafusion::scalar::ScalarValue;
 use futures::StreamExt;
 use lakelet_storage::storage::{
     Storage, parse_location_schema_authority, try_register_storage_info_session,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::runtime::Handle;
 
@@ -100,7 +106,12 @@ impl TableProvider for HiveTableProvider {
         let meta_fetch_concurrency = state.config_options().execution.meta_fetch_concurrency;
 
         let mut partition_pruned = false;
-        let scan_file_list: Vec<PartitionedFile> = if self.partitions.is_empty() {
+        let is_partitioned = !self
+            .hive_storage_info
+            .table_schema
+            .table_partition_cols()
+            .is_empty();
+        let scan_file_list: Vec<PartitionedFile> = if !is_partitioned {
             let file_object_metas =
                 list_files_by_directories(state, &object_store, vec![self.table_location.clone()])
                     .await?;
@@ -164,11 +175,12 @@ impl TableProvider for HiveTableProvider {
         let file_group = FileGroup::new(scan_file_list);
 
         let exec = match &self.hive_storage_info.input_format {
-            HiveInputFormat::TextFile => build_csv_exec(
+            HiveInputFormat::TextFile(serde_properties) => build_csv_exec(
                 store_url,
-                self.hive_storage_info.table_schema.clone(),
+                &self.hive_storage_info.table_schema,
                 file_group,
-                &self.hive_storage_info.serde_properties,
+                serde_properties,
+                state,
                 statistics,
                 projection,
                 limit,
@@ -183,11 +195,25 @@ impl TableProvider for HiveTableProvider {
                 projection,
                 limit,
             ),
-            HiveInputFormat::Orc => {
-                return Err(DataFusionError::NotImplemented(
-                    "orc not implemented".to_string(),
-                ));
-            }
+            HiveInputFormat::Orc => build_orc_exec(
+                self.io_handle.clone(),
+                store_url,
+                self.hive_storage_info.table_schema.clone(),
+                file_group,
+                state,
+                filters,
+                statistics,
+                projection,
+                limit,
+            ),
+            HiveInputFormat::Avro => build_avro_exec(
+                store_url,
+                self.hive_storage_info.table_schema.clone(),
+                file_group,
+                statistics,
+                projection,
+                limit,
+            ),
         }?;
 
         Ok(exec)
@@ -201,29 +227,60 @@ impl TableProvider for HiveTableProvider {
     }
 }
 
+// The CSV scan builder mirrors DataFusion scan inputs, so keeping these
+// arguments explicit is clearer than wrapping them only to satisfy clippy.
+#[allow(clippy::too_many_arguments)]
 fn build_csv_exec(
     store_url: ObjectStoreUrl,
-    table_schema: TableSchema,
+    table_schema: &TableSchema,
     file_group: FileGroup,
-    serde_properties: &HashMap<String, String>,
+    serde_properties: &TextFileSerdeProperties,
+    state: &dyn Session,
     statistics: Statistics,
     projection: Option<&Vec<usize>>,
     limit: Option<usize>,
 ) -> Result<Arc<dyn ExecutionPlan>> {
-    let delimiter = resolve_textfile_delimiter(serde_properties);
-    let compression = detect_file_group_compression(&file_group)?;
-    let file_compression = FileCompressionType::from(compression);
+    let options = build_textfile_csv_options(serde_properties, &file_group)?;
+    let file_compression = FileCompressionType::from(options.compression);
 
-    let options = CsvOptions {
-        has_header: Some(false),
-        delimiter,
-        compression,
-        ..Default::default()
+    // Every data column is read as text and converted afterwards, so that the
+    // Hive null format and Hive's lenient parsing (bad values become NULL) can
+    // be applied. The CSV reader supports neither.
+    let file_schema = table_schema.file_schema();
+    let text_table_schema = TableSchema::new(
+        Arc::new(Schema::new(
+            file_schema
+                .fields()
+                .iter()
+                .map(|field| Field::new(field.name(), DataType::Utf8, true))
+                .collect::<Vec<_>>(),
+        )),
+        table_schema.table_partition_cols().clone(),
+    );
+    let text_statistics = Statistics {
+        column_statistics: statistics
+            .column_statistics
+            .into_iter()
+            .enumerate()
+            .map(|(index, column_statistics)| {
+                if index < file_schema.fields().len() {
+                    // min/max are typed with the Hive column type, not text.
+                    ColumnStatistics {
+                        null_count: column_statistics.null_count,
+                        distinct_count: column_statistics.distinct_count,
+                        ..ColumnStatistics::new_unknown()
+                    }
+                } else {
+                    column_statistics
+                }
+            })
+            .collect(),
+        ..statistics
     };
 
-    let source = Arc::new(CsvSource::new(table_schema).with_csv_options(options));
+    let source = Arc::new(CsvSource::new(text_table_schema).with_csv_options(options));
     let mut builder = FileScanConfigBuilder::new(store_url, source).with_file_group(file_group);
-    builder = builder.with_statistics(statistics);
+    builder = builder.with_statistics(text_statistics);
     builder = builder.with_file_compression_type(file_compression);
     if let Some(proj) = projection {
         builder = builder.with_projection_indices(Some(proj.clone()))?;
@@ -231,8 +288,113 @@ fn build_csv_exec(
     if let Some(lim) = limit {
         builder = builder.with_limit(Some(lim));
     }
-    let config = builder.build();
-    Ok(DataSourceExec::from_data_source(config))
+    let scan: Arc<dyn ExecutionPlan> = DataSourceExec::from_data_source(builder.build());
+
+    let null_format = serde_properties.null_format.as_str();
+    let scan_schema = scan.schema();
+    let scan_df_schema = scan_schema.clone().to_dfschema()?;
+    let table_schema = table_schema.table_schema();
+    let projected_indices: Vec<usize> = match projection {
+        Some(projection) => projection.clone(),
+        None => (0..table_schema.fields().len()).collect(),
+    };
+    if projected_indices
+        .iter()
+        .all(|index| *index >= file_schema.fields().len())
+    {
+        return Ok(scan);
+    }
+    let exprs = projected_indices
+        .iter()
+        .zip(scan_schema.fields())
+        .map(|(table_index, scan_field)| {
+            let column = datafusion::logical_expr::col(Column::from_name(scan_field.name()));
+            let expr = if *table_index < file_schema.fields().len() {
+                let target_type = table_schema.field(*table_index).data_type();
+                if target_type == &DataType::Null || target_type.is_nested() {
+                    // VOID has no values; complex text values are not decoded yet.
+                    return Ok((
+                        state.create_physical_expr(
+                            lit(ScalarValue::try_from(target_type)?),
+                            &scan_df_schema,
+                        )?,
+                        scan_field.name().to_string(),
+                    ));
+                }
+                let text_expr = when(
+                    column.clone().eq(lit(null_format)),
+                    lit(ScalarValue::Utf8(None)),
+                )
+                .otherwise(column)?;
+                match target_type {
+                    DataType::Utf8 => text_expr,
+                    DataType::Binary => decode(text_expr, lit("base64")),
+                    _ => try_cast(text_expr, target_type.clone()),
+                }
+            } else {
+                column
+            };
+            Ok((
+                state.create_physical_expr(expr, &scan_df_schema)?,
+                scan_field.name().to_string(),
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Arc::new(ProjectionExec::try_new(exprs, scan)?))
+}
+
+/// Maps LazySimpleSerDe properties onto CSV reader options, rejecting the ones
+/// the CSV reader cannot honor.
+fn build_textfile_csv_options(
+    serde_properties: &TextFileSerdeProperties,
+    file_group: &FileGroup,
+) -> Result<CsvOptions> {
+    if serde_properties.line_delimiter != b'\n' {
+        return Err(DataFusionError::NotImplemented(format!(
+            "Hive TextFile line delimiter {:?} is not supported",
+            serde_properties.line_delimiter as char
+        )));
+    }
+    // The CSV reader only honors escapes inside quoted fields, which Hive
+    // TextFile does not have, so escaped delimiters cannot be read correctly.
+    if serde_properties.escape_delimiter.is_some() {
+        return Err(DataFusionError::NotImplemented(
+            "Hive TextFile tables with escape.delim are not supported".to_string(),
+        ));
+    }
+    if serde_properties.skip_header_line_count > 1 {
+        return Err(DataFusionError::NotImplemented(format!(
+            "Hive TextFile skip.header.line.count={} is not supported",
+            serde_properties.skip_header_line_count
+        )));
+    }
+    // A CSV scan decompresses all of its files with a single codec.
+    let compressions = file_group
+        .files()
+        .iter()
+        .map(|file| detect_file_compression(&file.object_meta.location))
+        .collect::<Result<HashSet<_>>>()?;
+    if compressions.len() > 1 {
+        return Err(DataFusionError::NotImplemented(
+            "mixed compression in hive textfile scan is not supported".to_string(),
+        ));
+    }
+    let compression = compressions
+        .into_iter()
+        .next()
+        .unwrap_or(CompressionTypeVariant::UNCOMPRESSED);
+
+    Ok(CsvOptions {
+        has_header: Some(serde_properties.skip_header_line_count == 1),
+        delimiter: serde_properties.field_delimiter,
+        // LazySimpleSerDe has no quoting. Use NUL as a placeholder quote;
+        // literal NUL bytes still have CSV quoting semantics (GitHub issue #52).
+        quote: b'\0',
+        // Hive fills missing trailing columns with NULL.
+        truncated_rows: Some(true),
+        compression,
+        ..Default::default()
+    })
 }
 
 fn try_fill_table_statistics_by_file_list(
@@ -297,82 +459,29 @@ fn build_partition_values(
         .collect()
 }
 
-fn resolve_textfile_delimiter(serde_properties: &HashMap<String, String>) -> u8 {
-    [
-        "field.delim",
-        "serialization.format",
-        "separatorChar",
-        "serdeConstants.FIELD_DELIM",
-        "columns.delimited.by",
-    ]
-    .iter()
-    .find_map(|key| serde_properties.get(*key))
-    .and_then(|raw| parse_hive_delimiter(raw))
-    .unwrap_or(b'\x01')
-}
-
-fn parse_hive_delimiter(raw: &str) -> Option<u8> {
-    let raw = raw.trim().trim_matches('\'').trim_matches('"');
-    if raw.is_empty() {
-        return None;
+/// Detects the compression codec of a Hive TextFile file from its extension.
+fn detect_file_compression(location: &Path) -> Result<CompressionTypeVariant> {
+    let file_name = location.filename().unwrap_or("");
+    if file_name.ends_with(".gz") || file_name.ends_with(".gzip") {
+        Ok(CompressionTypeVariant::GZIP)
+    } else if file_name.ends_with(".bz2") {
+        Ok(CompressionTypeVariant::BZIP2)
+    } else if file_name.ends_with(".xz") {
+        Ok(CompressionTypeVariant::XZ)
+    } else if file_name.ends_with(".zst") || file_name.ends_with(".zstd") {
+        Ok(CompressionTypeVariant::ZSTD)
+    } else if let Some(codec) = [".snappy", ".deflate", ".lzo", ".lzo_deflate", ".lz4"]
+        .into_iter()
+        .find(|extension| file_name.ends_with(extension))
+    {
+        // Reading these as plain text would silently return garbage.
+        Err(DataFusionError::NotImplemented(format!(
+            "{} compressed Hive TextFile files are not supported: {location}",
+            &codec[1..],
+        )))
+    } else {
+        Ok(CompressionTypeVariant::UNCOMPRESSED)
     }
-
-    if raw.len() == 1 {
-        return raw.as_bytes().first().copied();
-    }
-
-    if let Some(octal) = raw.strip_prefix('\\') {
-        if octal.chars().all(|c| ('0'..='7').contains(&c)) {
-            return u8::from_str_radix(octal, 8).ok();
-        }
-
-        return match octal {
-            "t" => Some(b'\t'),
-            "n" => Some(b'\n'),
-            "r" => Some(b'\r'),
-            _ => None,
-        };
-    }
-
-    if let Some(hex) = raw.strip_prefix("0x") {
-        return u8::from_str_radix(hex, 16).ok();
-    }
-
-    if let Some(hex) = raw.strip_prefix("\\u") {
-        return u8::from_str_radix(hex, 16).ok();
-    }
-
-    raw.parse::<u8>().ok()
-}
-
-fn detect_file_group_compression(file_group: &FileGroup) -> Result<CompressionTypeVariant> {
-    let mut compression_types = HashSet::new();
-    for file in file_group.files() {
-        let file_name = file.object_meta.location.filename().unwrap_or("");
-        let compression = if file_name.ends_with(".gz") || file_name.ends_with(".gzip") {
-            CompressionTypeVariant::GZIP
-        } else if file_name.ends_with(".bz2") {
-            CompressionTypeVariant::BZIP2
-        } else if file_name.ends_with(".xz") {
-            CompressionTypeVariant::XZ
-        } else if file_name.ends_with(".zst") || file_name.ends_with(".zstd") {
-            CompressionTypeVariant::ZSTD
-        } else {
-            CompressionTypeVariant::UNCOMPRESSED
-        };
-        compression_types.insert(compression);
-    }
-
-    if compression_types.len() <= 1 {
-        return Ok(compression_types
-            .into_iter()
-            .next()
-            .unwrap_or(CompressionTypeVariant::UNCOMPRESSED));
-    }
-
-    Err(DataFusionError::NotImplemented(
-        "mixed compression in hive textfile scan is not supported".to_string(),
-    ))
 }
 
 // The parquet scan builder mirrors DataFusion scan inputs, so keeping these
@@ -388,9 +497,18 @@ fn build_parquet_exec(
     projection: Option<&Vec<usize>>,
     limit: Option<usize>,
 ) -> Result<Arc<dyn ExecutionPlan>> {
-    let mut parquet_options = TableParquetOptions::default();
+    let mut parquet_options = TableParquetOptions {
+        global: state.config_options().execution.parquet.clone(),
+        ..Default::default()
+    };
     parquet_options.global.pushdown_filters = true;
     parquet_options.global.reorder_filters = true;
+    // Hive timestamps are microsecond columns. Decoding INT96 straight to
+    // microseconds also avoids the nanosecond range overflow (years outside
+    // 1677-2262) that coercing through nanoseconds would hit.
+    if parquet_options.global.coerce_int96.is_none() {
+        parquet_options.global.coerce_int96 = Some("us".to_string());
+    }
 
     let store = state.runtime_env().object_store(&store_url)?;
 
@@ -411,8 +529,9 @@ fn build_parquet_exec(
         .with_table_parquet_options(parquet_options)
         .with_parquet_file_reader_factory(parquet_file_reader_factory);
 
-    let mut builder =
-        FileScanConfigBuilder::new(store_url, Arc::new(source)).with_file_group(file_group);
+    let mut builder = FileScanConfigBuilder::new(store_url, Arc::new(source))
+        .with_file_group(file_group)
+        .with_expr_adapter(Some(Arc::new(CaseInsensitivePhysicalExprAdapterFactory)));
     builder = builder.with_statistics(statistics);
     if let Some(proj) = projection {
         builder = builder.with_projection_indices(Some(proj.clone()))?;
@@ -422,6 +541,55 @@ fn build_parquet_exec(
     }
     let config = builder.build();
     Ok(DataSourceExec::from_data_source(config))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_orc_exec(
+    io_handle: Handle,
+    store_url: ObjectStoreUrl,
+    table_schema: TableSchema,
+    file_group: FileGroup,
+    state: &dyn Session,
+    filters: &[Expr],
+    statistics: Statistics,
+    projection: Option<&Vec<usize>>,
+    limit: Option<usize>,
+) -> Result<Arc<dyn ExecutionPlan>> {
+    let df_schema = table_schema.table_schema().as_ref().clone().to_dfschema()?;
+    let pruning_filters = filters
+        .iter()
+        .map(|filter| state.create_physical_expr(filter.clone(), &df_schema))
+        .collect::<Result<Vec<_>>>()?;
+    let source =
+        Arc::new(OrcSource::new(table_schema, io_handle).with_pruning_filters(pruning_filters));
+    let mut builder = FileScanConfigBuilder::new(store_url, source)
+        .with_file_group(file_group)
+        .with_statistics(statistics)
+        .with_limit(limit)
+        .with_expr_adapter(Some(Arc::new(CaseInsensitivePhysicalExprAdapterFactory)));
+    if let Some(projection) = projection {
+        builder = builder.with_projection_indices(Some(projection.clone()))?;
+    }
+    Ok(DataSourceExec::from_data_source(builder.build()))
+}
+
+fn build_avro_exec(
+    store_url: ObjectStoreUrl,
+    table_schema: TableSchema,
+    file_group: FileGroup,
+    statistics: Statistics,
+    projection: Option<&Vec<usize>>,
+    limit: Option<usize>,
+) -> Result<Arc<dyn ExecutionPlan>> {
+    let source = Arc::new(AvroSource::new(table_schema));
+    let mut builder = FileScanConfigBuilder::new(store_url, source)
+        .with_file_group(file_group)
+        .with_statistics(statistics)
+        .with_limit(limit);
+    if let Some(projection) = projection {
+        builder = builder.with_projection_indices(Some(projection.clone()))?;
+    }
+    Ok(DataSourceExec::from_data_source(builder.build()))
 }
 
 fn prune_partitions(
@@ -609,10 +777,15 @@ fn build_partition_array(data_type: &DataType, values: &[Option<&str>]) -> Resul
             );
             Ok(Arc::new(arr) as ArrayRef)
         }
-        _ => {
+        DataType::Utf8 => {
             let arr = StringArray::from(normalized_values);
             Ok(Arc::new(arr) as ArrayRef)
         }
+        // e.g. decimal partitions; values that do not parse become NULL.
+        _ => Ok(compute::cast(
+            &StringArray::from(normalized_values),
+            data_type,
+        )?),
     }
 }
 
@@ -754,17 +927,23 @@ fn parse_partition_value(s: &str, data_type: &DataType) -> Result<ScalarValue> {
         DataType::Timestamp(TimeUnit::Microsecond, tz) => parse_timestamp_micros(s)
             .map(|v| ScalarValue::TimestampMicrosecond(Some(v), tz.clone()))
             .ok_or_else(|| DataFusionError::Internal(format!("failed to parse timestamp: {}", s))),
-        _ => Ok(ScalarValue::Utf8(Some(s.to_string()))),
+        // e.g. decimal partitions
+        _ => ScalarValue::Utf8(Some(s.to_string())).cast_to(data_type),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::table_format::hive::hive_type::hive_type_to_arrow_type;
     use datafusion::arrow::datatypes::Field;
+    use datafusion::assert_batches_eq;
     use datafusion::logical_expr::expr::InList;
     use datafusion::logical_expr::{Expr, Operator, binary_expr, col, lit};
+    use datafusion::object_store::ObjectStoreExt;
+    use datafusion::object_store::memory::InMemory;
     use datafusion::prelude::SessionContext;
+    use url::Url;
 
     #[test]
     fn test_try_fill_table_statistics_estimates_rows_when_num_rows_missing() {
@@ -1060,6 +1239,37 @@ mod tests {
         assert_eq!(surviving, Vec::<usize>::new());
     }
 
+    #[test]
+    fn test_decimal_partition_values() {
+        let data_type = DataType::Decimal128(10, 2);
+        assert_eq!(
+            parse_partition_value("12.5", &data_type).unwrap(),
+            ScalarValue::Decimal128(Some(1250), 10, 2)
+        );
+        assert_eq!(
+            parse_partition_value("__HIVE_DEFAULT_PARTITION__", &data_type).unwrap(),
+            ScalarValue::Decimal128(None, 10, 2)
+        );
+
+        let state = SessionContext::new();
+        let partition_fields = vec![Arc::new(Field::new("price", data_type, true))];
+        let partitions = ["1.00", "12.50", "__HIVE_DEFAULT_PARTITION__"]
+            .into_iter()
+            .map(|value| HivePartition {
+                location: format!("s3://warehouse/t/price={value}"),
+                partition_values: vec![value.to_string()],
+            })
+            .collect::<Vec<_>>();
+        let filter = binary_expr(
+            col("price"),
+            Operator::Gt,
+            lit(ScalarValue::Decimal128(Some(500), 10, 2)),
+        );
+        let surviving =
+            prune_partitions(&partitions, &partition_fields, &[filter], &state.state()).unwrap();
+        assert_eq!(surviving, vec![1]);
+    }
+
     fn partition_fields() -> Vec<Arc<Field>> {
         vec![
             Arc::new(Field::new("dt", DataType::Utf8, true)),
@@ -1112,5 +1322,1096 @@ mod tests {
                 ],
             },
         ]
+    }
+
+    #[test]
+    fn test_detect_file_compression() {
+        let detect = |name: &str| detect_file_compression(&Path::from(name));
+        assert_eq!(detect("a").unwrap(), CompressionTypeVariant::UNCOMPRESSED);
+        assert_eq!(
+            detect("b.txt").unwrap(),
+            CompressionTypeVariant::UNCOMPRESSED
+        );
+        assert_eq!(detect("a.gz").unwrap(), CompressionTypeVariant::GZIP);
+        assert_eq!(detect("a.bz2").unwrap(), CompressionTypeVariant::BZIP2);
+        let err = detect("000000_0.snappy").unwrap_err();
+        assert!(err.to_string().contains("snappy"), "{err}");
+        assert!(detect("000000_0.lzo").is_err());
+        assert!(detect("000000_0.deflate").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_scan_textfile_default_serde() -> Result<()> {
+        // Hive's default TextFile layout: \x01 delimiter declared through
+        // serialization.format=1 and \N for NULL.
+        let batches = scan_hive_table(
+            text_file(&[("serialization.format", "1")]),
+            text_fields(),
+            &[(
+                "hive/table/000000_0",
+                // Row 4 has values that do not parse; Hive reads them as NULL.
+                "1\x01alice\x0110.5\n2\x01\\N\x01\\N\n3\x01\x01\nx\x01bob\x01abc\n",
+            )],
+            "SELECT id, name, amount FROM t ORDER BY id, name",
+        )
+        .await?;
+        assert_batches_eq!(
+            [
+                "+----+-------+--------+",
+                "| id | name  | amount |",
+                "+----+-------+--------+",
+                "| 1  | alice | 10.5   |",
+                "| 2  |       |        |",
+                "| 3  |       |        |",
+                "|    | bob   |        |",
+                "+----+-------+--------+",
+            ],
+            &batches
+        );
+        let batches = scan_hive_table(
+            text_file(&[("serialization.format", "1")]),
+            text_fields(),
+            &[("hive/table/000000_0", "2\x01\\N\x01\\N\n")],
+            "SELECT count(name), count(amount) FROM t",
+        )
+        .await?;
+        assert_batches_eq!(
+            [
+                "+---------------+-----------------+",
+                "| count(t.name) | count(t.amount) |",
+                "+---------------+-----------------+",
+                "| 0             | 0               |",
+                "+---------------+-----------------+",
+            ],
+            &batches
+        );
+
+        // LazySimpleSerDe writes BINARY as Base64 and VOID as the NULL marker.
+        for null_format in ["\\N", "NULL", "NA=="] {
+            let fields =
+                hive_fields(&[("id", "int"), ("bytes_col", "binary"), ("void_col", "void")]);
+            let data = format!(
+                "1\x01AP9B\x01{null_format}\n2\x01QQA=\x01{null_format}\n\
+                 3\x01/w==\x01{null_format}\n4\x01{null_format}\x01{null_format}\n\
+                 5\x01\x01{null_format}\n"
+            );
+            let files = [("hive/table/000000_0", data.as_str())];
+            let serde = text_file(&[("serialization.null.format", null_format)]);
+            let batches = scan_hive_table(
+                serde.clone(),
+                fields.clone(),
+                &files,
+                "SELECT id, bytes_col, void_col FROM t WHERE void_col IS NULL ORDER BY id",
+            )
+            .await?;
+            assert_eq!(batches.len(), 1);
+            let batch = &batches[0];
+            assert_eq!(batch.num_rows(), 5);
+            assert_eq!(batch.schema().field(1).data_type(), &DataType::Binary);
+            assert_eq!(batch.schema().field(2).data_type(), &DataType::Null);
+            assert_eq!(batch.column(2).logical_null_count(), 5);
+            let bytes = batch
+                .column(1)
+                .as_any()
+                .downcast_ref::<datafusion::arrow::array::BinaryArray>()
+                .unwrap();
+            assert_eq!(
+                bytes.iter().collect::<Vec<_>>(),
+                vec![
+                    Some(b"\0\xffA".as_slice()),
+                    Some(b"A\0".as_slice()),
+                    Some(b"\xff".as_slice()),
+                    None,
+                    None,
+                ],
+                "NULL marker: {null_format}"
+            );
+            let batches = scan_hive_table(
+                serde,
+                fields,
+                &files,
+                "SELECT count(bytes_col) AS bytes_count, count(void_col) AS void_count FROM t",
+            )
+            .await?;
+            assert_batches_eq!(
+                [
+                    "+-------------+------------+",
+                    "| bytes_count | void_count |",
+                    "+-------------+------------+",
+                    "| 3           | 0          |",
+                    "+-------------+------------+",
+                ],
+                &batches
+            );
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_textfile_reads_complex_types_as_null() -> Result<()> {
+        let fields = hive_fields(&[
+            ("id", "int"),
+            ("tags", "array<string>"),
+            ("props", "map<string,int>"),
+            ("s", "struct<a:int>"),
+            ("u", "uniontype<int,string>"),
+        ]);
+        let files = [(
+            "hive/table/000000_0",
+            "1\x01a\x02b\x01k\x031\x015\x01text\n",
+        )];
+        let batches = scan_hive_table(
+            text_file(&[]),
+            fields.clone(),
+            &files,
+            "SELECT id, tags, props, s FROM t",
+        )
+        .await?;
+        assert_eq!(
+            batches[0]
+                .schema()
+                .fields()
+                .iter()
+                .map(|f| f.data_type().clone())
+                .collect::<Vec<_>>(),
+            fields[..4]
+                .iter()
+                .map(|f| f.data_type().clone())
+                .collect::<Vec<_>>()
+        );
+        assert_batches_eq!(
+            [
+                "+----+------+-------+---+",
+                "| id | tags | props | s |",
+                "+----+------+-------+---+",
+                "| 1  |      |       |   |",
+                "+----+------+-------+---+",
+            ],
+            &batches
+        );
+
+        let description =
+            scan_hive_table(text_file(&[]), fields.clone(), &files, "DESCRIBE t").await?;
+        let described_types = description[0]
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert_eq!(described_types.value(1), "List(Utf8, field: 'element')");
+        assert_eq!(
+            described_types.value(2),
+            "Map(\"key_value\": non-null Struct(\"key\": non-null Utf8, \"value\": Int32), unsorted)"
+        );
+        assert_eq!(described_types.value(3), "Struct(\"a\": Int32)");
+        assert_eq!(
+            described_types.value(4),
+            "Union(Sparse, 0: (\"_union_0\": Int32), 1: (\"_union_1\": Utf8))"
+        );
+
+        let union =
+            scan_hive_table(text_file(&[]), fields.clone(), &files, "SELECT u FROM t").await?;
+        assert_eq!(
+            union[0].schema().field(0).data_type(),
+            fields[4].data_type()
+        );
+        // Union arrays have no top-level validity bitmap.
+        assert!(union[0].column(0).logical_nulls().unwrap().is_null(0));
+
+        let batches = scan_hive_table(
+            text_file(&[]),
+            fields,
+            &files,
+            "SELECT id FROM t WHERE tags IS NULL AND s IS NULL AND u IS NULL",
+        )
+        .await?;
+        assert_batches_eq!(["+----+", "| id |", "+----+", "| 1  |", "+----+"], &batches);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_textfile_custom_serde_properties() -> Result<()> {
+        // Tab delimiter, custom null format, a header line, no quoting and a
+        // row with missing trailing columns.
+        let batches = scan_hive_table(
+            text_file(&[
+                ("field.delim", "\t"),
+                ("serialization.null.format", "NULL"),
+                ("skip.header.line.count", "1"),
+            ]),
+            text_fields(),
+            &[(
+                "hive/table/000000_0",
+                "id\tname\tamount\n1\t\"quoted\tNULL\n2\tNULL\t2.5\n3\n",
+            )],
+            "SELECT id, name, amount FROM t ORDER BY id",
+        )
+        .await?;
+        assert_batches_eq!(
+            [
+                "+----+---------+--------+",
+                "| id | name    | amount |",
+                "+----+---------+--------+",
+                "| 1  | \"quoted |        |",
+                "| 2  |         | 2.5    |",
+                "| 3  |         |        |",
+                "+----+---------+--------+",
+            ],
+            &batches
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_textfile_rejects_unsupported_serde_properties() {
+        for (key, value) in [
+            ("escape.delim", "\\"),
+            ("skip.header.line.count", "2"),
+            ("line.delim", "\r"),
+        ] {
+            let err = scan_hive_table(
+                text_file(&[(key, value)]),
+                text_fields(),
+                &[("hive/table/000000_0", "1\x01a\x011.0\n")],
+                "SELECT * FROM t",
+            )
+            .await
+            .unwrap_err();
+            assert!(err.to_string().contains("not supported"), "{key}: {err}");
+        }
+
+        let err = scan_hive_table(
+            text_file(&[]),
+            text_fields(),
+            &[
+                ("hive/table/000000_0.gz", "x"),
+                ("hive/table/000001_0.bz2", "x"),
+            ],
+            "SELECT * FROM t",
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("mixed compression"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn test_scan_partitioned_textfile() -> Result<()> {
+        let partition = |dt: &str| HivePartition {
+            location: format!("s3://warehouse/hive/table/dt={dt}"),
+            partition_values: vec![dt.to_string()],
+        };
+        let files = [
+            (
+                "hive/table/dt=2024-01-01/000000_0",
+                b"1\x01a\x011.5\n".to_vec(),
+            ),
+            (
+                "hive/table/dt=2024-01-02/000000_0",
+                b"2\x01b\x01\\N\n".to_vec(),
+            ),
+        ];
+        let scan = |sql: &'static str| {
+            scan_hive_table_bytes(
+                HiveInputFormat::TextFile(Default::default()),
+                text_fields(),
+                vec![Field::new("dt", DataType::Date32, true)],
+                vec![partition("2024-01-01"), partition("2024-01-02")],
+                &files,
+                sql,
+            )
+        };
+
+        let batches = scan("SELECT dt, amount, id FROM t ORDER BY id").await?;
+        assert_batches_eq!(
+            [
+                "+------------+--------+----+",
+                "| dt         | amount | id |",
+                "+------------+--------+----+",
+                "| 2024-01-01 | 1.5    | 1  |",
+                "| 2024-01-02 |        | 2  |",
+                "+------------+--------+----+",
+            ],
+            &batches
+        );
+        let batches =
+            scan("SELECT dt, count(*) AS c FROM t WHERE dt = DATE '2024-01-02' GROUP BY dt")
+                .await?;
+        assert_batches_eq!(
+            [
+                "+------------+---+",
+                "| dt         | c |",
+                "+------------+---+",
+                "| 2024-01-02 | 1 |",
+                "+------------+---+",
+            ],
+            &batches
+        );
+        let batches = scan("SELECT count(*) AS c FROM t").await?;
+        assert_batches_eq!(["+---+", "| c |", "+---+", "| 2 |", "+---+"], &batches);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_columnar_matches_columns_case_insensitively() -> Result<()> {
+        // Hive and Glue lowercase column names, while Spark keeps the original
+        // case in the columnar files it writes.
+        let batch = RecordBatch::try_from_iter([
+            ("userId", Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef),
+            (
+                "EventName",
+                Arc::new(StringArray::from(vec!["open", "close"])) as ArrayRef,
+            ),
+        ])?;
+        for (format, bytes) in [
+            (HiveInputFormat::Parquet, write_parquet(&batch)),
+            (HiveInputFormat::Orc, write_orc(&batch)),
+        ] {
+            let batches = scan_hive_table_bytes(
+                format,
+                vec![
+                    Field::new("userid", DataType::Int64, true),
+                    Field::new("eventname", DataType::Utf8, true),
+                ],
+                vec![],
+                vec![],
+                &[("hive/table/part-0", bytes)],
+                "SELECT userid, eventname FROM t WHERE userid > 1",
+            )
+            .await?;
+            assert_batches_eq!(
+                [
+                    "+--------+-----------+",
+                    "| userid | eventname |",
+                    "+--------+-----------+",
+                    "| 2      | close     |",
+                    "+--------+-----------+",
+                ],
+                &batches
+            );
+        }
+        Ok(())
+    }
+
+    fn hive_fields(columns: &[(&str, &str)]) -> Vec<Field> {
+        columns
+            .iter()
+            .map(|(name, hive_type)| {
+                Field::new(*name, hive_type_to_arrow_type(hive_type).unwrap(), true)
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn test_scan_parquet_nested_types() -> Result<()> {
+        use datafusion::arrow::array::{
+            Int32Builder, ListBuilder, MapBuilder, StringBuilder, StructArray,
+        };
+        use datafusion::arrow::buffer::NullBuffer;
+
+        // arrow-rs names the children `item`, `entries`, `keys` and `values`,
+        // unlike the table types, and the struct field keeps Spark's casing.
+        let mut arr = ListBuilder::new(Int32Builder::new());
+        arr.append_value([Some(1), Some(2)]);
+        arr.append_null();
+        let mut m = MapBuilder::new(None, StringBuilder::new(), Int32Builder::new());
+        m.keys().append_value("k");
+        m.values().append_value(10);
+        m.append(true).unwrap();
+        m.append(false).unwrap();
+        let s = StructArray::new(
+            vec![Arc::new(Field::new("userId", DataType::Int32, true))].into(),
+            vec![Arc::new(Int32Array::from(vec![7, 8]))],
+            Some(NullBuffer::from(vec![true, false])),
+        );
+        let item = StructArray::new(
+            vec![Arc::new(Field::new("Name", DataType::Utf8, true))].into(),
+            vec![Arc::new(StringArray::from(vec!["x", "y"]))],
+            None,
+        );
+        let items = datafusion::arrow::array::ListArray::new(
+            Arc::new(Field::new("item", item.data_type().clone(), true)),
+            datafusion::arrow::buffer::OffsetBuffer::from_lengths([2, 0]),
+            Arc::new(item),
+            None,
+        );
+        let batch = RecordBatch::try_from_iter([
+            ("id", Arc::new(Int32Array::from(vec![1, 2])) as ArrayRef),
+            ("arr", Arc::new(arr.finish()) as ArrayRef),
+            ("m", Arc::new(m.finish()) as ArrayRef),
+            ("s", Arc::new(s) as ArrayRef),
+            ("items", Arc::new(items) as ArrayRef),
+        ])?;
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Parquet,
+            hive_fields(&[
+                ("id", "int"),
+                ("arr", "array<int>"),
+                ("m", "map<string,int>"),
+                // `extra` is not in the file.
+                ("s", "struct<userid:int,extra:string>"),
+                ("items", "array<struct<name:string>>"),
+            ]),
+            vec![],
+            vec![],
+            &[("hive/table/part-0.parquet", write_parquet(&batch))],
+            "SELECT id, arr, arr[2] AS second, m['k'] AS k, s, s['userid'] AS userid, \
+             items[1]['name'] AS first_name FROM t ORDER BY id",
+        )
+        .await?;
+        assert_batches_eq!(
+            [
+                "+----+--------+--------+----+----------------------+--------+------------+",
+                "| id | arr    | second | k  | s                    | userid | first_name |",
+                "+----+--------+--------+----+----------------------+--------+------------+",
+                "| 1  | [1, 2] | 2      | 10 | {userid: 7, extra: } | 7      | x          |",
+                "| 2  |        |        |    |                      |        |            |",
+                "+----+--------+--------+----+----------------------+--------+------------+",
+            ],
+            &batches
+        );
+
+        // Filters on nested columns are pushed into the parquet scan, which
+        // must still evaluate them after the columns are converted.
+        for (struct_type, filter, expected) in [
+            (
+                "struct<userid:int,extra:string>",
+                "s['userid'] = 7",
+                vec![1],
+            ),
+            ("struct<userid:bigint>", "s['userid'] = 7", vec![1]),
+            (
+                "struct<userid:int,extra:string>",
+                "s['extra'] IS NULL",
+                vec![1, 2],
+            ),
+            ("struct<userid:int>", "s IS NOT NULL", vec![1]),
+            ("struct<userid:int>", "array_has(arr, 2)", vec![1]),
+        ] {
+            let batches = scan_hive_table_bytes(
+                HiveInputFormat::Parquet,
+                hive_fields(&[("id", "int"), ("arr", "array<int>"), ("s", struct_type)]),
+                vec![],
+                vec![],
+                &[("hive/table/part-0.parquet", write_parquet(&batch))],
+                &format!("SELECT id FROM t WHERE {filter} ORDER BY id"),
+            )
+            .await?;
+            let ids: Vec<i32> = batches
+                .iter()
+                .flat_map(|batch| {
+                    batch
+                        .column(0)
+                        .as_any()
+                        .downcast_ref::<Int32Array>()
+                        .unwrap()
+                        .values()
+                        .to_vec()
+                })
+                .collect();
+            assert_eq!(ids, expected, "{struct_type} WHERE {filter}");
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_parquet_legacy_two_level_list() -> Result<()> {
+        use datafusion::parquet::data_type::Int32Type;
+        use datafusion::parquet::file::properties::WriterProperties;
+        use datafusion::parquet::file::writer::SerializedFileWriter;
+        use datafusion::parquet::schema::parser::parse_message_type;
+
+        // Hive and Spark's legacy format write lists without the middle
+        // repeated group.
+        let schema = Arc::new(
+            parse_message_type(
+                "message hive_schema {
+                    required int32 id;
+                    optional group arr (LIST) { repeated int32 array; }
+                }",
+            )
+            .unwrap(),
+        );
+        let mut buffer = Vec::new();
+        let mut writer = SerializedFileWriter::new(
+            &mut buffer,
+            schema,
+            Arc::new(WriterProperties::builder().build()),
+        )?;
+        let mut row_group = writer.next_row_group()?;
+        let mut column = row_group.next_column()?.unwrap();
+        column
+            .typed::<Int32Type>()
+            .write_batch(&[1, 2, 3], None, None)?;
+        column.close()?;
+        // Rows: [1, 2], NULL, [].
+        let mut column = row_group.next_column()?.unwrap();
+        column.typed::<Int32Type>().write_batch(
+            &[1, 2],
+            Some(&[2, 2, 0, 1]),
+            Some(&[0, 1, 0, 0]),
+        )?;
+        column.close()?;
+        row_group.close()?;
+        writer.close()?;
+
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Parquet,
+            hive_fields(&[("id", "int"), ("arr", "array<bigint>")]),
+            vec![],
+            vec![],
+            &[("hive/table/000000_0", buffer)],
+            "SELECT id, arr, cardinality(arr) AS n FROM t ORDER BY id",
+        )
+        .await?;
+        assert_batches_eq!(
+            [
+                "+----+--------+---+",
+                "| id | arr    | n |",
+                "+----+--------+---+",
+                "| 1  | [1, 2] | 2 |",
+                "| 2  |        |   |",
+                "| 3  | []     | 0 |",
+                "+----+--------+---+",
+            ],
+            &batches
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_parquet_int96_timestamps() -> Result<()> {
+        use datafusion::parquet::data_type::{Int32Type, Int96, Int96Type};
+        use datafusion::parquet::file::properties::WriterProperties;
+        use datafusion::parquet::file::writer::SerializedFileWriter;
+        use datafusion::parquet::schema::parser::parse_message_type;
+
+        // Hive, Impala and older Spark write timestamps as INT96: nanoseconds
+        // of the day followed by the Julian day number.
+        let schema = Arc::new(
+            parse_message_type("message hive { required int32 id; required int96 ts; }").unwrap(),
+        );
+        let mut buffer = Vec::new();
+        let mut writer = SerializedFileWriter::new(
+            &mut buffer,
+            schema,
+            Arc::new(WriterProperties::builder().build()),
+        )?;
+        let mut row_group = writer.next_row_group()?;
+        let mut column = row_group.next_column()?.unwrap();
+        column
+            .typed::<Int32Type>()
+            .write_batch(&[1, 2], None, None)?;
+        column.close()?;
+        let mut column = row_group.next_column()?.unwrap();
+        let nanos_of_day: u64 = (12 * 3600 + 34 * 60 + 56) * 1_000_000_000 + 123_456_000;
+        column.typed::<Int96Type>().write_batch(
+            &[
+                // 1970-01-02 12:34:56.123456
+                Int96::from(vec![
+                    nanos_of_day as u32,
+                    (nanos_of_day >> 32) as u32,
+                    2_440_589,
+                ]),
+                // 2500-01-01, outside the nanosecond timestamp range
+                Int96::from(vec![0, 0, 2_634_167]),
+            ],
+            None,
+            None,
+        )?;
+        column.close()?;
+        row_group.close()?;
+        writer.close()?;
+
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Parquet,
+            vec![
+                Field::new("id", DataType::Int32, true),
+                Field::new("ts", DataType::Timestamp(TimeUnit::Microsecond, None), true),
+            ],
+            vec![],
+            vec![],
+            &[("hive/table/part-0.parquet", buffer)],
+            "SELECT id, ts FROM t ORDER BY id",
+        )
+        .await?;
+        assert_batches_eq!(
+            [
+                "+----+----------------------------+",
+                "| id | ts                         |",
+                "+----+----------------------------+",
+                "| 1  | 1970-01-02T12:34:56.123456 |",
+                "| 2  | 2500-01-01T00:00:00        |",
+                "+----+----------------------------+",
+            ],
+            &batches
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_parquet_prunes_row_groups_with_filters() -> Result<()> {
+        // Filters reported as inexact are pushed into the parquet scan by
+        // DataFusion's physical filter pushdown, which prunes row groups.
+        let batch = RecordBatch::try_from_iter([(
+            "id",
+            Arc::new(Int64Array::from((0..100).collect::<Vec<_>>())) as ArrayRef,
+        )])?;
+        let mut buffer = Vec::new();
+        let properties = datafusion::parquet::file::properties::WriterProperties::builder()
+            .set_max_row_group_row_count(Some(10))
+            .build();
+        let mut writer = datafusion::parquet::arrow::ArrowWriter::try_new(
+            &mut buffer,
+            batch.schema(),
+            Some(properties),
+        )?;
+        writer.write(&batch)?;
+        writer.close()?;
+
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Parquet,
+            vec![Field::new("id", DataType::Int64, true)],
+            vec![],
+            vec![],
+            &[("hive/table/part-0.parquet", buffer)],
+            "EXPLAIN ANALYZE SELECT id FROM t WHERE id = 42",
+        )
+        .await?;
+        let plan = datafusion::arrow::util::pretty::pretty_format_batches(&batches)?.to_string();
+        assert!(
+            plan.contains("row_groups_pruned_statistics=10 total \u{2192} 1 matched"),
+            "{plan}"
+        );
+        Ok(())
+    }
+
+    fn write_parquet(batch: &RecordBatch) -> Vec<u8> {
+        let mut buffer = Vec::new();
+        let mut writer =
+            datafusion::parquet::arrow::ArrowWriter::try_new(&mut buffer, batch.schema(), None)
+                .unwrap();
+        writer.write(batch).unwrap();
+        writer.close().unwrap();
+        buffer
+    }
+
+    fn text_file(serde_properties: &[(&str, &str)]) -> HiveInputFormat {
+        HiveInputFormat::TextFile(
+            TextFileSerdeProperties::try_new(
+                &serde_properties
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            )
+            .unwrap(),
+        )
+    }
+
+    fn text_fields() -> Vec<Field> {
+        vec![
+            Field::new("id", DataType::Int32, true),
+            Field::new("name", DataType::Utf8, true),
+            Field::new("amount", DataType::Float64, true),
+        ]
+    }
+
+    /// Scans an unpartitioned Hive table at `s3://warehouse/hive/table` backed
+    /// by an in-memory object store and runs `sql` against it as table `t`.
+    async fn scan_hive_table(
+        input_format: HiveInputFormat,
+        fields: Vec<Field>,
+        files: &[(&str, &str)],
+        sql: &str,
+    ) -> Result<Vec<RecordBatch>> {
+        scan_hive_table_bytes(
+            input_format,
+            fields,
+            vec![],
+            vec![],
+            &files
+                .iter()
+                .map(|(path, data)| (*path, data.as_bytes().to_vec()))
+                .collect::<Vec<_>>(),
+            sql,
+        )
+        .await
+    }
+
+    fn write_orc(batch: &RecordBatch) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut writer = orc_rust::ArrowWriterBuilder::new(&mut bytes, batch.schema())
+            .with_batch_size(2)
+            .with_stripe_byte_size(1)
+            .try_build()
+            .unwrap();
+        writer.write(batch).unwrap();
+        writer.close().unwrap();
+        bytes
+    }
+
+    #[tokio::test]
+    async fn test_scan_orc_projection_and_schema_evolution() -> Result<()> {
+        let batch = RecordBatch::try_from_iter([
+            (
+                "unused",
+                Arc::new(StringArray::from(vec!["x", "y", "z"])) as ArrayRef,
+            ),
+            (
+                "UserId",
+                Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef,
+            ),
+            (
+                "Name",
+                Arc::new(StringArray::from(vec![Some("a"), None, Some("c")])) as ArrayRef,
+            ),
+        ])?;
+        let files = [("hive/table/000000_0", write_orc(&batch))];
+        let fields = hive_fields(&[
+            ("name", "string"),
+            ("userid", "bigint"),
+            ("missing", "string"),
+        ]);
+        let scan = |sql: &'static str| {
+            scan_hive_table_bytes(
+                HiveInputFormat::Orc,
+                fields.clone(),
+                vec![],
+                vec![],
+                &files,
+                sql,
+            )
+        };
+        let batches =
+            scan("SELECT name, userid + 10 AS n, missing FROM t WHERE userid > 1 ORDER BY userid")
+                .await?;
+        assert_batches_eq!(
+            [
+                "+------+----+---------+",
+                "| name | n  | missing |",
+                "+------+----+---------+",
+                "|      | 12 |         |",
+                "| c    | 13 |         |",
+                "+------+----+---------+",
+            ],
+            &batches
+        );
+        let batches = scan("SELECT count(*) AS c FROM t").await?;
+        assert_batches_eq!(["+---+", "| c |", "+---+", "| 3 |", "+---+"], &batches);
+        let batches = scan("SELECT missing FROM t LIMIT 2").await?;
+        assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 2);
+        assert!(
+            batches
+                .iter()
+                .all(|b| b.column(0).null_count() == b.num_rows())
+        );
+        let batches = scan("SELECT count(*) AS c FROM t WHERE name IS NULL").await?;
+        assert_batches_eq!(["+---+", "| c |", "+---+", "| 1 |", "+---+"], &batches);
+        let reader =
+            orc_rust::ArrowReaderBuilder::try_new(bytes::Bytes::from(files[0].1.clone())).unwrap();
+        assert!(reader.file_metadata().stripe_metadatas().len() > 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_orc_predicates_keep_complete_sql_filtering() -> Result<()> {
+        let no_index = crate::data_file_format::orc::no_index_predicate_file();
+        let fields = hive_fields(&[
+            ("id", "bigint"),
+            ("text", "string"),
+            ("flag", "boolean"),
+            ("payload", "string"),
+            ("nullable", "boolean"),
+            ("missing", "string"),
+        ]);
+        let files = [("hive/table/predicates.orc", no_index.clone())];
+        for (filter, expected) in [
+            ("id = 500", 1),
+            ("500 = id", 1),
+            ("id IN (500, NULL)", 1),
+            ("text = '目标'", 1),
+            ("text != '目标'", 2999),
+            ("flag = true", 1000),
+            ("NOT flag", 2000),
+            ("flag IS NULL", 0),
+            ("flag IS NOT NULL", 3000),
+            ("nullable IS NULL", 1000),
+            ("nullable IS NOT NULL", 2000),
+            ("nullable = true", 1000),
+            ("id IS NULL", 0),
+            ("id IS NOT NULL", 3000),
+            ("missing IS NULL", 3000),
+            ("missing IS NOT NULL", 0),
+            ("id = 500 AND payload = 'row-1-500'", 1),
+            ("id = 500 AND length(payload) > 0", 1),
+            ("id = 500 OR length(payload) > 0", 3000),
+            ("NOT (id = 500 AND length(payload) > 0)", 2999),
+            ("id = 500 OR missing IS NULL", 3000),
+            ("CAST(id AS VARCHAR) = '500'", 1),
+        ] {
+            let batches = scan_hive_table_bytes(
+                HiveInputFormat::Orc,
+                fields.clone(),
+                vec![],
+                vec![],
+                &files,
+                &format!("SELECT count(*) AS c FROM t WHERE {filter}"),
+            )
+            .await?;
+            let count: i64 = batches
+                .iter()
+                .map(|batch| {
+                    batch
+                        .column(0)
+                        .as_any()
+                        .downcast_ref::<Int64Array>()
+                        .unwrap()
+                        .value(0)
+                })
+                .sum();
+            assert_eq!(count, expected, "{filter}");
+        }
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Orc,
+            fields.clone(),
+            vec![],
+            vec![],
+            &files,
+            "SELECT payload FROM t WHERE id = 500 LIMIT 10",
+        )
+        .await?;
+        assert_batches_eq!(
+            [
+                "+-----------+",
+                "| payload   |",
+                "+-----------+",
+                "| row-1-500 |",
+                "+-----------+",
+            ],
+            &batches
+        );
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Orc,
+            fields.clone(),
+            vec![],
+            vec![],
+            &files,
+            "SELECT missing FROM t WHERE id = 500 LIMIT 2",
+        )
+        .await?;
+        assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 1);
+        assert!(
+            batches
+                .iter()
+                .all(|batch| batch.column(0).null_count() == batch.num_rows())
+        );
+        // Verify complete filtering across multiple decoded batches.
+        for (filter, expected) in [("flag = true", 1000), ("id = 500", 1)] {
+            let ctx = SessionContext::new_with_config(
+                datafusion::execution::context::SessionConfig::new().with_batch_size(128),
+            );
+            let batches = scan_hive_table_bytes_with_context(
+                ctx,
+                HiveInputFormat::Orc,
+                fields.clone(),
+                vec![],
+                vec![],
+                &files,
+                &format!("SELECT count(*) AS c FROM t WHERE {filter}"),
+            )
+            .await?;
+            assert_eq!(
+                batches[0]
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .value(0),
+                expected
+            );
+        }
+
+        let files = [
+            ("hive/table/dt=a/part.orc", no_index.clone()),
+            ("hive/table/dt=b/part.orc", no_index),
+        ];
+        let partitions = ["a", "b"]
+            .into_iter()
+            .map(|dt| HivePartition {
+                location: format!("s3://warehouse/hive/table/dt={dt}"),
+                partition_values: vec![dt.into()],
+            })
+            .collect::<Vec<_>>();
+        for (filter, expected) in [("dt = 'a' AND id = 500", 1), ("dt = 'a' OR id = 500", 3001)] {
+            let batches = scan_hive_table_bytes(
+                HiveInputFormat::Orc,
+                fields.clone(),
+                vec![Field::new("dt", DataType::Utf8, true)],
+                partitions.clone(),
+                &files,
+                &format!("SELECT count(*) AS c FROM t WHERE {filter}"),
+            )
+            .await?;
+            assert_eq!(
+                batches[0]
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .value(0),
+                expected
+            );
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_orc_partitions_and_empty_tables() -> Result<()> {
+        let batch = RecordBatch::try_from_iter([(
+            "id",
+            Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef,
+        )])?;
+        let partitions = ["a", "__HIVE_DEFAULT_PARTITION__"]
+            .into_iter()
+            .map(|dt| HivePartition {
+                location: format!("s3://warehouse/hive/table/dt={dt}"),
+                partition_values: vec![dt.to_string()],
+            })
+            .collect::<Vec<_>>();
+        let files = [
+            ("hive/table/dt=a/000000_0", write_orc(&batch)),
+            (
+                "hive/table/dt=__HIVE_DEFAULT_PARTITION__/000000_0",
+                write_orc(&batch),
+            ),
+        ];
+        let scan = |sql: &'static str| {
+            scan_hive_table_bytes(
+                HiveInputFormat::Orc,
+                hive_fields(&[("id", "int")]),
+                hive_fields(&[("dt", "string")]),
+                partitions.clone(),
+                &files,
+                sql,
+            )
+        };
+        let batches =
+            scan("SELECT dt, count(*) AS c FROM t GROUP BY dt ORDER BY dt NULLS LAST").await?;
+        assert_batches_eq!(
+            [
+                "+----+---+",
+                "| dt | c |",
+                "+----+---+",
+                "| a  | 3 |",
+                "|    | 3 |",
+                "+----+---+"
+            ],
+            &batches
+        );
+        let batches =
+            scan("SELECT dt, id FROM t WHERE dt IS NULL AND id > 1 ORDER BY id LIMIT 1").await?;
+        assert_batches_eq!(
+            [
+                "+----+----+",
+                "| dt | id |",
+                "+----+----+",
+                "|    | 2  |",
+                "+----+----+"
+            ],
+            &batches
+        );
+        // A corrupt file in the excluded partition must never be opened.
+        let corrupt_files = [
+            (files[0].0, files[0].1.clone()),
+            (files[1].0, b"not an ORC file".to_vec()),
+        ];
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Orc,
+            hive_fields(&[("id", "int")]),
+            hive_fields(&[("dt", "string")]),
+            partitions,
+            &corrupt_files,
+            "SELECT dt FROM t WHERE dt = 'a'",
+        )
+        .await?;
+        assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 3);
+        let batches = scan_hive_table_bytes(
+            HiveInputFormat::Orc,
+            hive_fields(&[("id", "int")]),
+            vec![],
+            vec![],
+            &[],
+            "SELECT count(*) AS c FROM t",
+        )
+        .await?;
+        assert_batches_eq!(["+---+", "| c |", "+---+", "| 0 |", "+---+"], &batches);
+        assert!(
+            scan_hive_table_bytes(
+                HiveInputFormat::Orc,
+                hive_fields(&[("id", "int")]),
+                vec![],
+                vec![],
+                &[("hive/table/corrupt.orc", b"not an ORC file".to_vec())],
+                "SELECT * FROM t"
+            )
+            .await
+            .is_err()
+        );
+        Ok(())
+    }
+
+    async fn scan_hive_table_bytes(
+        input_format: HiveInputFormat,
+        fields: Vec<Field>,
+        partition_fields: Vec<Field>,
+        partitions: Vec<HivePartition>,
+        files: &[(&str, Vec<u8>)],
+        sql: &str,
+    ) -> Result<Vec<RecordBatch>> {
+        scan_hive_table_bytes_with_context(
+            SessionContext::new(),
+            input_format,
+            fields,
+            partition_fields,
+            partitions,
+            files,
+            sql,
+        )
+        .await
+    }
+
+    async fn scan_hive_table_bytes_with_context(
+        ctx: SessionContext,
+        input_format: HiveInputFormat,
+        fields: Vec<Field>,
+        partition_fields: Vec<Field>,
+        partitions: Vec<HivePartition>,
+        files: &[(&str, Vec<u8>)],
+        sql: &str,
+    ) -> Result<Vec<RecordBatch>> {
+        let store = Arc::new(InMemory::new());
+        for (path, data) in files {
+            store.put(&Path::from(*path), data.clone().into()).await?;
+        }
+        ctx.runtime_env()
+            .register_object_store(&Url::parse("s3://warehouse").unwrap(), store);
+
+        let table_schema = TableSchema::new(
+            Arc::new(Schema::new(fields)),
+            partition_fields.into_iter().map(Arc::new).collect(),
+        );
+        let table_statistics = Statistics::new_unknown(table_schema.table_schema());
+        let provider = HiveTableProvider::new(
+            "s3://warehouse/hive/table".to_string(),
+            HiveStorageInfo {
+                input_format,
+                table_schema,
+                table_statistics,
+            },
+            partitions,
+            Storage::default(),
+            Handle::current(),
+            String::new(),
+        );
+        ctx.register_table("t", Arc::new(provider))?;
+        ctx.sql(sql).await?.collect().await
     }
 }

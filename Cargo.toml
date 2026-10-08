@@ -11,8 +11,9 @@ members = [
 ]
 
 [workspace.dependencies]
-datafusion = "54.1.0"
+datafusion = { version = "54.1.0", features = ["avro"] }
 datafusion-cli = "54.1.0"
+orc-rust = { version = "0.8.0", features = ["async"] }
 sqlparser = "0.62.0"
 arrow-flight = { version = "58.4.0", features = ["flight-sql"] }
 prost = "0.14"
@@ -29,7 +30,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 typetag = "0.2"
 toml = "0.9.5"
 futures = "0.3.31"
-async-trait = "0.1.88"
+async-trait = "0.1.92"
 bytes = "1"
 url = "2.5.7"
 percent-encoding = "2.3"
