@@ -94,15 +94,15 @@ impl ExtendedSessionContext {
 
     pub async fn create_dataframe(&self, statement: &ExtendedStatement) -> Result<DataFrame> {
         let sql_string: String = match statement {
-            ExtendedStatement::ShowCatalogsStatement(show_catalogs) => {
-                return self.handle_show_catalogs(show_catalogs);
-            }
             ExtendedStatement::ShowVariablesStatement(show_variables) => {
                 self.build_show_variables_sql(&show_variables.filter, show_variables.verbose)?
             }
             ExtendedStatement::SQLStatement(stmt) => match stmt.as_ref() {
                 Statement::Use(use_stmt) => {
                     return self.handle_use_stmt(use_stmt).await;
+                }
+                Statement::ShowCatalogs { show_options, .. } => {
+                    return self.handle_show_catalogs(show_options);
                 }
                 Statement::ShowSchemas { show_options, .. } => {
                     return self.handle_show_schemas(show_options).await;

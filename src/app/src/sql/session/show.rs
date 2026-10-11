@@ -1,6 +1,5 @@
 use super::ExtendedSessionContext;
 use crate::catalog::{CatalogConfig, INFORMATION_SCHEMA_SHOW_VARIABLES, INTERNAL_CATALOG};
-use crate::statements::ShowCatalogsStatement;
 use datafusion::arrow::array::StringArray;
 use datafusion::arrow::datatypes::{DataType, Field, Schema};
 use datafusion::arrow::record_batch::RecordBatch;
@@ -64,7 +63,7 @@ impl ExtendedSessionContext {
 
     pub(super) fn handle_show_catalogs(
         &self,
-        show_catalogs: &ShowCatalogsStatement,
+        show_options: &ShowStatementOptions,
     ) -> Result<DataFrame> {
         let catalogs = self.lakelet_context.catalog_manager.list_catalogs();
         let mut catalog_names = Vec::with_capacity(catalogs.len());
@@ -96,8 +95,8 @@ impl ExtendedSessionContext {
         )
         .map_err(|error| DataFusionError::External(Box::new(error)))?;
         let mut dataframe = self.session_context.read_batch(batch)?;
-        if let Some(ShowStatementFilter::Like(pattern)) = &show_catalogs.filter {
-            dataframe = dataframe.filter(col("catalog_name").like(lit(pattern.clone())))?;
+        if let Some(ShowStatementFilter::Like(pattern)) = Self::show_like_filter(show_options) {
+            dataframe = dataframe.filter(col("catalog_name").like(lit(pattern)))?;
         }
         dataframe.sort(vec![col("catalog_name").sort(true, false)])
     }
@@ -459,6 +458,15 @@ mod tests {
         let output = pretty_format_batches(&batches)?.to_string();
 
         assert_contains!(output.as_str(), "internal");
+        let batches = session
+            .sql("show catalogs like 'missing_catalog%'")
+            .await?
+            .collect()
+            .await?;
+        assert_eq!(
+            batches.iter().map(|batch| batch.num_rows()).sum::<usize>(),
+            0
+        );
         Ok(())
     }
 

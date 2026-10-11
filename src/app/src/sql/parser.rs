@@ -1,4 +1,4 @@
-use crate::statements::{ExtendedStatement, ShowCatalogsStatement, ShowVariablesStatement};
+use crate::statements::{ExtendedStatement, ShowVariablesStatement};
 use datafusion::common::Result;
 use datafusion::common::{Diagnostic, Span};
 use datafusion::config::SqlParserOptions;
@@ -214,27 +214,14 @@ impl<'a> ExtendedParser<'a> {
 
     fn parse_show(&mut self) -> Result<ExtendedStatement> {
         let token = self.parser.peek_token();
-        if let Token::Word(w) = &token.token {
-            if w.keyword == Keyword::CATALOGS {
-                self.parser.advance_token();
-                return self.parse_show_catalogs();
-            }
-
-            if w.keyword == Keyword::VARIABLES {
-                self.parser.advance_token();
-                return self.parse_show_variables();
-            }
+        if let Token::Word(w) = &token.token
+            && w.keyword == Keyword::VARIABLES
+        {
+            self.parser.advance_token();
+            return self.parse_show_variables();
         }
         Ok(ExtendedStatement::SQLStatement(Box::from(
             self.parser.parse_show()?,
-        )))
-    }
-
-    fn parse_show_catalogs(&mut self) -> Result<ExtendedStatement> {
-        Ok(ExtendedStatement::ShowCatalogsStatement(Box::new(
-            ShowCatalogsStatement {
-                filter: self.parse_show_like_filter()?,
-            },
         )))
     }
 
@@ -280,10 +267,8 @@ impl<'a> ExtendedParser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::statements::ExtendedStatement::{
-        SQLStatement, ShowCatalogsStatement as ShowCatalogs, ShowVariablesStatement as ShowVars,
-    };
-    use crate::statements::{ShowCatalogsStatement, ShowVariablesStatement};
+    use crate::statements::ExtendedStatement::{SQLStatement, ShowVariablesStatement as ShowVars};
+    use crate::statements::ShowVariablesStatement;
     use sqlparser::ast::{
         Ident, ObjectName, ObjectNamePart, ShowStatementFilter, ShowStatementFilterPosition,
         ShowStatementInClause, ShowStatementOptions, Statement, Use,
@@ -294,7 +279,17 @@ mod tests {
         let statement = ExtendedParser::parse_sql("show catalogs")?;
         let stmt = &statement[0];
         assert_eq!(
-            ShowCatalogs(Box::new(ShowCatalogsStatement { filter: None })),
+            SQLStatement(Box::new(Statement::ShowCatalogs {
+                terse: false,
+                history: false,
+                show_options: ShowStatementOptions {
+                    show_in: None,
+                    starts_with: None,
+                    limit: None,
+                    limit_from: None,
+                    filter_position: None,
+                },
+            })),
             *stmt
         );
         Ok(())
@@ -305,8 +300,18 @@ mod tests {
         let statement = ExtendedParser::parse_sql("show catalogs like '%foo%'")?;
         let stmt = &statement[0];
         assert_eq!(
-            ShowCatalogs(Box::new(ShowCatalogsStatement {
-                filter: Some(ShowStatementFilter::Like("%foo%".to_string())),
+            SQLStatement(Box::new(Statement::ShowCatalogs {
+                terse: false,
+                history: false,
+                show_options: ShowStatementOptions {
+                    filter_position: Some(ShowStatementFilterPosition::Suffix(
+                        ShowStatementFilter::Like("%foo%".to_string()),
+                    )),
+                    show_in: None,
+                    starts_with: None,
+                    limit: None,
+                    limit_from: None,
+                },
             })),
             *stmt
         );
@@ -526,7 +531,17 @@ mod tests {
         assert_eq!(statements.len(), 2);
         assert_eq!(
             statements[0],
-            ShowCatalogs(Box::new(ShowCatalogsStatement { filter: None }))
+            SQLStatement(Box::new(Statement::ShowCatalogs {
+                terse: false,
+                history: false,
+                show_options: ShowStatementOptions {
+                    show_in: None,
+                    starts_with: None,
+                    limit: None,
+                    limit_from: None,
+                    filter_position: None,
+                },
+            }))
         );
         assert_eq!(
             statements[1],
