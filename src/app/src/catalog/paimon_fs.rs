@@ -4,11 +4,13 @@ use crate::table_format::TableFormat;
 use crate::table_format::table_provider_factory::{TableProviderBuilder, parse_table_reference};
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
-use datafusion::common::Result;
-use datafusion::common::TableReference;
+use datafusion::common::{
+    ResolvedTableReference, Result, SchemaReference, TableReference, not_impl_err,
+};
 use datafusion::error::DataFusionError;
+use datafusion::logical_expr::sqlparser::ast::{ObjectType, SchemaName, Statement};
 use lakelet_storage::storage::Storage;
-use paimon::catalog::Catalog;
+use paimon::catalog::{Catalog, Identifier};
 use paimon::{CatalogOptions, FileSystemCatalog, Options};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -85,6 +87,72 @@ impl LakeletCatalogProvider for PaimonFSCatalog {
             Err(error) => Err(to_datafusion_error(error)),
         }
     }
+
+    async fn create_schema(&self, name: &SchemaReference, stmt: &Statement) -> Result<()> {
+        let Statement::CreateSchema {
+            schema_name: SchemaName::Simple(_),
+            if_not_exists,
+            with: None,
+            options: None,
+            default_collate_spec: None,
+            clone: None,
+        } = stmt
+        else {
+            return not_impl_err!(
+                "Paimon filesystem catalog only supports CREATE SCHEMA [IF NOT EXISTS] name"
+            );
+        };
+        self.inner_catalog
+            .create_database(name.schema_name(), *if_not_exists, HashMap::new())
+            .await
+            .map_err(to_datafusion_error)
+    }
+
+    async fn drop_schema(&self, name: &SchemaReference, stmt: &Statement) -> Result<()> {
+        let Statement::Drop {
+            object_type: ObjectType::Schema,
+            if_exists,
+            cascade,
+            purge: false,
+            temporary: false,
+            table: None,
+            ..
+        } = stmt
+        else {
+            return not_impl_err!(
+                "Paimon filesystem catalog only supports DROP SCHEMA [IF EXISTS] name [CASCADE | RESTRICT]"
+            );
+        };
+        self.inner_catalog
+            .drop_database(name.schema_name(), *if_exists, *cascade)
+            .await
+            .map_err(to_datafusion_error)
+    }
+
+    async fn drop_table(&self, name: &ResolvedTableReference, stmt: &Statement) -> Result<()> {
+        let Statement::Drop {
+            object_type: ObjectType::Table,
+            if_exists,
+            cascade: false,
+            restrict: false,
+            purge: false,
+            temporary: false,
+            table: None,
+            ..
+        } = stmt
+        else {
+            return not_impl_err!(
+                "Paimon filesystem catalog only supports DROP TABLE [IF EXISTS] name"
+            );
+        };
+        self.inner_catalog
+            .drop_table(
+                &Identifier::new(name.schema.as_ref(), name.table.as_ref()),
+                *if_exists,
+            )
+            .await
+            .map_err(to_datafusion_error)
+    }
 }
 
 #[async_trait]
@@ -147,7 +215,9 @@ impl AsyncSchemaProvider for PaimonFSSchema {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use paimon::catalog::Identifier;
+    use crate::catalog::LakeletCatalogProviderList;
+    use crate::sql::session::ExtendedSessionContext;
+    use datafusion::execution::runtime_env::RuntimeEnv;
 
     #[test]
     fn test_parse_paimon_fs_config_without_storage_block() {
@@ -202,7 +272,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_paimon_fs_catalog_lists_databases_and_tables() {
+    async fn test_paimon_fs_catalog_ddl_and_listing() {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let config = PaimonFSCatalogConfig {
             name: "paimon_fs_1".to_string(),
@@ -210,16 +280,40 @@ mod tests {
             storage: Storage::default(),
         };
 
+        let lakelet_context = Arc::new(LakeletContext::default());
         let catalog =
-            PaimonFSCatalog::try_new(Arc::new(LakeletContext::default()), Arc::new(config))
-                .unwrap();
-
-        // Provision a database and a table with the upstream filesystem catalog.
-        let inner_catalog = catalog.inner_catalog.clone();
-        inner_catalog
-            .create_database("db1", false, HashMap::new())
+            Arc::new(PaimonFSCatalog::try_new(lakelet_context.clone(), Arc::new(config)).unwrap());
+        let session = ExtendedSessionContext::new(
+            Arc::new(LakeletCatalogProviderList::from_catalogs(HashMap::from([
+                (
+                    "paimon_fs_1".into(),
+                    catalog.clone() as Arc<dyn LakeletCatalogProvider>,
+                ),
+            ]))),
+            lakelet_context,
+            Arc::new(RuntimeEnv::default()),
+        );
+        session.sql("USE CATALOG paimon_fs_1").await.unwrap();
+        let batches = session
+            .sql("CREATE SCHEMA db1")
+            .await
+            .unwrap()
+            .collect()
             .await
             .unwrap();
+        assert_eq!(
+            batches.iter().map(|batch| batch.num_rows()).sum::<usize>(),
+            0
+        );
+        session
+            .sql("CREATE SCHEMA IF NOT EXISTS paimon_fs_1.db1")
+            .await
+            .unwrap();
+        let error = session.sql("CREATE SCHEMA db1").await.unwrap_err();
+        assert!(error.to_string().contains("Database db1 already exists"));
+
+        // CREATE TABLE remains unsupported; prepare table fixtures through Paimon.
+        let inner_catalog = catalog.inner_catalog.clone();
         let schema = paimon::spec::Schema::builder()
             .column(
                 "id",
@@ -228,7 +322,7 @@ mod tests {
             .build()
             .unwrap();
         inner_catalog
-            .create_table(&Identifier::new("db1", "t1"), schema, false)
+            .create_table(&Identifier::new("db1", "t1"), schema.clone(), false)
             .await
             .unwrap();
 
@@ -236,6 +330,82 @@ mod tests {
         assert_eq!(catalog.list_table_names("db1").await.unwrap(), vec!["t1"]);
         assert!(catalog.schema_exist("db1").await.unwrap());
         assert!(!catalog.schema_exist("db_missing").await.unwrap());
+
+        session.sql("USE paimon_fs_1.db1").await.unwrap();
+        // A query replaces the resolved catalog cache; DDL must still use the session.
+        session
+            .sql("SELECT 1")
+            .await
+            .unwrap()
+            .collect()
+            .await
+            .unwrap();
+        for sql in ["DROP SCHEMA db1", "DROP SCHEMA db1 RESTRICT"] {
+            let error = session.sql(sql).await.unwrap_err();
+            assert!(error.to_string().contains("Database db1 is not empty"));
+            assert!(temp_dir.path().join("db1.db/t1/schema/schema-0").exists());
+        }
+
+        for sql in [
+            "CREATE SCHEMA unauthorized AUTHORIZATION owner",
+            "CREATE SCHEMA AUTHORIZATION owner",
+            "CREATE SCHEMA unsupported WITH (key = 'value')",
+            "CREATE SCHEMA unsupported OPTIONS (key = 'value')",
+            "CREATE SCHEMA unsupported DEFAULT COLLATE 'und:ci'",
+            "CREATE SCHEMA unsupported CLONE db1",
+            "CREATE TABLE t2 (id INT)",
+            "DROP TABLE t1 CASCADE",
+            "DROP TABLE t1 RESTRICT",
+            "DROP TABLE t1 PURGE",
+            "DROP SCHEMA db1 PURGE",
+        ] {
+            let error = session.sql(sql).await.unwrap_err();
+            assert!(
+                matches!(error, DataFusionError::NotImplemented(_)),
+                "{sql}: {error}"
+            );
+            assert_eq!(catalog.list_schema_names().await.unwrap(), vec!["db1"]);
+            assert_eq!(catalog.list_table_names("db1").await.unwrap(), vec!["t1"]);
+        }
+
+        // Deleting a table removes its data as well as its schema metadata.
+        let data_dir = temp_dir.path().join("db1.db/t1/bucket-0");
+        std::fs::create_dir(&data_dir).unwrap();
+        std::fs::write(data_dir.join("data.parquet"), b"test data").unwrap();
+        session.sql("DROP TABLE t1").await.unwrap();
+        assert!(!temp_dir.path().join("db1.db/t1").exists());
+        assert!(catalog.list_table_names("db1").await.unwrap().is_empty());
+        let error = session.sql("DROP TABLE t1").await.unwrap_err();
+        assert!(error.to_string().contains("Table db1.t1 does not exist"));
+        session.sql("DROP TABLE IF EXISTS db1.t1").await.unwrap();
+
+        inner_catalog
+            .create_table(&Identifier::new("db1", "t1"), schema.clone(), false)
+            .await
+            .unwrap();
+        session.sql("DROP TABLE paimon_fs_1.db1.t1").await.unwrap();
+        session.sql("DROP SCHEMA db1 RESTRICT").await.unwrap();
+        assert!(!temp_dir.path().join("db1.db").exists());
+        let error = session.sql("DROP SCHEMA db1").await.unwrap_err();
+        assert!(error.to_string().contains("Database db1 does not exist"));
+        session.sql("DROP SCHEMA IF EXISTS db1").await.unwrap();
+
+        session.sql("CREATE SCHEMA paimon_fs_1.db1").await.unwrap();
+        inner_catalog
+            .create_table(&Identifier::new("db1", "t1"), schema, false)
+            .await
+            .unwrap();
+        session
+            .sql("DROP SCHEMA IF EXISTS paimon_fs_1.db1 CASCADE")
+            .await
+            .unwrap();
+        assert!(!temp_dir.path().join("db1.db").exists());
+        assert!(catalog.list_schema_names().await.unwrap().is_empty());
+
+        session.sql("CREATE SCHEMA `Mixed.Case`").await.unwrap();
+        assert!(catalog.schema_exist("Mixed.Case").await.unwrap());
+        session.sql("DROP SCHEMA `Mixed.Case`").await.unwrap();
+        assert!(catalog.list_schema_names().await.unwrap().is_empty());
     }
 
     #[tokio::test]
