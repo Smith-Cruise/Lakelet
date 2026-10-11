@@ -19,15 +19,9 @@ impl ExtendedSessionContext {
     pub(super) fn build_show_variables_sql(
         &self,
         filter: &Option<ShowStatementFilter>,
-        verbose: bool,
     ) -> Result<String> {
-        let columns = if verbose {
-            "name, value, description"
-        } else {
-            "name, value"
-        };
         let base_sql = format!(
-            "SELECT {columns} FROM {}.{}.{}",
+            "SELECT name, value, description FROM {}.{}.{}",
             INTERNAL_CATALOG, INFORMATION_SCHEMA, INFORMATION_SCHEMA_SHOW_VARIABLES
         );
 
@@ -376,24 +370,6 @@ mod tests {
         let schema = batches[0].schema();
         let output = pretty_format_batches(&batches)?.to_string();
 
-        assert_eq!(schema.fields().len(), 2);
-        assert_eq!(schema.field(0).name(), "name");
-        assert_eq!(schema.field(1).name(), "value");
-        assert_contains!(output.as_str(), "datafusion.execution.target_partitions");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_show_variables_verbose_execution() -> Result<()> {
-        let session = ExtendedSessionContext::default();
-        let batches = session
-            .sql("show variables verbose")
-            .await?
-            .collect()
-            .await?;
-        let schema = batches[0].schema();
-        let output = pretty_format_batches(&batches)?.to_string();
-
         assert_eq!(schema.fields().len(), 3);
         assert_eq!(schema.field(0).name(), "name");
         assert_eq!(schema.field(1).name(), "value");
@@ -410,24 +386,12 @@ mod tests {
             .await?
             .collect()
             .await?;
-        let output = pretty_format_batches(&batches)?.to_string();
-
-        assert_contains!(output, "datafusion.execution.target_partitions");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_show_variables_verbose_like_execution() -> Result<()> {
-        let session = ExtendedSessionContext::default();
-        let batches = session
-            .sql("show variables verbose like '%target_partitions%'")
-            .await?
-            .collect()
-            .await?;
         let schema = batches[0].schema();
         let output = pretty_format_batches(&batches)?.to_string();
 
         assert_eq!(schema.fields().len(), 3);
+        assert_eq!(schema.field(0).name(), "name");
+        assert_eq!(schema.field(1).name(), "value");
         assert_eq!(schema.field(2).name(), "description");
         assert_contains!(output.as_str(), "datafusion.execution.target_partitions");
         Ok(())
@@ -599,9 +563,8 @@ mod tests {
         let session = ExtendedSessionContext::default();
 
         let stmt = ExtendedParser::parse_sql("show create table tbl")?;
-        if let ExtendedStatement::SQLStatement(stmt) = &stmt[0]
-            && let Statement::ShowCreate { obj_name, .. } = stmt.as_ref()
-        {
+        let ExtendedStatement::SQLStatement(stmt) = &stmt[0];
+        if let Statement::ShowCreate { obj_name, .. } = stmt.as_ref() {
             assert_eq!(
                 session.resolve_show_create_table_name(obj_name)?,
                 (
@@ -615,9 +578,8 @@ mod tests {
         }
 
         let stmt = ExtendedParser::parse_sql("show create table db.tbl")?;
-        if let ExtendedStatement::SQLStatement(stmt) = &stmt[0]
-            && let Statement::ShowCreate { obj_name, .. } = stmt.as_ref()
-        {
+        let ExtendedStatement::SQLStatement(stmt) = &stmt[0];
+        if let Statement::ShowCreate { obj_name, .. } = stmt.as_ref() {
             assert_eq!(
                 session.resolve_show_create_table_name(obj_name)?,
                 (
@@ -631,9 +593,8 @@ mod tests {
         }
 
         let stmt = ExtendedParser::parse_sql("show create table catalog.db.tbl")?;
-        if let ExtendedStatement::SQLStatement(stmt) = &stmt[0]
-            && let Statement::ShowCreate { obj_name, .. } = stmt.as_ref()
-        {
+        let ExtendedStatement::SQLStatement(stmt) = &stmt[0];
+        if let Statement::ShowCreate { obj_name, .. } = stmt.as_ref() {
             assert_eq!(
                 session.resolve_show_create_table_name(obj_name)?,
                 ("catalog".to_string(), "db".to_string(), "tbl".to_string())
@@ -649,9 +610,8 @@ mod tests {
     fn test_resolve_show_create_table_references_only_target_table() -> Result<()> {
         let session = ExtendedSessionContext::default();
         let stmt = ExtendedParser::parse_sql("show create table tbl")?;
-        if let ExtendedStatement::SQLStatement(stmt) = &stmt[0]
-            && let Statement::ShowCreate { obj_name, obj_type } = stmt.as_ref()
-        {
+        let ExtendedStatement::SQLStatement(stmt) = &stmt[0];
+        if let Statement::ShowCreate { obj_name, obj_type } = stmt.as_ref() {
             assert_eq!(
                 session.resolve_show_create_table_references(obj_type, obj_name)?,
                 vec![TableReference::full(
@@ -671,9 +631,8 @@ mod tests {
     fn test_resolve_show_create_table_references_rejects_metadata_table() -> Result<()> {
         let session = ExtendedSessionContext::default();
         let stmt = ExtendedParser::parse_sql("show create table \"tbl$data_files\"")?;
-        if let ExtendedStatement::SQLStatement(stmt) = &stmt[0]
-            && let Statement::ShowCreate { obj_name, obj_type } = stmt.as_ref()
-        {
+        let ExtendedStatement::SQLStatement(stmt) = &stmt[0];
+        if let Statement::ShowCreate { obj_name, obj_type } = stmt.as_ref() {
             let err = session
                 .resolve_show_create_table_references(obj_type, obj_name)
                 .unwrap_err();
@@ -688,10 +647,8 @@ mod tests {
     #[test]
     fn test_show_like_sql_escapes_quotes() -> Result<()> {
         let session = ExtendedSessionContext::default();
-        let sql = session.build_show_variables_sql(
-            &Some(ShowStatementFilter::Like("%o''hara%".to_string())),
-            false,
-        )?;
+        let sql = session
+            .build_show_variables_sql(&Some(ShowStatementFilter::Like("%o''hara%".to_string())))?;
 
         assert_contains!(sql.as_str(), "LIKE '%o''''hara%'");
         Ok(())

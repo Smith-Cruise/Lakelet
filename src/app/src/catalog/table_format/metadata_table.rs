@@ -51,9 +51,7 @@ mod tests {
     /// `(table_name, MetadataTableType)`.
     fn resolve_table_reference(sql: &str) -> (String, Option<MetadataTableType>) {
         let statements = ExtendedParser::parse_sql(sql).expect("sql should parse");
-        let ExtendedStatement::SQLStatement(stmt) = &statements[0] else {
-            panic!("expected a SQL statement");
-        };
+        let ExtendedStatement::SQLStatement(stmt) = &statements[0];
         let Statement::Query(query) = stmt.as_ref() else {
             panic!("expected a query");
         };
