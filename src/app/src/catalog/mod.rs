@@ -17,7 +17,8 @@ use crate::catalog::internal::InternalCatalog;
 use crate::catalog::paimon_fs::PaimonFSCatalog;
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncCatalogProviderList};
-use datafusion::common::Result;
+use datafusion::common::{ResolvedTableReference, Result, SchemaReference, not_impl_err};
+use datafusion::logical_expr::sqlparser::ast::{CreateTable, Statement};
 pub(crate) use internal::{INFORMATION_SCHEMA_SHOW_VARIABLES, INTERNAL_CATALOG};
 pub(crate) use manager::{CatalogConfig, CatalogConfigs, CatalogManager};
 use std::collections::HashMap;
@@ -31,6 +32,26 @@ pub trait LakeletCatalogProvider: AsyncCatalogProvider {
     async fn list_table_names(&self, schema_name: &str) -> Result<Vec<String>>;
 
     async fn schema_exist(&self, schema_name: &str) -> Result<bool>;
+
+    /// Create a table at the fully resolved destination using the original SQL definition.
+    async fn create_table(&self, name: &ResolvedTableReference, _stmt: &CreateTable) -> Result<()> {
+        not_impl_err!("CREATE TABLE {name} is not supported")
+    }
+
+    /// Create a schema at the fully resolved destination using the original SQL definition.
+    async fn create_schema(&self, name: &SchemaReference, _stmt: &Statement) -> Result<()> {
+        not_impl_err!("CREATE SCHEMA {name} is not supported")
+    }
+
+    /// Drop a table at the fully resolved destination using the original SQL options.
+    async fn drop_table(&self, name: &ResolvedTableReference, _stmt: &Statement) -> Result<()> {
+        not_impl_err!("DROP TABLE {name} is not supported")
+    }
+
+    /// Drop a schema at the fully resolved destination using the original SQL options.
+    async fn drop_schema(&self, name: &SchemaReference, _stmt: &Statement) -> Result<()> {
+        not_impl_err!("DROP SCHEMA {name} is not supported")
+    }
 }
 
 pub struct LakeletCatalogProviderList {
@@ -41,6 +62,13 @@ pub struct LakeletCatalogProviderList {
 }
 
 impl LakeletCatalogProviderList {
+    #[cfg(test)]
+    pub(crate) fn from_catalogs(
+        catalogs: HashMap<String, Arc<dyn LakeletCatalogProvider>>,
+    ) -> Self {
+        Self { catalogs }
+    }
+
     pub fn new(lakelet_context: Arc<LakeletContext>) -> Result<LakeletCatalogProviderList> {
         let mut catalogs = HashMap::new();
         for (catalog_name, catalog_config) in lakelet_context.catalog_manager.list_catalogs() {

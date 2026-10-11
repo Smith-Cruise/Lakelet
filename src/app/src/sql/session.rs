@@ -1,3 +1,4 @@
+mod ddl;
 mod show;
 mod r#use;
 
@@ -14,7 +15,7 @@ use datafusion::error::DataFusionError;
 use datafusion::execution::TaskContext;
 use datafusion::execution::runtime_env::RuntimeEnv;
 use datafusion::logical_expr::ExplainFormat;
-use datafusion::logical_expr::sqlparser::ast::Statement;
+use datafusion::logical_expr::sqlparser::ast::{ObjectType, Statement};
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_cli::functions::MetadataCacheFunc;
 use std::sync::Arc;
@@ -95,6 +96,17 @@ impl ExtendedSessionContext {
     pub async fn create_dataframe(&self, statement: &ExtendedStatement) -> Result<DataFrame> {
         let sql_string: String = match statement {
             ExtendedStatement::SQLStatement(stmt) => match stmt.as_ref() {
+                Statement::CreateTable(create) => {
+                    return self.handle_create_table_stmt(create).await;
+                }
+                Statement::CreateSchema { schema_name, .. } => {
+                    return self.handle_create_schema_stmt(schema_name, stmt).await;
+                }
+                Statement::Drop {
+                    object_type, names, ..
+                } if matches!(object_type, ObjectType::Table | ObjectType::Schema) => {
+                    return self.handle_drop_stmt(object_type, names, stmt).await;
+                }
                 Statement::ShowVariables { filter, .. } => self.build_show_variables_sql(filter)?,
                 Statement::Use(use_stmt) => {
                     return self.handle_use_stmt(use_stmt).await;
