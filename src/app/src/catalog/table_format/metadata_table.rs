@@ -12,6 +12,10 @@ pub enum MetadataTableType {
     PaimonTableIndexes,        // Paimon only
     PaimonPhysicalFilesSize,   // Paimon only
     PaimonReferencedFilesSize, // Paimon only
+    PaimonAggregationFields,   // Paimon only
+    PaimonAuditLog,            // Paimon only
+    PaimonBuckets,             // Paimon only
+    PaimonConsumers,           // Paimon only
 }
 
 impl TryFrom<&str> for MetadataTableType {
@@ -31,6 +35,10 @@ impl TryFrom<&str> for MetadataTableType {
             "table_indexes" => Ok(MetadataTableType::PaimonTableIndexes),
             "physical_files_size" => Ok(MetadataTableType::PaimonPhysicalFilesSize),
             "referenced_files_size" => Ok(MetadataTableType::PaimonReferencedFilesSize),
+            "aggregation_fields" => Ok(MetadataTableType::PaimonAggregationFields),
+            "audit_log" => Ok(MetadataTableType::PaimonAuditLog),
+            "buckets" => Ok(MetadataTableType::PaimonBuckets),
+            "consumers" => Ok(MetadataTableType::PaimonConsumers),
             _ => Err(format!(
                 "invalid metadata table type: {metadata_table_name}"
             )),
@@ -92,6 +100,13 @@ mod tests {
                 "referenced_files_size",
                 MetadataTableType::PaimonReferencedFilesSize,
             ),
+            (
+                "aggregation_fields",
+                MetadataTableType::PaimonAggregationFields,
+            ),
+            ("audit_log", MetadataTableType::PaimonAuditLog),
+            ("buckets", MetadataTableType::PaimonBuckets),
+            ("consumers", MetadataTableType::PaimonConsumers),
         ];
         for (suffix, expected) in cases {
             assert_eq!(
@@ -99,13 +114,12 @@ mod tests {
                 ("orders".to_string(), Some(expected)),
                 "suffix: {suffix}"
             );
+            assert_eq!(
+                resolve_table_reference(&format!("select * from `orders${suffix}`")),
+                ("orders".to_string(), Some(expected)),
+                "quoted suffix: {suffix}"
+            );
         }
-
-        // Backtick-quoted form resolves to the exact same result.
-        assert_eq!(
-            resolve_table_reference("select * from `orders$data_files`"),
-            ("orders".to_string(), Some(MetadataTableType::DataFiles))
-        );
 
         // A plain table without a `$` suffix carries no metadata type.
         assert_eq!(

@@ -101,6 +101,10 @@ fn paimon_system_table_name(metadata_table_type: MetadataTableType) -> Result<&'
         MetadataTableType::PaimonTableIndexes => Ok("table_indexes"),
         MetadataTableType::PaimonPhysicalFilesSize => Ok("physical_files_size"),
         MetadataTableType::PaimonReferencedFilesSize => Ok("referenced_files_size"),
+        MetadataTableType::PaimonAggregationFields => Ok("aggregation_fields"),
+        MetadataTableType::PaimonAuditLog => Ok("audit_log"),
+        MetadataTableType::PaimonBuckets => Ok("buckets"),
+        MetadataTableType::PaimonConsumers => Ok("consumers"),
         _ => Err(DataFusionError::NotImplemented(format!(
             "paimon metadata table {metadata_table_type:?} is not supported"
         ))),

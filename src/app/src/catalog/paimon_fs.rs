@@ -243,6 +243,27 @@ mod tests {
     use crate::sql::session::ExtendedSessionContext;
     use datafusion::execution::runtime_env::RuntimeEnv;
 
+    async fn query_rows(session: &ExtendedSessionContext, sql: &str) -> Vec<Vec<Option<String>>> {
+        use datafusion::arrow::util::display::array_value_to_string;
+
+        let batches = session.sql(sql).await.unwrap().collect().await.unwrap();
+        batches
+            .iter()
+            .flat_map(|batch| {
+                (0..batch.num_rows()).map(|row| {
+                    batch
+                        .columns()
+                        .iter()
+                        .map(|column| {
+                            (!column.is_null(row))
+                                .then(|| array_value_to_string(column.as_ref(), row).unwrap())
+                        })
+                        .collect()
+                })
+            })
+            .collect()
+    }
+
     #[test]
     fn test_parse_paimon_fs_config_without_storage_block() {
         let config: PaimonFSCatalogConfig = toml::from_str(
@@ -459,7 +480,7 @@ mod tests {
             .await
             .unwrap();
 
-        let schema_provider = PaimonFSSchema::new(lakelet_context, config, "db1");
+        let schema_provider = PaimonFSSchema::new(lakelet_context.clone(), config, "db1");
         let ctx = datafusion::prelude::SessionContext::new();
 
         // `t1$schemas` resolves through paimon-datafusion's system tables and
@@ -495,12 +516,140 @@ mod tests {
             matches!(error, DataFusionError::NotImplemented(_)),
             "{error:?}"
         );
+
+        for (suffix, expected_fields) in [
+            (
+                "aggregation_fields",
+                vec![
+                    "field_name",
+                    "field_type",
+                    "function",
+                    "function_options",
+                    "comment",
+                ],
+            ),
+            ("audit_log", vec!["rowkind", "id"]),
+            (
+                "buckets",
+                vec![
+                    "partition",
+                    "bucket",
+                    "record_count",
+                    "file_size_in_bytes",
+                    "file_count",
+                    "last_update_time",
+                ],
+            ),
+            ("consumers", vec!["consumer_id", "next_snapshot_id"]),
+        ] {
+            let provider = schema_provider
+                .table(&format!("t1${suffix}"))
+                .await
+                .unwrap()
+                .unwrap();
+            let schema = provider.schema();
+            let fields: Vec<_> = schema
+                .fields()
+                .iter()
+                .map(|field| field.name().as_str())
+                .collect();
+            assert_eq!(fields, expected_fields, "{suffix}");
+            let batches = ctx.read_table(provider).unwrap().collect().await.unwrap();
+            let expected_rows = usize::from(suffix == "aggregation_fields");
+            assert_eq!(
+                batches.iter().map(|batch| batch.num_rows()).sum::<usize>(),
+                expected_rows,
+                "{suffix}"
+            );
+        }
+
+        let session = ExtendedSessionContext::new(
+            Arc::new(LakeletCatalogProviderList::from_catalogs(HashMap::from([
+                (
+                    "paimon_fs_1".into(),
+                    Arc::new(catalog) as Arc<dyn LakeletCatalogProvider>,
+                ),
+            ]))),
+            lakelet_context,
+            Arc::new(RuntimeEnv::default()),
+        );
+        session.sql("USE paimon_fs_1.db1").await.unwrap();
+
+        // Consumer progress is written by external readers, not SQL DDL.
+        assert!(
+            query_rows(&session, "SELECT * FROM t1$consumers")
+                .await
+                .is_empty()
+        );
+        let consumer_dir = temp_dir.path().join("db1.db/t1/consumer");
+        std::fs::create_dir_all(&consumer_dir).unwrap();
+        std::fs::write(
+            consumer_dir.join("consumer-reader1"),
+            r#"{"nextSnapshot":5}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            consumer_dir.join("consumer-reader2"),
+            r#"{"nextSnapshot":8}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            query_rows(
+                &session,
+                "SELECT consumer_id, next_snapshot_id FROM t1$consumers ORDER BY consumer_id"
+            )
+            .await,
+            vec![
+                vec![Some("reader1".into()), Some("5".into())],
+                vec![Some("reader2".into()), Some("8".into())],
+            ]
+        );
+        assert_eq!(
+            query_rows(
+                &session,
+                "SELECT next_snapshot_id FROM t1$consumers WHERE consumer_id = 'reader2'"
+            )
+            .await,
+            vec![vec![Some("8".into())]]
+        );
+
+        session
+            .sql(
+                "CREATE TABLE agg_fields (
+                    id INT,
+                    total BIGINT COMMENT 'Total amount',
+                    PRIMARY KEY (id)
+                ) USING PAIMON WITH (
+                    'bucket' = '1',
+                    'merge-engine' = 'aggregation',
+                    'fields.total.aggregate-function' = 'sum'
+                )",
+            )
+            .await
+            .unwrap()
+            .collect()
+            .await
+            .unwrap();
+        assert_eq!(
+            query_rows(
+                &session,
+                "SELECT field_name, field_type, function, function_options, comment
+                 FROM agg_fields$aggregation_fields WHERE field_name = 'total'"
+            )
+            .await,
+            vec![vec![
+                Some("total".into()),
+                Some("BIGINT".into()),
+                Some("[sum]".into()),
+                Some("[fields.total.aggregate-function]".into()),
+                Some("Total amount".into()),
+            ]]
+        );
     }
 
     #[tokio::test]
     async fn test_paimon_fs_insert_and_read_back() {
         use datafusion::arrow::array::UInt64Array;
-        use datafusion::arrow::util::display::array_value_to_string;
 
         let temp_dir = tempfile::TempDir::new().unwrap();
         let config = Arc::new(PaimonFSCatalogConfig {
@@ -599,28 +748,7 @@ mod tests {
 
         // Lakelet rebuilds the provider per statement, so read back through a
         // fresh one to make sure the commit is visible from the warehouse.
-        let batches = session
-            .sql("SELECT * FROM orders ORDER BY id, dt")
-            .await
-            .unwrap()
-            .collect()
-            .await
-            .unwrap();
-        let rows: Vec<Vec<Option<String>>> = batches
-            .iter()
-            .flat_map(|batch| {
-                (0..batch.num_rows()).map(|row| {
-                    batch
-                        .columns()
-                        .iter()
-                        .map(|column| {
-                            (!column.is_null(row))
-                                .then(|| array_value_to_string(column.as_ref(), row).unwrap())
-                        })
-                        .collect()
-                })
-            })
-            .collect();
+        let rows = query_rows(&session, "SELECT * FROM orders ORDER BY id, dt").await;
         let expected: Vec<Vec<Option<String>>> = [
             [
                 Some("1"),
@@ -651,5 +779,40 @@ mod tests {
         })
         .collect();
         assert_eq!(rows, expected);
+
+        let audit_rows =
+            query_rows(&session, "SELECT * FROM orders$audit_log ORDER BY id, dt").await;
+        let expected_audit: Vec<_> = expected
+            .into_iter()
+            .map(|mut row| {
+                row.insert(0, Some("+I".into()));
+                row
+            })
+            .collect();
+        assert_eq!(audit_rows, expected_audit);
+        assert_eq!(
+            query_rows(
+                &session,
+                "SELECT id FROM orders$audit_log WHERE rowkind = '+I' AND id = 2"
+            )
+            .await,
+            vec![vec![Some("2".into())]]
+        );
+
+        // Bucket statistics must agree with the committed data files.
+        let bucket_rows = query_rows(
+            &session,
+            "SELECT partition, bucket, record_count, file_size_in_bytes, file_count
+             FROM orders$buckets ORDER BY partition, bucket",
+        )
+        .await;
+        let file_rows = query_rows(
+            &session,
+            "SELECT partition, bucket, SUM(record_count), SUM(file_size_in_bytes), COUNT(*)
+             FROM orders$data_files GROUP BY partition, bucket ORDER BY partition, bucket",
+        )
+        .await;
+        assert_eq!(bucket_rows.len(), 2);
+        assert_eq!(bucket_rows, file_rows);
     }
 }
