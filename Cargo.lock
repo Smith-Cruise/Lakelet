@@ -2771,6 +2771,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "datasketches"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c286de4e81ea2590afc24d754e0f83810c566f50a1388fa75ebd57928c0d9745"
+
+[[package]]
 name = "defmt"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4602,6 +4608,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
+name = "lru"
+version = "0.18.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef9ac18847474e638e3702b76c65d4eb93428471a74778ef0f1be711717f89b5"
+dependencies = [
+ "hashbrown 0.17.1",
+]
+
+[[package]]
 name = "lru-slab"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5453,15 +5468,16 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 
 [[package]]
 name = "paimon"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "525d11131f96bd6fe858c39b1a662179fee701e49fee92dad273445c56e936dc"
+checksum = "2bce754025af3dac6814fbad95f6894de73010364ea1e91f7a4f2426863dd3c2"
 dependencies = [
  "apache-avro",
  "arrow-arith",
  "arrow-array",
  "arrow-buffer",
  "arrow-cast",
+ "arrow-json",
  "arrow-ord",
  "arrow-row",
  "arrow-schema",
@@ -5472,18 +5488,30 @@ dependencies = [
  "base64 0.22.1",
  "bitflags 2.13.1",
  "bytes",
+ "bzip2",
+ "cc",
  "chrono",
  "crc32fast",
+ "crossbeam-channel",
+ "datasketches",
+ "flate2",
  "futures",
  "hex",
  "hmac 0.12.1",
+ "http 1.5.0",
  "indexmap 2.14.0",
+ "jiff",
  "libloading 0.9.0",
  "log",
- "lz4_flex 0.11.6",
+ "lru",
+ "lz4_flex 0.13.0",
+ "lzokay-native",
  "md-5 0.10.6",
+ "num-bigint",
+ "num-traits",
  "opendal-core",
  "opendal-http-transport-reqwest",
+ "opendal-layer-retry",
  "opendal-service-fs",
  "opendal-service-hdfs-native",
  "opendal-service-oss",
@@ -5492,7 +5520,9 @@ dependencies = [
  "paimon-mosaic-core",
  "paimon-vindex-core",
  "parquet",
+ "percent-encoding",
  "pretty_assertions",
+ "rand 0.8.5",
  "regex",
  "reqwest 0.12.24",
  "roaring",
@@ -5505,21 +5535,22 @@ dependencies = [
  "sha2 0.10.9",
  "snafu 0.9.1",
  "snap",
+ "tempfile",
  "tokio",
  "tokio-util",
+ "twox-hash",
  "typed-builder 0.19.1",
  "unicode-segmentation",
  "url",
- "urlencoding",
  "uuid",
  "zstd",
 ]
 
 [[package]]
 name = "paimon-datafusion"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "357cd63481b3782362dcdc5fd14c8643204d3b4132a02299122b55d3dae0d637"
+checksum = "a0567e5c746f8875820a0c14f23b67e4888cc59f23fa030188473f9193479a49"
 dependencies = [
  "arrow-select",
  "async-trait",
@@ -5550,10 +5581,11 @@ dependencies = [
 
 [[package]]
 name = "paimon-vindex-core"
-version = "0.2.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed02b73fbd5cfbe20df6b66bca52f5ba66e3c29bd00ad450fbc02f9e94242a4b"
+checksum = "9e7541c9afa7804c8e68c0b7795f05cefa41a6403548a8b86f79088f7045301a"
 dependencies = [
+ "half",
  "matrixmultiply",
  "nalgebra",
  "rand 0.8.5",
@@ -6343,6 +6375,7 @@ version = "0.12.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d0946410b9f7b082a427e4ef5c8ff541a88b357bc6c637c40db3a68ac70a36f"
 dependencies = [
+ "async-compression",
  "base64 0.22.1",
  "bytes",
  "encoding_rs",
@@ -6470,9 +6503,9 @@ dependencies = [
 
 [[package]]
 name = "roaring"
-version = "0.11.2"
+version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f08d6a905edb32d74a5d5737a0c9d7e950c312f3c46cb0ca0a2ca09ea11878a0"
+checksum = "1dedc5658c6ecb3bdb5ef5f3295bb9253f42dcf3fd1402c03f6b1f7659c3c4a9"
 dependencies = [
  "bytemuck",
  "byteorder",
@@ -7812,9 +7845,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "twox-hash"
-version = "2.1.2"
+version = "2.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ea3136b675547379c4bd395ca6b938e5ad3c3d20fad76e7fe85f9e0d011419c"
+checksum = "86a801b3cea342a06d468c8710662aa29e5e05e4f5c0d62f00bbb7f2ad7941c2"
 
 [[package]]
 name = "typed-builder"
