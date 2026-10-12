@@ -499,7 +499,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_paimon_fs_insert_and_read_back() {
-        use datafusion::arrow::array::{Int32Array, UInt64Array};
+        use datafusion::arrow::array::UInt64Array;
+        use datafusion::arrow::util::display::array_value_to_string;
 
         let temp_dir = tempfile::TempDir::new().unwrap();
         let config = Arc::new(PaimonFSCatalogConfig {
@@ -508,34 +509,82 @@ mod tests {
             storage: Storage::default(),
         });
         let lakelet_context = Arc::new(LakeletContext::default());
-        let catalog = PaimonFSCatalog::try_new(lakelet_context.clone(), config.clone()).unwrap();
-
-        let inner_catalog = catalog.inner_catalog.clone();
-        inner_catalog
-            .create_database("db1", false, HashMap::new())
+        let catalog = Arc::new(PaimonFSCatalog::try_new(lakelet_context.clone(), config).unwrap());
+        let session = ExtendedSessionContext::new(
+            Arc::new(LakeletCatalogProviderList::from_catalogs(HashMap::from([
+                (
+                    "paimon_fs_1".into(),
+                    catalog.clone() as Arc<dyn LakeletCatalogProvider>,
+                ),
+            ]))),
+            lakelet_context,
+            Arc::new(RuntimeEnv::default()),
+        );
+        session.sql("USE CATALOG paimon_fs_1").await.unwrap();
+        session.sql("CREATE SCHEMA db1").await.unwrap();
+        session.sql("USE paimon_fs_1.db1").await.unwrap();
+        // Clear resolved query catalogs before DDL to exercise session routing.
+        session
+            .sql("SELECT 1")
+            .await
+            .unwrap()
+            .collect()
             .await
             .unwrap();
-        let schema = paimon::spec::Schema::builder()
-            .column(
-                "id",
-                paimon::spec::DataType::Int(paimon::spec::IntType::new()),
+        let batches = session
+            .sql(
+                "CREATE TABLE orders (
+                    id BIGINT COMMENT 'Order ID',
+                    dt STRING,
+                    amount DECIMAL(18, 2),
+                    event_time TIMESTAMP(6),
+                    tags ARRAY<STRING>,
+                    attributes MAP<STRING, STRING>,
+                    address STRUCT<city STRING, postcode STRING>,
+                    note STRING,
+                    PRIMARY KEY (id, dt)
+                ) PARTITIONED BY (dt) USING PAIMON WITH ('bucket' = '2')",
             )
-            .build()
-            .unwrap();
-        inner_catalog
-            .create_table(&Identifier::new("db1", "t1"), schema, false)
+            .await
+            .unwrap()
+            .collect()
             .await
             .unwrap();
+        assert_eq!(
+            batches.iter().map(|batch| batch.num_rows()).sum::<usize>(),
+            0
+        );
 
-        let schema_provider = PaimonFSSchema::new(lakelet_context, config, "db1");
-        let ctx = datafusion::prelude::SessionContext::new();
+        // Reload persisted metadata rather than inspecting the CREATE TABLE AST.
+        let table = catalog
+            .inner_catalog
+            .get_table(&Identifier::new("db1", "orders"))
+            .await
+            .unwrap();
+        let schema = table.schema();
+        assert_eq!(schema.primary_keys(), &["id", "dt"]);
+        assert_eq!(schema.partition_keys(), &["dt"]);
+        assert_eq!(
+            schema.options().get("bucket").map(String::as_str),
+            Some("2")
+        );
+        assert_eq!(schema.fields()[0].description(), Some("Order ID"));
+        assert!(!schema.fields()[0].data_type().is_nullable());
+        assert!(!schema.fields()[1].data_type().is_nullable());
 
         // INSERT goes through the Lakelet wrapper, which must forward to
         // paimon-datafusion's sink; the result is a single row count.
-        let provider = schema_provider.table("t1").await.unwrap().unwrap();
-        ctx.register_table("t1", provider).unwrap();
-        let batches = ctx
-            .sql("INSERT INTO t1 VALUES (1), (2)")
+        let batches = session
+            .sql(
+                "INSERT INTO orders VALUES
+                    (2, '2026-01-03', 56.78, TIMESTAMP '2026-01-03 04:05:06.654321',
+                     make_array('sale'), make_map('source', 'app'),
+                     named_struct('city', 'Beijing', 'postcode', '100000'), NULL),
+                    (1, '2026-01-02', 12.34, TIMESTAMP '2026-01-02 03:04:05.123456',
+                     make_array('new', 'paid'),
+                     make_map('source', 'web', 'region', 'east'),
+                     named_struct('city', 'Shanghai', 'postcode', '200000'), 'first order')",
+            )
             .await
             .unwrap()
             .collect()
@@ -550,27 +599,57 @@ mod tests {
 
         // Lakelet rebuilds the provider per statement, so read back through a
         // fresh one to make sure the commit is visible from the warehouse.
-        let provider = schema_provider.table("t1").await.unwrap().unwrap();
-        let batches = ctx
-            .read_table(provider)
-            .unwrap()
-            .sort(vec![datafusion::prelude::col("id").sort(true, true)])
+        let batches = session
+            .sql("SELECT * FROM orders ORDER BY id, dt")
+            .await
             .unwrap()
             .collect()
             .await
             .unwrap();
-        let ids: Vec<i32> = batches
+        let rows: Vec<Vec<Option<String>>> = batches
             .iter()
             .flat_map(|batch| {
-                batch
-                    .column(0)
-                    .as_any()
-                    .downcast_ref::<Int32Array>()
-                    .unwrap()
-                    .values()
-                    .to_vec()
+                (0..batch.num_rows()).map(|row| {
+                    batch
+                        .columns()
+                        .iter()
+                        .map(|column| {
+                            (!column.is_null(row))
+                                .then(|| array_value_to_string(column.as_ref(), row).unwrap())
+                        })
+                        .collect()
+                })
             })
             .collect();
-        assert_eq!(ids, vec![1, 2]);
+        let expected: Vec<Vec<Option<String>>> = [
+            [
+                Some("1"),
+                Some("2026-01-02"),
+                Some("12.34"),
+                Some("2026-01-02T03:04:05.123456"),
+                Some("[new, paid]"),
+                Some("{source: web, region: east}"),
+                Some("{city: Shanghai, postcode: 200000}"),
+                Some("first order"),
+            ],
+            [
+                Some("2"),
+                Some("2026-01-03"),
+                Some("56.78"),
+                Some("2026-01-03T04:05:06.654321"),
+                Some("[sale]"),
+                Some("{source: app}"),
+                Some("{city: Beijing, postcode: 100000}"),
+                None,
+            ],
+        ]
+        .into_iter()
+        .map(|row| {
+            row.into_iter()
+                .map(|value| value.map(str::to_owned))
+                .collect()
+        })
+        .collect();
+        assert_eq!(rows, expected);
     }
 }
