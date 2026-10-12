@@ -24,6 +24,15 @@ pub(crate) use manager::{CatalogConfig, CatalogConfigs, CatalogManager};
 use std::collections::HashMap;
 use std::sync::Arc;
 pub(crate) use table_definition_builder::TableDefinitionBuilder;
+use table_format::TableFormat;
+
+/// A catalog-independent CREATE TABLE request retaining the SQL type information.
+pub struct CreateTableRequest<'a> {
+    pub name: ResolvedTableReference,
+    pub table_format: TableFormat,
+    pub definition: &'a CreateTable,
+    pub enable_ident_normalization: bool,
+}
 
 #[async_trait]
 pub trait LakeletCatalogProvider: AsyncCatalogProvider {
@@ -33,9 +42,17 @@ pub trait LakeletCatalogProvider: AsyncCatalogProvider {
 
     async fn schema_exist(&self, schema_name: &str) -> Result<bool>;
 
-    /// Create a table at the fully resolved destination using the original SQL definition.
-    async fn create_table(&self, name: &ResolvedTableReference, _stmt: &CreateTable) -> Result<()> {
-        not_impl_err!("CREATE TABLE {name} is not supported")
+    fn default_table_format(&self) -> Option<TableFormat> {
+        None
+    }
+
+    /// Create a persistent table using the resolved destination and requested format.
+    async fn create_table(&self, request: &CreateTableRequest<'_>) -> Result<()> {
+        not_impl_err!(
+            "CREATE TABLE {} USING {:?} is not supported",
+            request.name,
+            request.table_format
+        )
     }
 
     /// Create a schema at the fully resolved destination using the original SQL definition.

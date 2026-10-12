@@ -1,11 +1,12 @@
 use super::ExtendedSessionContext;
+use crate::catalog::CreateTableRequest;
 use datafusion::common::{
     ResolvedTableReference, Result, SchemaReference, not_impl_err, plan_datafusion_err, plan_err,
 };
 use datafusion::dataframe::DataFrame;
 use datafusion::logical_expr::LogicalPlanBuilder;
 use datafusion::logical_expr::sqlparser::ast::{
-    CreateTable, ObjectName, ObjectType, SchemaName, Statement,
+    CreateTable, HiveIOFormat, ObjectName, ObjectType, SchemaName, Statement,
 };
 use datafusion::sql::planner::{IdentNormalizer, object_name_to_table_reference};
 
@@ -32,7 +33,32 @@ impl ExtendedSessionContext {
 
         // Creation targets are not query inputs. Let the catalog handle the DDL
         // before resolving any tables or planning a possible AS SELECT query.
-        provider.create_table(&name, stmt).await?;
+        let table_format = match stmt
+            .hive_formats
+            .as_ref()
+            .and_then(|format| format.storage.as_ref())
+        {
+            Some(HiveIOFormat::Using { format }) => format.value.parse()?,
+            Some(_) => return not_impl_err!("Use USING to select the table format"),
+            None => provider.default_table_format().ok_or_else(|| {
+                plan_datafusion_err!("CREATE TABLE {name} requires USING <table_format>")
+            })?,
+        };
+        let enable_ident_normalization = self
+            .session_context
+            .state()
+            .config()
+            .options()
+            .sql_parser
+            .enable_ident_normalization;
+        provider
+            .create_table(&CreateTableRequest {
+                name,
+                table_format,
+                definition: stmt,
+                enable_ident_normalization,
+            })
+            .await?;
         self.session_context
             .execute_logical_plan(LogicalPlanBuilder::empty(false).build()?)
             .await
@@ -154,6 +180,10 @@ mod tests {
 
     #[async_trait]
     impl LakeletCatalogProvider for TestingCatalog {
+        fn default_table_format(&self) -> Option<crate::table_format::TableFormat> {
+            Some(crate::table_format::TableFormat::Paimon)
+        }
+
         async fn list_schema_names(&self) -> Result<Vec<String>> {
             Ok(vec!["sales".into()])
         }
@@ -168,15 +198,11 @@ mod tests {
             Ok(true)
         }
 
-        async fn create_table(
-            &self,
-            name: &ResolvedTableReference,
-            stmt: &CreateTable,
-        ) -> Result<()> {
-            self.calls
-                .lock()
-                .unwrap()
-                .push(DdlCall::Table(name.clone(), Box::new(stmt.clone())));
+        async fn create_table(&self, request: &CreateTableRequest<'_>) -> Result<()> {
+            self.calls.lock().unwrap().push(DdlCall::Table(
+                request.name.clone(),
+                Box::new(request.definition.clone()),
+            ));
             not_impl_err!("recorded CREATE TABLE")
         }
 
@@ -452,9 +478,12 @@ mod tests {
         session.sql("USE CATALOG internal").await?;
         for (sql, target) in [
             ("CREATE SCHEMA test", "internal.test"),
-            ("CREATE TABLE t (id INT)", "internal.information_schema.t"),
             (
-                "CREATE TABLE IF NOT EXISTS t AS SELECT * FROM missing",
+                "CREATE TABLE t (id INT) USING PAIMON",
+                "internal.information_schema.t",
+            ),
+            (
+                "CREATE TABLE IF NOT EXISTS t USING PAIMON AS SELECT * FROM missing",
                 "internal.information_schema.t",
             ),
             ("DROP TABLE IF EXISTS t", "internal.information_schema.t"),

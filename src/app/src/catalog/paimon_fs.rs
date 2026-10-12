@@ -1,4 +1,6 @@
-use crate::catalog::{CatalogConfig, LakeletCatalogProvider};
+mod ddl;
+
+use crate::catalog::{CatalogConfig, CreateTableRequest, LakeletCatalogProvider};
 use crate::context::LakeletContext;
 use crate::table_format::TableFormat;
 use crate::table_format::table_provider_factory::{TableProviderBuilder, parse_table_reference};
@@ -66,6 +68,28 @@ impl PaimonFSCatalog {
 
 #[async_trait]
 impl LakeletCatalogProvider for PaimonFSCatalog {
+    fn default_table_format(&self) -> Option<TableFormat> {
+        Some(TableFormat::Paimon)
+    }
+
+    async fn create_table(&self, request: &CreateTableRequest<'_>) -> Result<()> {
+        if request.table_format != TableFormat::Paimon {
+            return datafusion::common::plan_err!(
+                "Paimon filesystem catalog only supports USING PAIMON, got {:?}",
+                request.table_format
+            );
+        }
+        let schema = ddl::build_schema(request.definition, request.enable_ident_normalization)?;
+        self.inner_catalog
+            .create_table(
+                &Identifier::new(request.name.schema.as_ref(), request.name.table.as_ref()),
+                schema,
+                request.definition.if_not_exists,
+            )
+            .await
+            .map_err(to_datafusion_error)
+    }
+
     async fn list_schema_names(&self) -> Result<Vec<String>> {
         self.inner_catalog
             .list_databases()
@@ -312,7 +336,7 @@ mod tests {
         let error = session.sql("CREATE SCHEMA db1").await.unwrap_err();
         assert!(error.to_string().contains("Database db1 already exists"));
 
-        // CREATE TABLE remains unsupported; prepare table fixtures through Paimon.
+        // Prepare table fixtures through Paimon.
         let inner_catalog = catalog.inner_catalog.clone();
         let schema = paimon::spec::Schema::builder()
             .column(
@@ -353,7 +377,6 @@ mod tests {
             "CREATE SCHEMA unsupported OPTIONS (key = 'value')",
             "CREATE SCHEMA unsupported DEFAULT COLLATE 'und:ci'",
             "CREATE SCHEMA unsupported CLONE db1",
-            "CREATE TABLE t2 (id INT)",
             "DROP TABLE t1 CASCADE",
             "DROP TABLE t1 RESTRICT",
             "DROP TABLE t1 PURGE",

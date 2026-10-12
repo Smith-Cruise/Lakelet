@@ -74,6 +74,14 @@ impl Dialect for LakeletDialect {
         true
     }
 
+    fn supports_map_literal_with_angle_brackets(&self) -> bool {
+        true
+    }
+
+    fn supports_create_table_using(&self) -> bool {
+        true
+    }
+
     fn supports_nested_comments(&self) -> bool {
         true
     }
