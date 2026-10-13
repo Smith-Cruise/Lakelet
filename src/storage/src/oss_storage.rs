@@ -5,6 +5,7 @@ use opendal::services::OssConfig;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OSSStorage {
     #[serde(rename = "endpoint")]
     pub endpoint: Option<String>,

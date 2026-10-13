@@ -32,7 +32,7 @@ pub struct IcebergRestCatalogConfig {
     pub uri: String,
     pub warehouse: Option<String>,
     pub token: Option<String>,
-    #[serde(flatten, default)]
+    #[serde(flatten, default, deserialize_with = "Storage::deserialize_flattened")]
     pub storage: Storage,
 }
 

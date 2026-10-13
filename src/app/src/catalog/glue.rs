@@ -32,7 +32,7 @@ pub struct GlueCatalogConfig {
     pub aws_glue_secret_key: Option<String>,
     #[serde(rename = "aws-glue-endpoint")]
     pub aws_glue_endpoint: Option<String>,
-    #[serde(flatten, default)]
+    #[serde(flatten, default, deserialize_with = "Storage::deserialize_flattened")]
     pub storage: Storage,
 }
 

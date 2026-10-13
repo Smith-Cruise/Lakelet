@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CatalogConfigs {
     #[serde(rename = "iceberg-rest")]
     pub iceberg_rest: Option<Vec<IcebergRestCatalogConfig>>,

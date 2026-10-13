@@ -13,6 +13,7 @@ const MEMORY_LIMIT_CONFIG_HINT: &str =
     "set 'memory-limit' explicitly under [server] in the configuration file";
 
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LakeletConfig {
     #[serde(rename = "server")]
     pub server_config: Option<ServerConfig>,
@@ -23,7 +24,7 @@ pub struct LakeletConfig {
 pub const DEFAULT_SERVER_PORT: u16 = 32010;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ServerConfig {
     #[serde(rename = "memory-limit", deserialize_with = "deserialize_memory_size")]
     pub memory_limit: Option<usize>,
@@ -200,6 +201,20 @@ impl LakeletContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reject_unknown_config_key() {
+        let error = toml::from_str::<LakeletConfig>(
+            r#"
+            [server]
+            server-prt = 32010
+            "#,
+        )
+        .err()
+        .expect("unknown config keys should be rejected");
+
+        assert!(error.to_string().contains("unknown field `server-prt`"));
+    }
 
     #[test]
     fn parse_server_config_from_server_table() {

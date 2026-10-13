@@ -23,7 +23,7 @@ use std::sync::Arc;
 pub struct PaimonFSCatalogConfig {
     pub name: String,
     pub warehouse: String,
-    #[serde(flatten, default)]
+    #[serde(flatten, default, deserialize_with = "Storage::deserialize_flattened")]
     pub storage: Storage,
 }
 

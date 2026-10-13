@@ -31,7 +31,7 @@ pub struct HMSCatalogConfig {
     pub name: String,
     #[serde(rename = "metastore-uri")]
     pub metastore_uri: String,
-    #[serde(flatten, default)]
+    #[serde(flatten, default, deserialize_with = "Storage::deserialize_flattened")]
     pub storage: Storage,
 }
 
