@@ -11,7 +11,10 @@ use datafusion::logical_expr::sqlparser::ast::{
 use datafusion::sql::planner::{IdentNormalizer, object_name_to_table_reference};
 
 impl ExtendedSessionContext {
-    fn resolve_ddl_table_name(&self, name: &ObjectName) -> Result<ResolvedTableReference> {
+    pub(super) fn resolve_ddl_table_name(
+        &self,
+        name: &ObjectName,
+    ) -> Result<ResolvedTableReference> {
         let state = self.session_context.state();
         let options = state.config().options();
         Ok(object_name_to_table_reference(

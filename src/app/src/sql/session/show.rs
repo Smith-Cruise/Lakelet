@@ -9,29 +9,20 @@ use datafusion::dataframe::DataFrame;
 use datafusion::error::DataFusionError;
 use datafusion::logical_expr::sqlparser::ast::{
     ObjectName, ObjectNamePart, ShowCreateObject, ShowStatementFilter, ShowStatementFilterPosition,
-    ShowStatementInParentType, ShowStatementOptions, Statement,
+    ShowStatementInParentType, ShowStatementOptions,
 };
 use datafusion::prelude::{col, lit};
-use datafusion::sql::parser::Statement as DataFusionStatement;
 use std::sync::Arc;
 
 impl ExtendedSessionContext {
-    pub(super) fn build_show_variables_sql(
+    pub(super) async fn handle_show_variables(
         &self,
         filter: &Option<ShowStatementFilter>,
-    ) -> Result<String> {
-        let base_sql = format!(
-            "SELECT name, value, description FROM {}.{}.{}",
-            INTERNAL_CATALOG, INFORMATION_SCHEMA, INFORMATION_SCHEMA_SHOW_VARIABLES
-        );
-
-        let base_sql = match filter {
-            None => base_sql,
+    ) -> Result<DataFrame> {
+        let predicate = match filter {
+            None => None,
             Some(ShowStatementFilter::Like(pattern)) => {
-                format!(
-                    "{base_sql} WHERE name LIKE '{}'",
-                    Self::escape_sql_string(pattern)
-                )
+                Some(col("name").like(lit(pattern.clone())))
             }
             _ => {
                 return Err(DataFusionError::Plan(
@@ -39,7 +30,22 @@ impl ExtendedSessionContext {
                 ));
             }
         };
-        Ok(format!("{base_sql} ORDER BY NAME"))
+        let table = TableReference::full(
+            INTERNAL_CATALOG,
+            INFORMATION_SCHEMA,
+            INFORMATION_SCHEMA_SHOW_VARIABLES,
+        );
+        self.resolve_tables(std::slice::from_ref(&table)).await?;
+
+        let mut dataframe = self.session_context.table(table).await?.select_columns(&[
+            "name",
+            "value",
+            "description",
+        ])?;
+        if let Some(predicate) = predicate {
+            dataframe = dataframe.filter(predicate)?;
+        }
+        dataframe.sort(vec![col("name").sort(true, false)])
     }
 
     fn show_like_filter(show_options: &ShowStatementOptions) -> Option<ShowStatementFilter> {
@@ -216,48 +222,6 @@ impl ExtendedSessionContext {
         dataframe.sort(vec![col(column_name).sort(true, false)])
     }
 
-    fn escape_sql_string(value: &str) -> String {
-        value.replace('\'', "''")
-    }
-
-    pub(super) fn show_create_statement(
-        statement: &DataFusionStatement,
-    ) -> Option<(&ShowCreateObject, &ObjectName)> {
-        match statement {
-            DataFusionStatement::Statement(stmt) => match stmt.as_ref() {
-                Statement::ShowCreate { obj_type, obj_name } => Some((obj_type, obj_name)),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-
-    pub(super) fn resolve_show_create_table_references(
-        &self,
-        obj_type: &ShowCreateObject,
-        obj_name: &ObjectName,
-    ) -> Result<Vec<TableReference>> {
-        if obj_type != &ShowCreateObject::Table {
-            return Err(DataFusionError::NotImplemented(format!(
-                "SHOW CREATE {obj_type} is not implemented"
-            )));
-        }
-
-        let (catalog_name, schema_name, table_name) =
-            self.resolve_show_create_table_name(obj_name)?;
-        if table_name.contains('$') {
-            return Err(DataFusionError::NotImplemented(
-                "SHOW CREATE TABLE is not implemented for metadata tables".to_string(),
-            ));
-        }
-
-        Ok(vec![TableReference::full(
-            catalog_name,
-            schema_name,
-            table_name,
-        )])
-    }
-
     pub(super) async fn handle_show_create_stmt(
         &self,
         obj_type: &ShowCreateObject,
@@ -269,22 +233,26 @@ impl ExtendedSessionContext {
             )));
         }
 
-        let (catalog_name, schema_name, table_name) =
-            self.resolve_show_create_table_name(obj_name)?;
-        if table_name.contains('$') {
+        let name = self.resolve_ddl_table_name(obj_name)?;
+        if name.table.contains('$') {
             return Err(DataFusionError::NotImplemented(
                 "SHOW CREATE TABLE is not implemented for metadata tables".to_string(),
             ));
         }
 
+        // Resolve only the target table, not DataFusion's synthetic
+        // information_schema references for SHOW CREATE.
+        self.resolve_tables(&[TableReference::from(name.clone())])
+            .await?;
+        let (catalog_name, schema_name, table_name) = (&name.catalog, &name.schema, &name.table);
         let catalog_provider = self
             .session_context
-            .catalog(&catalog_name)
+            .catalog(catalog_name)
             .ok_or_else(|| DataFusionError::Plan(format!("unknown catalog {}", catalog_name)))?;
         let schema_provider = catalog_provider
-            .schema(&schema_name)
+            .schema(schema_name)
             .ok_or_else(|| DataFusionError::Plan(format!("unknown schema {}", schema_name)))?;
-        let table_provider = schema_provider.table(&table_name).await?.ok_or_else(|| {
+        let table_provider = schema_provider.table(table_name).await?.ok_or_else(|| {
             DataFusionError::Plan(format!(
                 "table '{}.{}.{}' not found",
                 catalog_name, schema_name, table_name
@@ -311,48 +279,6 @@ impl ExtendedSessionContext {
 
         self.session_context.read_batch(batch)
     }
-
-    fn resolve_show_create_table_name(
-        &self,
-        obj_name: &ObjectName,
-    ) -> Result<(String, String, String)> {
-        let parts = obj_name
-            .0
-            .iter()
-            .map(Self::object_name_part_value)
-            .collect::<Result<Vec<_>>>()?;
-        let state = self.session_context.state();
-        let catalog = &state.config().options().catalog;
-
-        match parts.as_slice() {
-            [table_name] => Ok((
-                catalog.default_catalog.clone(),
-                catalog.default_schema.clone(),
-                table_name.clone(),
-            )),
-            [schema_name, table_name] => Ok((
-                catalog.default_catalog.clone(),
-                schema_name.clone(),
-                table_name.clone(),
-            )),
-            [catalog_name, schema_name, table_name] => Ok((
-                catalog_name.clone(),
-                schema_name.clone(),
-                table_name.clone(),
-            )),
-            _ => Err(DataFusionError::Plan(format!(
-                "unsupported SHOW CREATE TABLE name: {obj_name}"
-            ))),
-        }
-    }
-
-    fn object_name_part_value(part: &ObjectNamePart) -> Result<String> {
-        part.as_ident()
-            .map(|ident| ident.value.clone())
-            .ok_or_else(|| {
-                DataFusionError::Plan(format!("unsupported SHOW CREATE TABLE name part: {part}"))
-            })
-    }
 }
 
 #[cfg(test)]
@@ -362,6 +288,7 @@ mod tests {
     use crate::statements::ExtendedStatement;
     use datafusion::arrow::util::pretty::pretty_format_batches;
     use datafusion::common::assert_contains;
+    use datafusion::logical_expr::sqlparser::ast::Statement;
 
     #[tokio::test]
     async fn test_show_variables_execution() -> Result<()> {
@@ -566,12 +493,8 @@ mod tests {
         let ExtendedStatement::SQLStatement(stmt) = &stmt[0];
         if let Statement::ShowCreate { obj_name, .. } = stmt.as_ref() {
             assert_eq!(
-                session.resolve_show_create_table_name(obj_name)?,
-                (
-                    INTERNAL_CATALOG.to_string(),
-                    INFORMATION_SCHEMA.to_string(),
-                    "tbl".to_string()
-                )
+                TableReference::from(session.resolve_ddl_table_name(obj_name)?),
+                TableReference::full(INTERNAL_CATALOG, INFORMATION_SCHEMA, "tbl")
             );
         } else {
             panic!("expected SHOW CREATE TABLE statement");
@@ -581,12 +504,8 @@ mod tests {
         let ExtendedStatement::SQLStatement(stmt) = &stmt[0];
         if let Statement::ShowCreate { obj_name, .. } = stmt.as_ref() {
             assert_eq!(
-                session.resolve_show_create_table_name(obj_name)?,
-                (
-                    INTERNAL_CATALOG.to_string(),
-                    "db".to_string(),
-                    "tbl".to_string()
-                )
+                TableReference::from(session.resolve_ddl_table_name(obj_name)?),
+                TableReference::full(INTERNAL_CATALOG, "db", "tbl")
             );
         } else {
             panic!("expected SHOW CREATE TABLE statement");
@@ -596,8 +515,8 @@ mod tests {
         let ExtendedStatement::SQLStatement(stmt) = &stmt[0];
         if let Statement::ShowCreate { obj_name, .. } = stmt.as_ref() {
             assert_eq!(
-                session.resolve_show_create_table_name(obj_name)?,
-                ("catalog".to_string(), "db".to_string(), "tbl".to_string())
+                TableReference::from(session.resolve_ddl_table_name(obj_name)?),
+                TableReference::full("catalog", "db", "tbl")
             );
         } else {
             panic!("expected SHOW CREATE TABLE statement");
@@ -606,19 +525,21 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_resolve_show_create_table_references_only_target_table() -> Result<()> {
+    #[tokio::test]
+    async fn test_show_create_loads_target_table() -> Result<()> {
         let session = ExtendedSessionContext::default();
-        let stmt = ExtendedParser::parse_sql("show create table tbl")?;
+        let stmt = ExtendedParser::parse_sql("show create table variables")?;
         let ExtendedStatement::SQLStatement(stmt) = &stmt[0];
         if let Statement::ShowCreate { obj_name, obj_type } = stmt.as_ref() {
-            assert_eq!(
-                session.resolve_show_create_table_references(obj_type, obj_name)?,
-                vec![TableReference::full(
-                    INTERNAL_CATALOG,
-                    INFORMATION_SCHEMA,
-                    "tbl"
-                )]
+            // The table must be loaded before its missing definition is reported.
+            let err = session
+                .handle_show_create_stmt(obj_type, obj_name)
+                .await
+                .unwrap_err();
+            assert!(matches!(err, DataFusionError::NotImplemented(_)));
+            assert_contains!(
+                err.to_string(),
+                "SHOW CREATE TABLE is not implemented for table internal.information_schema.variables"
             );
         } else {
             panic!("expected SHOW CREATE TABLE statement");
@@ -627,30 +548,21 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_resolve_show_create_table_references_rejects_metadata_table() -> Result<()> {
+    #[tokio::test]
+    async fn test_show_create_rejects_metadata_table() -> Result<()> {
         let session = ExtendedSessionContext::default();
         let stmt = ExtendedParser::parse_sql("show create table \"tbl$data_files\"")?;
         let ExtendedStatement::SQLStatement(stmt) = &stmt[0];
         if let Statement::ShowCreate { obj_name, obj_type } = stmt.as_ref() {
             let err = session
-                .resolve_show_create_table_references(obj_type, obj_name)
+                .handle_show_create_stmt(obj_type, obj_name)
+                .await
                 .unwrap_err();
             assert_contains!(err.to_string(), "metadata tables");
         } else {
             panic!("expected SHOW CREATE TABLE statement");
         }
 
-        Ok(())
-    }
-
-    #[test]
-    fn test_show_like_sql_escapes_quotes() -> Result<()> {
-        let session = ExtendedSessionContext::default();
-        let sql = session
-            .build_show_variables_sql(&Some(ShowStatementFilter::Like("%o''hara%".to_string())))?;
-
-        assert_contains!(sql.as_str(), "LIKE '%o''''hara%'");
         Ok(())
     }
 }
