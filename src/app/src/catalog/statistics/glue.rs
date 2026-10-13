@@ -8,7 +8,7 @@ use aws_sdk_glue::types::{
 };
 use datafusion::arrow::datatypes::{DataType, Field, TimeUnit};
 use datafusion::common::stats::{ColumnStatistics, Precision};
-use datafusion::common::{ScalarValue, Statistics, TableReference};
+use datafusion::common::{ScalarValue, Statistics};
 use datafusion::datasource::table_schema::TableSchema;
 use futures::{StreamExt, stream};
 use std::collections::HashMap;
@@ -34,12 +34,13 @@ impl TableStatisticsLoader for GlueTableStatisticsLoader<'_> {
 
         // for partitioned table, we don't support collect column statistics
         if request.table_schema.table_partition_cols().is_empty() {
-            let TableReference::Full { schema, table, .. } = request.table_reference else {
-                unreachable!("table statistics require a full table reference")
-            };
-            let loaded =
-                load_glue_columns_statistics(self.client, schema, table, request.table_schema)
-                    .await;
+            let loaded = load_glue_columns_statistics(
+                self.client,
+                &request.table_reference.schema,
+                &request.table_reference.table,
+                request.table_schema,
+            )
+            .await;
             statistics.column_statistics = loaded.column_statistics;
             return LoadedStatistics::new(statistics, loaded.complete);
         }

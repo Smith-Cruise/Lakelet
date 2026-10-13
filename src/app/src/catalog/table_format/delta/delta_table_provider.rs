@@ -2,8 +2,8 @@ use crate::catalog::TableDefinitionBuilder;
 use crate::table_format::TableFormat;
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::catalog::Session;
+use datafusion::common::ResolvedTableReference;
 use datafusion::common::Result;
-use datafusion::common::TableReference;
 use datafusion::datasource::{TableProvider, TableType};
 use datafusion::error::DataFusionError;
 use datafusion::logical_expr::dml::InsertOp;
@@ -64,7 +64,7 @@ pub struct DeltaTableProvider {
 
 impl DeltaTableProvider {
     pub async fn try_new(
-        table_reference: TableReference,
+        table_reference: ResolvedTableReference,
         table_location: String,
         storage: Storage,
     ) -> Result<Self> {
@@ -94,7 +94,7 @@ impl DeltaTableProvider {
             delta_scan.schema().as_ref().clone(),
         )
         .with_partition_column_names(partition_column_names)
-        .build()?;
+        .build();
         Ok(Self {
             delta_scan,
             log_store: delta_table.log_store(),

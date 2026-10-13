@@ -6,9 +6,7 @@ use crate::table_format::TableFormat;
 use crate::table_format::table_provider_factory::{TableProviderBuilder, parse_table_reference};
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
-use datafusion::common::{
-    ResolvedTableReference, Result, SchemaReference, TableReference, not_impl_err,
-};
+use datafusion::common::{ResolvedTableReference, Result, SchemaReference, not_impl_err};
 use datafusion::error::DataFusionError;
 use datafusion::logical_expr::sqlparser::ast::{ObjectType, SchemaName, Statement};
 use lakelet_storage::storage::Storage;
@@ -216,11 +214,11 @@ impl AsyncSchemaProvider for PaimonFSSchema {
         let (table_name, metadata_table_type) = parse_table_reference(tbl_name)?;
 
         let table_location = table_location(&self.config.warehouse, &self.schema_name, &table_name);
-        let table_reference = TableReference::full(
-            self.config.name.as_str(),
-            self.schema_name.as_str(),
-            table_name.as_str(),
-        );
+        let table_reference = ResolvedTableReference {
+            catalog: self.config.name.as_str().into(),
+            schema: self.schema_name.as_str().into(),
+            table: table_name.as_str().into(),
+        };
 
         // The table format is fixed by the catalog type, no deduction needed.
         let table_provider_builder = TableProviderBuilder::new(

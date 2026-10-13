@@ -202,7 +202,7 @@ mod tests {
     use crate::catalog::TableDefinitionBuilder;
     use crate::table_format::TableFormat;
     use datafusion::arrow::datatypes::Schema;
-    use datafusion::common::TableReference;
+    use datafusion::common::ResolvedTableReference;
 
     fn parse(hive_type: &str) -> DataType {
         hive_type_to_arrow_type(hive_type).unwrap()
@@ -420,12 +420,16 @@ mod tests {
         );
 
         let definition = TableDefinitionBuilder::new(
-            TableReference::full("catalog", "schema", "table"),
+            ResolvedTableReference {
+                catalog: "catalog".into(),
+                schema: "schema".into(),
+                table: "table".into(),
+            },
             "s3://bucket/path",
             TableFormat::Hive,
             schema,
         )
-        .build()?;
+        .build();
 
         assert!(definition.contains("`tags` List(Utf8, field: 'element')"));
         assert!(definition.contains(

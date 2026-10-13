@@ -3,8 +3,8 @@ mod delta_table_provider;
 use crate::catalog::table_format::metadata_table::MetadataTableType;
 use crate::table_format::delta::delta_table_provider::DeltaTableProvider;
 use datafusion::catalog::TableProvider;
+use datafusion::common::ResolvedTableReference;
 use datafusion::common::Result;
-use datafusion::common::TableReference;
 use datafusion::error::DataFusionError;
 use lakelet_storage::storage::Storage;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ pub struct DeltaTableProviderFactory {}
 
 impl DeltaTableProviderFactory {
     pub async fn try_create_table_provider(
-        table_reference: TableReference,
+        table_reference: ResolvedTableReference,
         table_location: String,
         metadata_table_type: Option<MetadataTableType>,
         storage: Storage,

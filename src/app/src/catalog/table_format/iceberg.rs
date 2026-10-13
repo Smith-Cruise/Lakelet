@@ -3,9 +3,9 @@ use crate::table_format::iceberg::iceberg_metadata_table_provider::IcebergMetada
 use crate::table_format::iceberg::iceberg_table_provider::IcebergTableProvider;
 use crate::table_format::metadata_table::MetadataTableType;
 use datafusion::catalog::TableProvider;
+use datafusion::common::ResolvedTableReference;
 use datafusion::common::Result;
 use datafusion::error::DataFusionError;
-use datafusion::sql::TableReference;
 use iceberg::io::{FileIO, FileIOBuilder};
 use iceberg::table::StaticTable;
 use iceberg::{NamespaceIdent, TableIdent};
@@ -21,27 +21,17 @@ pub struct IcebergTableProviderFactory {}
 
 impl IcebergTableProviderFactory {
     pub async fn try_create_table_provider(
-        table_reference: TableReference,
+        table_reference: ResolvedTableReference,
         table_location: String,
         metadata_location: String,
         metadata_table_type: Option<MetadataTableType>,
         storage: Storage,
     ) -> Result<Arc<dyn TableProvider>> {
-        let (schema_name, table_name) = match &table_reference {
-            TableReference::Full {
-                catalog: _,
-                schema,
-                table,
-            } => (schema.to_string(), table.to_string()),
-            _ => {
-                return Err(DataFusionError::Plan("invalid table reference".to_string()));
-            }
-        };
         let file_io = build_file_io(&metadata_location, &storage)?;
 
         let iceberg_identifier: TableIdent = TableIdent {
-            namespace: NamespaceIdent::new(schema_name),
-            name: table_name,
+            namespace: NamespaceIdent::new(table_reference.schema.to_string()),
+            name: table_reference.table.to_string(),
         };
 
         let iceberg_table =

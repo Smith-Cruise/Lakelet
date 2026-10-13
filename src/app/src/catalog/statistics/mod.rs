@@ -2,7 +2,7 @@ pub(crate) mod glue;
 mod manager;
 
 use async_trait::async_trait;
-use datafusion::common::{Statistics, TableReference};
+use datafusion::common::{ResolvedTableReference, Statistics};
 use datafusion::datasource::table_schema::TableSchema;
 use std::collections::HashMap;
 
@@ -10,18 +10,17 @@ pub use manager::StatisticsManager;
 
 #[derive(Clone, Copy)]
 pub(crate) struct TableStatisticsRequest<'a> {
-    pub table_reference: &'a TableReference,
+    pub table_reference: &'a ResolvedTableReference,
     pub table_schema: &'a TableSchema,
     pub table_properties: &'a HashMap<String, String>,
 }
 
 impl<'a> TableStatisticsRequest<'a> {
     pub fn new(
-        table_reference: &'a TableReference,
+        table_reference: &'a ResolvedTableReference,
         table_schema: &'a TableSchema,
         table_properties: &'a HashMap<String, String>,
     ) -> Self {
-        debug_assert!(matches!(table_reference, TableReference::Full { .. }));
         Self {
             table_reference,
             table_schema,

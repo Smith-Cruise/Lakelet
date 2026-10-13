@@ -9,7 +9,7 @@ use crate::table_format::table_format_detector::TableFormatDetector;
 use crate::table_format::table_provider_factory::{TableProviderBuilder, parse_table_reference};
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
-use datafusion::common::TableReference;
+use datafusion::common::ResolvedTableReference;
 use datafusion::common::{Result, Statistics};
 use datafusion::error::DataFusionError;
 use hive_metastore::{
@@ -194,11 +194,11 @@ impl AsyncSchemaProvider for HMSSchema {
             .map_err(|e| DataFusionError::External(e.into()))??
             .table;
 
-        let table_reference = TableReference::full(
-            self.config.name.as_str(),
-            self.schema_name.as_str(),
-            table_name.as_str(),
-        );
+        let table_reference = ResolvedTableReference {
+            catalog: self.config.name.as_str().into(),
+            schema: self.schema_name.as_str().into(),
+            table: table_name.as_str().into(),
+        };
 
         let mut hms_table_properties: HashMap<String, String> = HashMap::new();
         if let Some(parameters) = &hms_table.parameters {

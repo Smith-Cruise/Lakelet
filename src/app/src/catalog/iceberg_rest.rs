@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
-use datafusion::common::{DataFusionError, Result, TableReference};
+use datafusion::common::{DataFusionError, ResolvedTableReference, Result};
 use iceberg::{Catalog, CatalogBuilder, ErrorKind, NamespaceIdent, TableIdent};
 use iceberg_catalog_rest::{
     REST_CATALOG_PROP_URI, REST_CATALOG_PROP_WAREHOUSE, RestCatalogBuilder,
@@ -184,11 +184,11 @@ impl AsyncSchemaProvider for IcebergRestSchema {
                 metadata_type,
             )?)));
         }
-        let reference = TableReference::full(
-            self.catalog_name.as_str(),
-            self.namespace.to_string(),
-            ident.name.as_str(),
-        );
+        let reference = ResolvedTableReference {
+            catalog: self.catalog_name.as_str().into(),
+            schema: self.namespace.to_string().into(),
+            table: ident.name.as_str().into(),
+        };
         let location = table.metadata().location().to_string();
         Ok(Some(Arc::new(
             IcebergTableProvider::try_new_from_table(reference, location, table).await?,
