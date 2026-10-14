@@ -134,8 +134,19 @@ async fn exec_statement(
         let mut batches = Vec::new();
         while let Some(batch) = stream.next().await {
             let batch = batch?;
+            let rows_to_display = if interactive {
+                print::INTERACTIVE_MAX_ROWS
+                    .saturating_sub(row_count)
+                    .min(batch.num_rows())
+            } else {
+                batch.num_rows()
+            };
             row_count += batch.num_rows();
-            batches.push(batch);
+            // Consume every batch for an accurate total, retaining only the
+            // rows needed for the interactive preview.
+            if rows_to_display > 0 {
+                batches.push(batch.slice(0, rows_to_display));
+            }
         }
         if interactive {
             // The REPL renders with comfy-table so wide tables adapt to the
