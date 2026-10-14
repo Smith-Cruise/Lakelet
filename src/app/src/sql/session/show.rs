@@ -74,6 +74,8 @@ impl ExtendedSessionContext {
         for (catalog_name, catalog_config) in catalogs {
             catalog_names.push(catalog_name);
             match catalog_config {
+                CatalogConfig::Tpch(_) => catalog_types.push("TPCH".to_string()),
+                CatalogConfig::Tpcds(_) => catalog_types.push("TPCDS".to_string()),
                 CatalogConfig::IcebergRest(_) => catalog_types.push("ICEBERG-REST".to_string()),
                 CatalogConfig::Internal => catalog_types.push("INTERNAL".to_string()),
                 CatalogConfig::HMS(_) => catalog_types.push("HMS".to_string()),

@@ -4369,6 +4369,8 @@ dependencies = [
  "toml",
  "tonic",
  "tonic-web",
+ "tpcdsgen",
+ "tpchgen",
  "typetag",
  "url",
  "volo-thrift",
@@ -7778,6 +7780,18 @@ name = "tower-service"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
+
+[[package]]
+name = "tpcdsgen"
+version = "0.1.0-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07cae4643a0296068b425716c22e16e5b639ef8c7f7717a513436b20b0a7924a"
+
+[[package]]
+name = "tpchgen"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e26c6d047694183517044ea72d2e0337b05b43d40809f0958f603a7e5a286855"
 
 [[package]]
 name = "tracing"

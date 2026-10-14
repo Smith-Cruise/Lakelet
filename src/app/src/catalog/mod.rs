@@ -1,3 +1,4 @@
+pub(crate) mod benchmark;
 pub(crate) mod data_file_format;
 pub(crate) mod glue;
 pub(crate) mod hms;
@@ -110,6 +111,14 @@ fn build_catalog_provider(
     catalog_config: CatalogConfig,
 ) -> Result<Arc<dyn LakeletCatalogProvider>> {
     let catalog: Arc<dyn LakeletCatalogProvider> = match catalog_config {
+        CatalogConfig::Tpch(_) => Arc::new(benchmark::BenchmarkCatalog::new(
+            benchmark::BenchmarkKind::Tpch,
+            lakelet_context.runtime_manager.cpu_handle(),
+        )),
+        CatalogConfig::Tpcds(_) => Arc::new(benchmark::BenchmarkCatalog::new(
+            benchmark::BenchmarkKind::Tpcds,
+            lakelet_context.runtime_manager.cpu_handle(),
+        )),
         CatalogConfig::IcebergRest(config) => Arc::new(IcebergRestCatalog::new(Arc::new(config))),
         CatalogConfig::Internal => Arc::new(InternalCatalog::new(lakelet_context.clone())),
         CatalogConfig::HMS(hms_catalog) => Arc::new(HMSCatalog::new(
