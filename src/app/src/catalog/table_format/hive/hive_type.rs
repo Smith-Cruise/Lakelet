@@ -431,15 +431,10 @@ mod tests {
         )
         .build();
 
-        assert!(definition.contains("`tags` List(Utf8, field: 'element')"));
-        assert!(definition.contains(
-            "`props` Map(\"key_value\": non-null Struct(\"key\": non-null Utf8, \"value\": Int32), unsorted)"
-        ));
-        assert!(definition.contains("`s` Struct(\"userId\": Int32)"));
-        assert!(
-            definition
-                .contains("`u` Union(Sparse, 0: (\"_union_0\": Int32), 1: (\"_union_1\": Utf8))")
-        );
+        assert!(definition.contains("`tags` ARRAY<STRING>"));
+        assert!(definition.contains("`props` MAP<STRING, INT>"));
+        assert!(definition.contains("`s` STRUCT<`userId` INT>"));
+        assert!(definition.contains("`u` UNIONTYPE<INT, STRING>"));
         Ok(())
     }
 

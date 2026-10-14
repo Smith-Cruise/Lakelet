@@ -1,4 +1,5 @@
 mod ddl;
+mod describe;
 mod show;
 mod r#use;
 
@@ -14,8 +15,8 @@ use datafusion::dataframe::DataFrame;
 use datafusion::error::DataFusionError;
 use datafusion::execution::TaskContext;
 use datafusion::execution::runtime_env::RuntimeEnv;
-use datafusion::logical_expr::ExplainFormat;
 use datafusion::logical_expr::sqlparser::ast::{ObjectType, Statement};
+use datafusion::logical_expr::{ExplainFormat, LogicalPlan};
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion::sql::parser::Statement as DataFusionStatement;
 use datafusion_cli::functions::MetadataCacheFunc;
@@ -143,6 +144,9 @@ impl ExtendedSessionContext {
             .state()
             .statement_to_plan(statement)
             .await?;
+        if let LogicalPlan::DescribeTable(describe) = &plan {
+            return self.describe_dataframe(describe);
+        }
         self.session_context.execute_logical_plan(plan).await
     }
 

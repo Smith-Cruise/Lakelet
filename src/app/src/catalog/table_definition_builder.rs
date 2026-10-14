@@ -1,3 +1,4 @@
+use crate::sql::column_type::sql_type_name;
 use crate::table_format::TableFormat;
 use datafusion::arrow::datatypes::Schema;
 use datafusion::common::ResolvedTableReference;
@@ -48,7 +49,7 @@ impl TableDefinitionBuilder {
                 format!(
                     "  `{}` {}",
                     escape_backtick_identifier(field.name()),
-                    field.data_type()
+                    sql_type_name(field.data_type())
                 )
             })
             .collect::<Vec<_>>()
@@ -121,7 +122,7 @@ mod tests {
 
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64,\n  `name` Utf8,\n  `amount` Decimal128(10, 2),\n  `dt` Utf8\n)\nPARTITIONED BY (`dt`)\nUSING HIVE\nLOCATION 's3://bucket/path'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT,\n  `name` STRING,\n  `amount` DECIMAL(10, 2),\n  `dt` STRING\n)\nPARTITIONED BY (`dt`)\nUSING HIVE\nLOCATION 's3://bucket/path'"
         );
     }
 
@@ -143,7 +144,7 @@ mod tests {
 
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64\n)\nUSING HIVE\nLOCATION 's3://bucket/path'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT\n)\nUSING HIVE\nLOCATION 's3://bucket/path'"
         );
     }
 
@@ -165,7 +166,7 @@ mod tests {
 
         assert_eq!(
             definition,
-            "CREATE TABLE `cat``alog`.`schema`.`ta``ble`\n(\n  `a``b` Utf8\n)\nUSING HIVE\nLOCATION 's3://bucket/o''hara'"
+            "CREATE TABLE `cat``alog`.`schema`.`ta``ble`\n(\n  `a``b` STRING\n)\nUSING HIVE\nLOCATION 's3://bucket/o''hara'"
         );
     }
 
@@ -187,7 +188,7 @@ mod tests {
 
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64\n)\nUSING ICEBERG\nLOCATION 's3://bucket/path'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT\n)\nUSING ICEBERG\nLOCATION 's3://bucket/path'"
         );
     }
 
@@ -214,7 +215,7 @@ mod tests {
 
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64,\n  `dt` Utf8,\n  `amount` Decimal128(10, 2)\n)\nPARTITIONED BY (`dt`, `id`)\nUSING ICEBERG\nLOCATION 's3://bucket/path'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT,\n  `dt` STRING,\n  `amount` DECIMAL(10, 2)\n)\nPARTITIONED BY (`dt`, `id`)\nUSING ICEBERG\nLOCATION 's3://bucket/path'"
         );
     }
 
@@ -236,7 +237,7 @@ mod tests {
 
         assert_eq!(
             definition,
-            "CREATE TABLE `cat``alog`.`schema`.`ta``ble`\n(\n  `a``b` Utf8\n)\nUSING ICEBERG\nLOCATION 's3://bucket/o''hara'"
+            "CREATE TABLE `cat``alog`.`schema`.`ta``ble`\n(\n  `a``b` STRING\n)\nUSING ICEBERG\nLOCATION 's3://bucket/o''hara'"
         );
     }
 
@@ -258,7 +259,7 @@ mod tests {
 
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64\n)\nUSING DELTA\nLOCATION 's3://bucket/path'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT\n)\nUSING DELTA\nLOCATION 's3://bucket/path'"
         );
     }
 
@@ -284,7 +285,7 @@ mod tests {
 
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64,\n  `dt` Utf8\n)\nPARTITIONED BY (`dt`)\nUSING DELTA\nLOCATION 's3://bucket/path'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT,\n  `dt` STRING\n)\nPARTITIONED BY (`dt`)\nUSING DELTA\nLOCATION 's3://bucket/path'"
         );
     }
 
@@ -310,7 +311,7 @@ mod tests {
 
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64,\n  `dt` Utf8\n)\nPARTITIONED BY (`dt`)\nUSING PAIMON\nLOCATION 'hdfs://namenode:8020/warehouse/schema.db/table'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT,\n  `dt` STRING\n)\nPARTITIONED BY (`dt`)\nUSING PAIMON\nLOCATION 'hdfs://namenode:8020/warehouse/schema.db/table'"
         );
     }
 }

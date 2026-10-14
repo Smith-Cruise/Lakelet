@@ -615,7 +615,7 @@ mod tests {
             .sql(
                 "CREATE TABLE agg_fields (
                     id INT,
-                    total BIGINT COMMENT 'Total amount',
+                    total INT64 COMMENT 'Total amount',
                     PRIMARY KEY (id)
                 ) USING PAIMON WITH (
                     'bucket' = '1',

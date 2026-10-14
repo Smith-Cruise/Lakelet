@@ -232,7 +232,9 @@ fn convert_type(
         SqlType::Int(None) | SqlType::Integer(None) => {
             DataType::Int(IntType::with_nullable(nullable))
         }
-        SqlType::BigInt(None) => DataType::BigInt(BigIntType::with_nullable(nullable)),
+        SqlType::BigInt(None) | SqlType::Int64 => {
+            DataType::BigInt(BigIntType::with_nullable(nullable))
+        }
         SqlType::Float(ExactNumberInfo::None) | SqlType::Real => {
             DataType::Float(FloatType::with_nullable(nullable))
         }
