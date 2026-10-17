@@ -33,6 +33,7 @@ class QueryBlock:
 @dataclass(frozen=True)
 class E2ETestFile:
     path: Path
+    catalog: str
     database: str
     blocks: list[QueryBlock]
 
@@ -78,14 +79,14 @@ def wait_for_server(process: subprocess.Popen) -> None:
     )
 
 
-def connect(uri: str, database: str):
+def connect(uri: str, database: str, catalog: str = "moto_glue"):
     # The default-catalog/default-schema gRPC headers replace the CLI
     # --default-catalog/--default-schema flags per connection; set as
     # connection-level call headers they ride along on every RPC.
     return flight_sql.connect(
         uri,
         db_kwargs={
-            CALL_HEADER + "default-catalog": "moto_glue",
+            CALL_HEADER + "default-catalog": catalog,
             CALL_HEADER + "default-schema": database,
         },
         autocommit=True,
@@ -94,7 +95,7 @@ def connect(uri: str, database: str):
 
 def test_e2e_file(test_file: Path, flight_server: str):
     parsed = parse_test_file(test_file)
-    with connect(flight_server, parsed.database) as conn:
+    with connect(flight_server, parsed.database, parsed.catalog) as conn:
         for index, block in enumerate(parsed.blocks, start=1):
             actual = run_query(conn, block.query)
             expected = block.expected.strip()
@@ -130,6 +131,7 @@ def parse_test_file(path: Path) -> E2ETestFile:
             continue
 
         if line == "-- QUERY":
+            assert section != "query", f"{path}: missing -- EXPECTED before next -- QUERY"
             if section == "expected":
                 blocks.append(build_block(path, query, expected))
                 query = []
@@ -156,7 +158,10 @@ def parse_test_file(path: Path) -> E2ETestFile:
     if not blocks:
         raise AssertionError(f"{path}: no query blocks found")
 
-    return E2ETestFile(path=path, database=database, blocks=blocks)
+    catalog = metadata.get("catalog", "moto_glue")
+    if not catalog:
+        raise AssertionError(f"{path}: empty -- CATALOG metadata")
+    return E2ETestFile(path=path, catalog=catalog, database=database, blocks=blocks)
 
 
 def build_block(path: Path, query: list[str], expected: list[str]) -> QueryBlock:
@@ -164,8 +169,6 @@ def build_block(path: Path, query: list[str], expected: list[str]) -> QueryBlock
     expected_text = "\n".join(expected).strip()
     if not query_text:
         raise AssertionError(f"{path}: empty -- QUERY block")
-    if not expected_text:
-        raise AssertionError(f"{path}: empty -- EXPECTED block")
     return QueryBlock(query=query_text, expected=expected_text)
 
 

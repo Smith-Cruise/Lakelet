@@ -778,6 +778,44 @@ mod tests {
         .collect();
         assert_eq!(rows, expected);
 
+        let error = session
+            .sql("CREATE TABLE orders (replacement STRING)")
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("already exists"));
+        session
+            .sql("CREATE TABLE IF NOT EXISTS orders (replacement STRING)")
+            .await
+            .unwrap()
+            .collect()
+            .await
+            .unwrap();
+        let unchanged = catalog
+            .inner_catalog
+            .get_table(&Identifier::new("db1", "orders"))
+            .await
+            .unwrap();
+        assert_eq!(unchanged.schema().fields(), schema.fields());
+        assert_eq!(unchanged.schema().primary_keys(), schema.primary_keys());
+        assert_eq!(unchanged.schema().partition_keys(), schema.partition_keys());
+        assert_eq!(unchanged.schema().options(), schema.options());
+        assert_eq!(
+            query_rows(&session, "SELECT * FROM orders ORDER BY id, dt").await,
+            expected
+        );
+
+        for sql in [
+            "CREATE TABLE invalid (id INT DEFAULT 1)",
+            "CREATE TABLE invalid (id INT, PRIMARY KEY (missing))",
+        ] {
+            assert!(session.sql(sql).await.is_err(), "{sql}");
+            assert!(!temp_dir.path().join("db1.db/invalid").exists());
+            assert_eq!(
+                catalog.list_table_names("db1").await.unwrap(),
+                vec!["orders"]
+            );
+        }
+
         let audit_rows =
             query_rows(&session, "SELECT * FROM orders$audit_log ORDER BY id, dt").await;
         let expected_audit: Vec<_> = expected

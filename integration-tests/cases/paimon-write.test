@@ -1,0 +1,130 @@
+-- TEST: paimon_write
+-- CATALOG: paimon_fs
+-- DATABASE: lakelet_write_db
+
+-- QUERY
+DROP SCHEMA IF EXISTS lakelet_write_db CASCADE;
+-- EXPECTED
+
+-- QUERY
+CREATE SCHEMA lakelet_write_db;
+-- EXPECTED
+
+-- QUERY
+CREATE TABLE orders (
+    id INT,
+    name STRING,
+    amount DECIMAL(10, 2),
+    dt STRING
+)
+PARTITIONED BY (dt)
+USING PAIMON
+WITH ('bucket' = '-1', 'file.format' = 'parquet');
+-- EXPECTED
+
+-- QUERY
+SELECT id, name, amount, dt FROM orders ORDER BY id;
+-- EXPECTED
+id,name,amount,dt
+
+-- QUERY
+INSERT INTO orders SELECT id, name, amount, dt FROM moto_glue.paimon_db.orders;
+-- EXPECTED
+count
+4
+
+-- QUERY
+INSERT INTO orders VALUES
+    (5, 'erin', 3.25, '2026-06-24'),
+    (6, NULL, NULL, '2026-06-25');
+-- EXPECTED
+count
+2
+
+-- QUERY
+SELECT id, name, amount, dt FROM orders ORDER BY id;
+-- EXPECTED
+id,name,amount,dt
+1,alice,10.50,2026-06-25
+2,bob,20.25,2026-06-25
+3,carol,7.00,2026-06-24
+4,dave,12.30,2026-06-24
+5,erin,3.25,2026-06-24
+6,,,2026-06-25
+
+-- QUERY
+SELECT dt, count(*) AS row_count, sum(amount) AS total_amount
+FROM orders GROUP BY dt ORDER BY dt;
+-- EXPECTED
+dt,row_count,total_amount
+2026-06-24,3,22.55
+2026-06-25,3,30.75
+
+-- QUERY
+DESC orders;
+-- EXPECTED
+column_name,sql_type,data_type,is_nullable
+id,INT,Int32,YES
+name,STRING,Utf8View,YES
+amount,DECIMAL(10, 2),Decimal128(10, 2),YES
+dt,STRING,Utf8View,YES
+
+-- QUERY
+SHOW CREATE TABLE orders;
+-- EXPECTED
+definition
+CREATE TABLE `paimon_fs`.`lakelet_write_db`.`orders`
+(
+`id` INT,
+`name` STRING,
+`amount` DECIMAL(10, 2),
+`dt` STRING
+)
+PARTITIONED BY (`dt`)
+USING PAIMON
+LOCATION 's3://lakelet-e2e/warehouse/lakelet_write_db.db/orders'
+
+-- QUERY
+CREATE TABLE replacement (id INT)
+USING PAIMON WITH ('bucket' = '-1', 'file.format' = 'parquet');
+-- EXPECTED
+
+-- QUERY
+INSERT INTO replacement SELECT id FROM orders;
+-- EXPECTED
+count
+6
+
+-- QUERY
+INSERT OVERWRITE replacement SELECT id FROM orders WHERE id = 1;
+-- EXPECTED
+count
+1
+
+-- QUERY
+SELECT id FROM replacement ORDER BY id;
+-- EXPECTED
+id
+1
+
+-- QUERY
+DROP TABLE replacement;
+-- EXPECTED
+
+-- QUERY
+DROP TABLE orders;
+-- EXPECTED
+
+-- QUERY
+SHOW TABLES;
+-- EXPECTED
+table_name
+
+-- QUERY
+DROP SCHEMA lakelet_write_db;
+-- EXPECTED
+
+-- QUERY
+SHOW SCHEMAS FROM paimon_fs LIKE 'lakelet_write_db';
+-- EXPECTED
+schema_name

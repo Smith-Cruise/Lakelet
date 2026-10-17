@@ -90,3 +90,73 @@ fn time_precision(unit: &TimeUnit) -> u8 {
         TimeUnit::Nanosecond => 9,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datafusion::arrow::datatypes::Field;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_sql_type_names() {
+        for (data_type, expected) in [
+            (DataType::Int32, "INT"),
+            (DataType::Int64, "BIGINT"),
+            (DataType::Utf8View, "STRING"),
+            (DataType::LargeUtf8, "STRING"),
+            (
+                DataType::Dictionary(Box::new(DataType::UInt16), Box::new(DataType::Utf8)),
+                "STRING",
+            ),
+            (DataType::Decimal128(15, 2), "DECIMAL(15, 2)"),
+            (DataType::Decimal256(40, 10), "DECIMAL(40, 10)"),
+            (DataType::Date32, "DATE"),
+            (DataType::Timestamp(TimeUnit::Second, None), "TIMESTAMP(0)"),
+            (
+                DataType::Timestamp(TimeUnit::Millisecond, None),
+                "TIMESTAMP(3)",
+            ),
+            (
+                DataType::Timestamp(TimeUnit::Microsecond, None),
+                "TIMESTAMP(6)",
+            ),
+            (
+                DataType::Timestamp(TimeUnit::Nanosecond, Some("UTC".into())),
+                "TIMESTAMP(9) WITH TIME ZONE",
+            ),
+        ] {
+            assert_eq!(sql_type_name(&data_type), expected, "{data_type:?}");
+        }
+    }
+
+    #[test]
+    fn test_nested_sql_types_and_field_escaping() {
+        let list = DataType::List(Arc::new(Field::new("item", DataType::Int64, true)));
+        let map = DataType::Map(
+            Arc::new(Field::new(
+                "entries",
+                DataType::Struct(
+                    vec![
+                        Field::new("key", DataType::Utf8, false),
+                        Field::new("value", list, true),
+                    ]
+                    .into(),
+                ),
+                false,
+            )),
+            false,
+        );
+        assert_eq!(sql_type_name(&map), "MAP<STRING, ARRAY<BIGINT>>");
+        let row = DataType::Struct(
+            vec![
+                Field::new("a`b", map, true),
+                Field::new("Total", DataType::Decimal128(10, 2), false),
+            ]
+            .into(),
+        );
+        assert_eq!(
+            sql_type_name(&row),
+            "STRUCT<`a``b` MAP<STRING, ARRAY<BIGINT>>, `Total` DECIMAL(10, 2)>"
+        );
+    }
+}
