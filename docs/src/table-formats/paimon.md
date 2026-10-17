@@ -11,13 +11,84 @@ Paimon. Lakelet loads the latest Paimon schema from the table location.
 
 ## Data Types
 
-The same as `paimon-rust`.
+Same as paimon-rust.
+
+## Create schema
+
+```sql
+CREATE SCHEMA [IF NOT EXISTS] schema_name;
+```
+
+## Drop schema
+
+```sql
+DROP SCHEMA [IF EXISTS] schema_name [CASCADE | RESTRICT];
+```
+
+## Create table
+
+```sql
+CREATE TABLE [IF NOT EXISTS] table_name (
+    column_definition [, ...]
+    [, PRIMARY KEY (column_name [, ...])]
+)
+[PARTITIONED BY (column_name [, ...])]
+[USING PAIMON]
+[WITH ('key' = 'value' [, ...])];
+
+column_definition:
+    column_name data_type
+    [NULL | NOT NULL]
+    [COMMENT 'text']
+    [PRIMARY KEY]
+```
+
+- `IF NOT EXISTS` leaves an existing table unchanged; it does not compare or
+  update its definition. Without it, creating an existing table is an error.
+- Columns are nullable by default. Primary-key columns become non-nullable and
+  cannot be declared explicitly `NULL`. Only one primary key is allowed, either
+  inline or as a table constraint.
+- `PARTITIONED BY` references existing column names without types.
+- `USING PAIMON` is optional. Other table formats are not accepted.
+- `WITH` accepts single-quoted string keys and values.
+- Table locations are chosen under the configured warehouse.
+
+## Drop table
+
+```sql
+DROP TABLE [IF EXISTS] table_name;
+```
+
+## Writing tables
+
+Existing Paimon tables support `INSERT INTO` and `INSERT OVERWRITE`. The storage
+credentials must allow writes to the table location.
+
+```sql
+INSERT INTO table_name [(column_name [, ...])]
+{ VALUES (expression [, ...]) [, ...] | query };
+```
+
+Braces group alternatives; choose either `VALUES` or a query. Create the
+destination table before inserting rows or query results. Creation and insertion
+are separate operations; an INSERT failure does not undo table creation.
+INSERT results report the number of rows written.
+
+### Overwrite data
+
+```sql
+INSERT OVERWRITE table_name [(column_name [, ...])]
+{ VALUES (expression [, ...]) [, ...] | query };
+```
+
+For an unpartitioned table, `INSERT OVERWRITE` replaces all its data. For a
+partitioned table, it replaces only the partitions present in the new data.
+Other partitions remain unchanged.
 
 ## Metadata Table
 
-Paimon metadata tables are served by `paimon-rust`, so their columns follow
-that crate's schema rather than one defined by Lakelet. Append the metadata
-table name to the table name with a `$` separator:
+Metadata tables expose snapshots, files, options, and other table information.
+Append the metadata table name to the table name with a `$` separator:
 
 ```sql
 SELECT * FROM `table_name$snapshots`;
@@ -226,6 +297,76 @@ SELECT * FROM `table_name$physical_files_size`;
 | `data_file_size` | Total size of data files in bytes |
 | `index_file_count` | Number of index files |
 | `index_file_size` | Total size of index files in bytes |
+
+**aggregation_fields**
+
+Returns one row per table field, including its field-specific options and comment:
+
+```sql
+SELECT * FROM `table_name$aggregation_fields`;
+```
+
+| Column | Description |
+| --- | --- |
+| `field_name` | Field name |
+| `field_type` | Paimon field type |
+| `function` | Values of the field-specific options, rendered as a list |
+| `function_options` | Corresponding `fields.<field_name>.*` option keys, rendered as a list |
+| `comment` | Field comment, or null |
+
+Fields without these options have `[]` in the two option columns. For example,
+an option `'fields.total.aggregate-function' = 'sum'` appears as `[sum]` in
+`function` and `[fields.total.aggregate-function]` in `function_options`.
+
+**audit_log**
+
+Exposes data rows with a leading `rowkind` column. This describes row kinds in
+the data, not a history of SQL statements, users, or access events. A normal
+query reads the current table state; it is not a complete history of changes.
+
+```sql
+SELECT * FROM `table_name$audit_log` LIMIT 10;
+```
+
+| Column | Description |
+| --- | --- |
+| `rowkind` | Row kind: `+I` (insert), `-U` (update before), `+U` (update after), or `-D` (delete) |
+| Table columns | Columns from the underlying table |
+
+The row kinds returned depend on the table's data and read behavior. If the
+table enables `table-read.sequence-number.enabled`, an additional
+`_SEQUENCE_NUMBER` column follows `rowkind`.
+
+**buckets**
+
+Returns file statistics grouped by partition and bucket in the current snapshot:
+
+```sql
+SELECT * FROM `table_name$buckets`;
+```
+
+| Column | Description |
+| --- | --- |
+| `partition` | Partition values, or null for an unpartitioned table |
+| `bucket` | Bucket ID |
+| `record_count` | Sum of record counts in the bucket's data files |
+| `file_size_in_bytes` | Total size of those files in bytes |
+| `file_count` | Number of data files |
+| `last_update_time` | Latest file creation time in the bucket, or null |
+
+**consumers**
+
+Returns the consumer progress recorded for the table. Querying this metadata
+table does not create or advance a consumer.
+
+```sql
+SELECT * FROM `table_name$consumers`;
+```
+
+| Column | Description |
+| --- | --- |
+| `consumer_id` | Consumer identifier |
+| `next_snapshot_id` | Next snapshot the consumer should read |
 
 **referenced_files_size**
 

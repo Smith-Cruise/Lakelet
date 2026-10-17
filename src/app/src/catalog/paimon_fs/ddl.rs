@@ -150,12 +150,10 @@ fn validate_primary_key(key: &PrimaryKeyConstraint) -> Result<()> {
         || key.index_type.is_some()
         || !key.index_options.is_empty()
         || key.characteristics.as_ref().is_some_and(|characteristics| {
-            characteristics.deferrable.is_some()
-                || characteristics.initially.is_some()
-                || characteristics.enforced == Some(true)
+            characteristics.deferrable.is_some() || characteristics.initially.is_some()
         })
     {
-        return not_impl_err!("Only PRIMARY KEY with optional NOT ENFORCED is supported");
+        return not_impl_err!("Unsupported PRIMARY KEY constraint options");
     }
     Ok(())
 }
