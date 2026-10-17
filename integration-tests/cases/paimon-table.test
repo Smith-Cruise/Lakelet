@@ -41,3 +41,7 @@ CREATE TABLE `moto_glue`.`paimon_db`.`orders`
 PARTITIONED BY (`dt`)
 USING PAIMON
 LOCATION 's3://lakelet-e2e/warehouse/paimon_db.db/orders'
+WITH (
+'bucket' = '-1',
+'owner' = 'spark'
+)

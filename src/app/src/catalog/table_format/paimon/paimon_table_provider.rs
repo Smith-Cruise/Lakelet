@@ -32,6 +32,7 @@ impl LakeletPaimonTableProvider {
             inner_provider.schema().as_ref().clone(),
         )
         .with_partition_column_names(partition_column_names)
+        .with_table_options(table.schema().options().clone())
         .build();
         Ok(Self {
             inner_provider,

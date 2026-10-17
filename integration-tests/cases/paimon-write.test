@@ -83,6 +83,10 @@ CREATE TABLE `paimon_fs`.`lakelet_write_db`.`orders`
 PARTITIONED BY (`dt`)
 USING PAIMON
 LOCATION 's3://lakelet-e2e/warehouse/lakelet_write_db.db/orders'
+WITH (
+'bucket' = '-1',
+'file.format' = 'parquet'
+)
 
 -- QUERY
 CREATE TABLE replacement (id INT)

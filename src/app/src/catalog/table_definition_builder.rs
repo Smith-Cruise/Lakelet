@@ -2,6 +2,7 @@ use crate::sql::column_type::sql_type_name;
 use crate::table_format::TableFormat;
 use datafusion::arrow::datatypes::Schema;
 use datafusion::common::ResolvedTableReference;
+use std::collections::BTreeMap;
 
 #[derive(Debug)]
 pub struct TableDefinitionBuilder {
@@ -10,6 +11,7 @@ pub struct TableDefinitionBuilder {
     table_format: TableFormat,
     table_schema: Schema,
     partition_column_names: Vec<String>,
+    table_options: BTreeMap<String, String>,
 }
 
 impl TableDefinitionBuilder {
@@ -25,11 +27,20 @@ impl TableDefinitionBuilder {
             table_format,
             table_schema,
             partition_column_names: vec![],
+            table_options: BTreeMap::new(),
         }
     }
 
     pub fn with_partition_column_names(mut self, partition_column_names: Vec<String>) -> Self {
         self.partition_column_names = partition_column_names;
+        self
+    }
+
+    pub fn with_table_options(
+        mut self,
+        table_options: impl IntoIterator<Item = (String, String)>,
+    ) -> Self {
+        self.table_options = table_options.into_iter().collect();
         self
     }
 
@@ -72,6 +83,21 @@ impl TableDefinitionBuilder {
             "LOCATION '{}'",
             escape_sql_string(&self.table_location)
         ));
+        if !self.table_options.is_empty() {
+            let table_options = self
+                .table_options
+                .iter()
+                .map(|(key, value)| {
+                    format!(
+                        "  '{}' = '{}'",
+                        escape_sql_string(key),
+                        escape_sql_string(value)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",\n");
+            definition.push_str(&format!("\nWITH (\n{table_options}\n)"));
+        }
         definition
     }
 }
@@ -296,22 +322,36 @@ mod tests {
             Field::new("dt", DataType::Utf8, true),
         ]);
 
-        let definition = TableDefinitionBuilder::new(
-            ResolvedTableReference {
-                catalog: "catalog".into(),
-                schema: "schema".into(),
-                table: "table".into(),
-            },
-            "hdfs://namenode:8020/warehouse/schema.db/table",
-            TableFormat::Paimon,
-            schema,
-        )
-        .with_partition_column_names(vec!["dt".to_string()])
-        .build();
+        let build = |table_options: Vec<(String, String)>| {
+            TableDefinitionBuilder::new(
+                ResolvedTableReference {
+                    catalog: "catalog".into(),
+                    schema: "schema".into(),
+                    table: "table".into(),
+                },
+                "hdfs://namenode:8020/warehouse/schema.db/table",
+                TableFormat::Paimon,
+                schema.clone(),
+            )
+            .with_partition_column_names(vec!["dt".to_string()])
+            .with_table_options(table_options)
+            .build()
+        };
 
+        let definition = build(vec![]);
         assert_eq!(
             definition,
             "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT,\n  `dt` STRING\n)\nPARTITIONED BY (`dt`)\nUSING PAIMON\nLOCATION 'hdfs://namenode:8020/warehouse/schema.db/table'"
+        );
+        assert_eq!(
+            build(vec![
+                ("file.format".into(), "parquet".into()),
+                ("custom'key".into(), "O'Reilly".into()),
+                ("bucket".into(), "-1".into()),
+            ]),
+            format!(
+                "{definition}\nWITH (\n  'bucket' = '-1',\n  'custom''key' = 'O''Reilly',\n  'file.format' = 'parquet'\n)"
+            )
         );
     }
 }

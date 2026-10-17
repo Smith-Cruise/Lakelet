@@ -719,6 +719,15 @@ mod tests {
         assert!(!schema.fields()[0].data_type().is_nullable());
         assert!(!schema.fields()[1].data_type().is_nullable());
 
+        let definition = query_rows(&session, "SHOW CREATE TABLE orders").await;
+        assert_eq!(definition.len(), 1);
+        assert!(
+            definition[0][0]
+                .as_ref()
+                .unwrap()
+                .ends_with("\nWITH (\n  'bucket' = '2'\n)")
+        );
+
         // INSERT goes through the Lakelet wrapper, which must forward to
         // paimon-datafusion's sink; the result is a single row count.
         let batches = session
