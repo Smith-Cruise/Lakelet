@@ -3,7 +3,7 @@ use crate::table_format::TableFormat;
 use async_trait::async_trait;
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::catalog::{Session, TableProvider};
-use datafusion::common::{Result, TableReference};
+use datafusion::common::{ResolvedTableReference, Result};
 use datafusion::datasource::TableType;
 use datafusion::logical_expr::dml::InsertOp;
 use datafusion::logical_expr::{Expr, TableProviderFilterPushDown};
@@ -19,7 +19,7 @@ pub struct LakeletPaimonTableProvider {
 
 impl LakeletPaimonTableProvider {
     pub fn try_new(
-        table_reference: TableReference,
+        table_reference: ResolvedTableReference,
         table_location: String,
         inner_provider: PaimonTableProvider,
     ) -> Result<Self> {
@@ -32,7 +32,8 @@ impl LakeletPaimonTableProvider {
             inner_provider.schema().as_ref().clone(),
         )
         .with_partition_column_names(partition_column_names)
-        .build()?;
+        .with_table_options(table.schema().options().clone())
+        .build();
         Ok(Self {
             inner_provider,
             table_definition,

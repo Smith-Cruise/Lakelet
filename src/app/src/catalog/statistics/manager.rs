@@ -1,6 +1,6 @@
 use super::{TableStatisticsLoader, TableStatisticsRequest};
 use datafusion::arrow::datatypes::SchemaRef;
-use datafusion::common::{DataFusionError, Result, Statistics, TableReference};
+use datafusion::common::{ResolvedTableReference, Statistics};
 use moka::sync::Cache;
 use std::time::Duration;
 
@@ -13,7 +13,7 @@ struct CachedStatistics {
 }
 
 pub struct StatisticsManager {
-    cache: Cache<TableReference, CachedStatistics>,
+    cache: Cache<ResolvedTableReference, CachedStatistics>,
 }
 
 impl Default for StatisticsManager {
@@ -33,16 +33,10 @@ impl StatisticsManager {
         &self,
         request: TableStatisticsRequest<'_>,
         loader: &dyn TableStatisticsLoader,
-    ) -> Result<Statistics> {
-        if !matches!(request.table_reference, TableReference::Full { .. }) {
-            return Err(DataFusionError::Internal(
-                "table statistics require a full table reference".to_string(),
-            ));
-        }
-
+    ) -> Statistics {
         if let Some(cached) = self.cache.get(request.table_reference) {
             if cached.table_schema.as_ref() == request.table_schema.table_schema().as_ref() {
-                return Ok(cached.statistics);
+                return cached.statistics;
             }
             self.cache.invalidate(request.table_reference);
         }
@@ -58,7 +52,7 @@ impl StatisticsManager {
                 },
             );
         }
-        Ok(loaded.statistics)
+        loaded.statistics
     }
 }
 
@@ -114,13 +108,17 @@ mod tests {
     async fn reuses_cached_statistics_only_for_matching_schema() {
         let manager = StatisticsManager::new(Duration::from_secs(60));
         let loader = FakeLoader::new(true, 10);
-        let table_reference = TableReference::full("catalog", "schema", "table");
+        let table_reference = ResolvedTableReference {
+            catalog: "catalog".into(),
+            schema: "schema".into(),
+            table: "table".into(),
+        };
         let table_schema = make_table_schema(vec![Field::new("id", DataType::Int64, true)]);
         let properties = HashMap::new();
         let request = TableStatisticsRequest::new(&table_reference, &table_schema, &properties);
 
-        let first = manager.load(request, &loader).await.unwrap();
-        let second = manager.load(request, &loader).await.unwrap();
+        let first = manager.load(request, &loader).await;
+        let second = manager.load(request, &loader).await;
 
         assert_eq!(first, second);
         assert_eq!(loader.calls.load(Ordering::SeqCst), 1);
@@ -132,8 +130,7 @@ mod tests {
                 TableStatisticsRequest::new(&table_reference, &renamed_schema, &properties),
                 &loader,
             )
-            .await
-            .unwrap();
+            .await;
         assert_eq!(renamed.column_statistics.len(), 1);
         assert_eq!(loader.calls.load(Ordering::SeqCst), 2);
 
@@ -146,8 +143,7 @@ mod tests {
                 TableStatisticsRequest::new(&table_reference, &expanded_schema, &properties),
                 &loader,
             )
-            .await
-            .unwrap();
+            .await;
         assert_eq!(expanded.column_statistics.len(), 2);
         assert_eq!(loader.calls.load(Ordering::SeqCst), 3);
     }
@@ -159,23 +155,29 @@ mod tests {
         let second_loader = FakeLoader::new(true, 20);
         let table_schema = make_table_schema(vec![Field::new("id", DataType::Int64, true)]);
         let properties = HashMap::new();
-        let first_table = TableReference::full("first", "schema", "table");
-        let second_table = TableReference::full("second", "schema", "table");
+        let first_table = ResolvedTableReference {
+            catalog: "first".into(),
+            schema: "schema".into(),
+            table: "table".into(),
+        };
+        let second_table = ResolvedTableReference {
+            catalog: "second".into(),
+            schema: "schema".into(),
+            table: "table".into(),
+        };
 
         let first = manager
             .load(
                 TableStatisticsRequest::new(&first_table, &table_schema, &properties),
                 &first_loader,
             )
-            .await
-            .unwrap();
+            .await;
         let second = manager
             .load(
                 TableStatisticsRequest::new(&second_table, &table_schema, &properties),
                 &second_loader,
             )
-            .await
-            .unwrap();
+            .await;
 
         assert_eq!(first.num_rows, Precision::Inexact(10));
         assert_eq!(second.num_rows, Precision::Inexact(20));
@@ -187,14 +189,18 @@ mod tests {
     async fn reloads_expired_statistics() {
         let manager = StatisticsManager::new(Duration::from_millis(1));
         let loader = FakeLoader::new(true, 10);
-        let table_reference = TableReference::full("catalog", "schema", "table");
+        let table_reference = ResolvedTableReference {
+            catalog: "catalog".into(),
+            schema: "schema".into(),
+            table: "table".into(),
+        };
         let table_schema = make_table_schema(vec![Field::new("id", DataType::Int64, true)]);
         let properties = HashMap::new();
         let request = TableStatisticsRequest::new(&table_reference, &table_schema, &properties);
 
-        manager.load(request, &loader).await.unwrap();
+        manager.load(request, &loader).await;
         thread::sleep(Duration::from_millis(10));
-        manager.load(request, &loader).await.unwrap();
+        manager.load(request, &loader).await;
 
         assert_eq!(loader.calls.load(Ordering::SeqCst), 2);
     }
@@ -203,32 +209,18 @@ mod tests {
     async fn does_not_cache_uncacheable_statistics() {
         let manager = StatisticsManager::new(Duration::from_secs(60));
         let loader = FakeLoader::new(false, 10);
-        let table_reference = TableReference::full("catalog", "schema", "table");
+        let table_reference = ResolvedTableReference {
+            catalog: "catalog".into(),
+            schema: "schema".into(),
+            table: "table".into(),
+        };
         let table_schema = make_table_schema(vec![Field::new("id", DataType::Int64, true)]);
         let properties = HashMap::new();
         let request = TableStatisticsRequest::new(&table_reference, &table_schema, &properties);
 
-        manager.load(request, &loader).await.unwrap();
-        manager.load(request, &loader).await.unwrap();
+        manager.load(request, &loader).await;
+        manager.load(request, &loader).await;
 
         assert_eq!(loader.calls.load(Ordering::SeqCst), 2);
-    }
-
-    #[tokio::test]
-    async fn rejects_non_full_table_references() {
-        let manager = StatisticsManager::default();
-        let loader = FakeLoader::new(true, 10);
-        let table_reference = TableReference::bare("table");
-        let table_schema = make_table_schema(vec![Field::new("id", DataType::Int64, true)]);
-        let properties = HashMap::new();
-        let request = TableStatisticsRequest {
-            table_reference: &table_reference,
-            table_schema: &table_schema,
-            table_properties: &properties,
-        };
-
-        let error = manager.load(request, &loader).await.unwrap_err();
-
-        assert!(error.to_string().contains("full table reference"));
     }
 }

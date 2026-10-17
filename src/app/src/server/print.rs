@@ -14,6 +14,8 @@ use std::io::{self, Write};
 use std::pin::Pin;
 use std::time::Instant;
 
+pub(super) const INTERACTIVE_MAX_ROWS: usize = 1000;
+
 #[derive(Debug, Clone)]
 pub struct PrintOptions {
     pub format: PrintFormat,
@@ -114,10 +116,33 @@ pub fn print_results(
     // itself is empty.
     if !batches.is_empty() || !schema.fields().is_empty() {
         let table = format_table(&schema, &batches, &options, None)?;
-        writeln!(writer, "{table}")?;
+        let mut lines: Vec<_> = table.lines().collect();
+        if row_count > INTERACTIVE_MAX_ROWS
+            && let Some(bottom) = lines.pop()
+        {
+            // comfy-table has no column spans. Join a single-column table to
+            // the existing bottom border to render a full-width notice cell.
+            let width = u16::try_from(bottom.chars().count())
+                .map_err(|err| DataFusionError::External(Box::new(err)))?;
+            let mut notice = Table::new();
+            notice.load_preset(UTF8_FULL);
+            notice.apply_modifier(UTF8_ROUND_CORNERS);
+            notice.set_content_arrangement(ContentArrangement::DynamicFullWidth);
+            notice.set_width(width);
+            notice.add_row([format!(
+                "Only showing the first {INTERACTIVE_MAX_ROWS} rows.\n\
+                 Use --command or --file to output the complete result."
+            )]);
+
+            lines.push(bottom.replace('╰', "├").replace('╯', "┤"));
+            lines.extend(notice.lines().skip(1));
+        }
+        for line in lines {
+            writeln!(writer, "{line}")?;
+        }
     }
 
-    let details = execution_details(row_count, print_options.maxrows, query_start_time);
+    let details = execution_details(row_count, MaxRows::Unlimited, query_start_time);
     write_footer(&mut writer, print_options, &details)
 }
 

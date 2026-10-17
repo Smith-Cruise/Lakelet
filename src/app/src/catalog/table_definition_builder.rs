@@ -1,20 +1,22 @@
+use crate::sql::column_type::sql_type_name;
 use crate::table_format::TableFormat;
 use datafusion::arrow::datatypes::Schema;
-use datafusion::common::TableReference;
-use datafusion::common::{DataFusionError, Result};
+use datafusion::common::ResolvedTableReference;
+use std::collections::BTreeMap;
 
 #[derive(Debug)]
 pub struct TableDefinitionBuilder {
-    table_reference: TableReference,
+    table_reference: ResolvedTableReference,
     table_location: String,
     table_format: TableFormat,
     table_schema: Schema,
     partition_column_names: Vec<String>,
+    table_options: BTreeMap<String, String>,
 }
 
 impl TableDefinitionBuilder {
     pub fn new(
-        table_reference: TableReference,
+        table_reference: ResolvedTableReference,
         table_location: impl Into<String>,
         table_format: TableFormat,
         table_schema: Schema,
@@ -25,6 +27,7 @@ impl TableDefinitionBuilder {
             table_format,
             table_schema,
             partition_column_names: vec![],
+            table_options: BTreeMap::new(),
         }
     }
 
@@ -33,15 +36,20 @@ impl TableDefinitionBuilder {
         self
     }
 
-    pub fn build(self) -> Result<String> {
-        let (table_catalog, table_schema_name, table_name) =
-            full_table_reference_parts(&self.table_reference)?;
+    pub fn with_table_options(
+        mut self,
+        table_options: impl IntoIterator<Item = (String, String)>,
+    ) -> Self {
+        self.table_options = table_options.into_iter().collect();
+        self
+    }
 
+    pub fn build(self) -> String {
         let mut definition = format!(
             "CREATE TABLE `{}`.`{}`.`{}`\n(\n",
-            escape_backtick_identifier(table_catalog),
-            escape_backtick_identifier(table_schema_name),
-            escape_backtick_identifier(table_name)
+            escape_backtick_identifier(&self.table_reference.catalog),
+            escape_backtick_identifier(&self.table_reference.schema),
+            escape_backtick_identifier(&self.table_reference.table)
         );
 
         let columns = self
@@ -52,7 +60,7 @@ impl TableDefinitionBuilder {
                 format!(
                     "  `{}` {}",
                     escape_backtick_identifier(field.name()),
-                    field.data_type()
+                    sql_type_name(field.data_type())
                 )
             })
             .collect::<Vec<_>>()
@@ -75,7 +83,22 @@ impl TableDefinitionBuilder {
             "LOCATION '{}'",
             escape_sql_string(&self.table_location)
         ));
-        Ok(definition)
+        if !self.table_options.is_empty() {
+            let table_options = self
+                .table_options
+                .iter()
+                .map(|(key, value)| {
+                    format!(
+                        "  '{}' = '{}'",
+                        escape_sql_string(key),
+                        escape_sql_string(value)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",\n");
+            definition.push_str(&format!("\nWITH (\n{table_options}\n)"));
+        }
+        definition
     }
 }
 
@@ -96,26 +119,13 @@ fn escape_sql_string(value: &str) -> String {
     value.replace('\'', "''")
 }
 
-fn full_table_reference_parts(table_reference: &TableReference) -> Result<(&str, &str, &str)> {
-    match table_reference {
-        TableReference::Full {
-            catalog,
-            schema,
-            table,
-        } => Ok((catalog.as_ref(), schema.as_ref(), table.as_ref())),
-        _ => Err(DataFusionError::Internal(format!(
-            "table reference must be fully qualified: {table_reference}"
-        ))),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use datafusion::arrow::datatypes::{DataType, Field, Schema};
 
     #[test]
-    fn test_build_hive_definition_with_partitions() -> Result<()> {
+    fn test_build_hive_definition_with_partitions() {
         let schema = Schema::new(vec![
             Field::new("id", DataType::Int64, true),
             Field::new("name", DataType::Utf8, true),
@@ -124,80 +134,92 @@ mod tests {
         ]);
 
         let definition = TableDefinitionBuilder::new(
-            TableReference::full("catalog", "schema", "table"),
+            ResolvedTableReference {
+                catalog: "catalog".into(),
+                schema: "schema".into(),
+                table: "table".into(),
+            },
             "s3://bucket/path",
             TableFormat::Hive,
             schema,
         )
         .with_partition_column_names(vec!["dt".to_string()])
-        .build()?;
+        .build();
 
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64,\n  `name` Utf8,\n  `amount` Decimal128(10, 2),\n  `dt` Utf8\n)\nPARTITIONED BY (`dt`)\nUSING HIVE\nLOCATION 's3://bucket/path'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT,\n  `name` STRING,\n  `amount` DECIMAL(10, 2),\n  `dt` STRING\n)\nPARTITIONED BY (`dt`)\nUSING HIVE\nLOCATION 's3://bucket/path'"
         );
-        Ok(())
     }
 
     #[test]
-    fn test_build_hive_definition_without_partitions() -> Result<()> {
+    fn test_build_hive_definition_without_partitions() {
         let schema = Schema::new(vec![Field::new("id", DataType::Int64, true)]);
 
         let definition = TableDefinitionBuilder::new(
-            TableReference::full("catalog", "schema", "table"),
+            ResolvedTableReference {
+                catalog: "catalog".into(),
+                schema: "schema".into(),
+                table: "table".into(),
+            },
             "s3://bucket/path",
             TableFormat::Hive,
             schema,
         )
-        .build()?;
+        .build();
 
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64\n)\nUSING HIVE\nLOCATION 's3://bucket/path'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT\n)\nUSING HIVE\nLOCATION 's3://bucket/path'"
         );
-        Ok(())
     }
 
     #[test]
-    fn test_build_hive_definition_escapes_identifiers_and_location() -> Result<()> {
+    fn test_build_hive_definition_escapes_identifiers_and_location() {
         let schema = Schema::new(vec![Field::new("a`b", DataType::Utf8, true)]);
 
         let definition = TableDefinitionBuilder::new(
-            TableReference::full("cat`alog", "schema", "ta`ble"),
+            ResolvedTableReference {
+                catalog: "cat`alog".into(),
+                schema: "schema".into(),
+                table: "ta`ble".into(),
+            },
             "s3://bucket/o'hara",
             TableFormat::Hive,
             schema,
         )
-        .build()?;
+        .build();
 
         assert_eq!(
             definition,
-            "CREATE TABLE `cat``alog`.`schema`.`ta``ble`\n(\n  `a``b` Utf8\n)\nUSING HIVE\nLOCATION 's3://bucket/o''hara'"
+            "CREATE TABLE `cat``alog`.`schema`.`ta``ble`\n(\n  `a``b` STRING\n)\nUSING HIVE\nLOCATION 's3://bucket/o''hara'"
         );
-        Ok(())
     }
 
     #[test]
-    fn test_build_iceberg_definition_without_partitions() -> Result<()> {
+    fn test_build_iceberg_definition_without_partitions() {
         let schema = Schema::new(vec![Field::new("id", DataType::Int64, true)]);
 
         let definition = TableDefinitionBuilder::new(
-            TableReference::full("catalog", "schema", "table"),
+            ResolvedTableReference {
+                catalog: "catalog".into(),
+                schema: "schema".into(),
+                table: "table".into(),
+            },
             "s3://bucket/path",
             TableFormat::Iceberg,
             schema,
         )
-        .build()?;
+        .build();
 
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64\n)\nUSING ICEBERG\nLOCATION 's3://bucket/path'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT\n)\nUSING ICEBERG\nLOCATION 's3://bucket/path'"
         );
-        Ok(())
     }
 
     #[test]
-    fn test_build_iceberg_definition_with_partitions() -> Result<()> {
+    fn test_build_iceberg_definition_with_partitions() {
         let schema = Schema::new(vec![
             Field::new("id", DataType::Int64, true),
             Field::new("dt", DataType::Utf8, true),
@@ -205,102 +227,131 @@ mod tests {
         ]);
 
         let definition = TableDefinitionBuilder::new(
-            TableReference::full("catalog", "schema", "table"),
+            ResolvedTableReference {
+                catalog: "catalog".into(),
+                schema: "schema".into(),
+                table: "table".into(),
+            },
             "s3://bucket/path",
             TableFormat::Iceberg,
             schema,
         )
         .with_partition_column_names(vec!["dt".to_string(), "id".to_string()])
-        .build()?;
+        .build();
 
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64,\n  `dt` Utf8,\n  `amount` Decimal128(10, 2)\n)\nPARTITIONED BY (`dt`, `id`)\nUSING ICEBERG\nLOCATION 's3://bucket/path'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT,\n  `dt` STRING,\n  `amount` DECIMAL(10, 2)\n)\nPARTITIONED BY (`dt`, `id`)\nUSING ICEBERG\nLOCATION 's3://bucket/path'"
         );
-        Ok(())
     }
 
     #[test]
-    fn test_build_iceberg_definition_escapes_identifiers_and_location() -> Result<()> {
+    fn test_build_iceberg_definition_escapes_identifiers_and_location() {
         let schema = Schema::new(vec![Field::new("a`b", DataType::Utf8, true)]);
 
         let definition = TableDefinitionBuilder::new(
-            TableReference::full("cat`alog", "schema", "ta`ble"),
+            ResolvedTableReference {
+                catalog: "cat`alog".into(),
+                schema: "schema".into(),
+                table: "ta`ble".into(),
+            },
             "s3://bucket/o'hara",
             TableFormat::Iceberg,
             schema,
         )
-        .build()?;
+        .build();
 
         assert_eq!(
             definition,
-            "CREATE TABLE `cat``alog`.`schema`.`ta``ble`\n(\n  `a``b` Utf8\n)\nUSING ICEBERG\nLOCATION 's3://bucket/o''hara'"
+            "CREATE TABLE `cat``alog`.`schema`.`ta``ble`\n(\n  `a``b` STRING\n)\nUSING ICEBERG\nLOCATION 's3://bucket/o''hara'"
         );
-        Ok(())
     }
 
     #[test]
-    fn test_build_delta_definition_without_partitions() -> Result<()> {
+    fn test_build_delta_definition_without_partitions() {
         let schema = Schema::new(vec![Field::new("id", DataType::Int64, true)]);
 
         let definition = TableDefinitionBuilder::new(
-            TableReference::full("catalog", "schema", "table"),
+            ResolvedTableReference {
+                catalog: "catalog".into(),
+                schema: "schema".into(),
+                table: "table".into(),
+            },
             "s3://bucket/path",
             TableFormat::Delta,
             schema,
         )
-        .build()?;
+        .build();
 
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64\n)\nUSING DELTA\nLOCATION 's3://bucket/path'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT\n)\nUSING DELTA\nLOCATION 's3://bucket/path'"
         );
-        Ok(())
     }
 
     #[test]
-    fn test_build_delta_definition_with_partitions() -> Result<()> {
+    fn test_build_delta_definition_with_partitions() {
         let schema = Schema::new(vec![
             Field::new("id", DataType::Int64, true),
             Field::new("dt", DataType::Utf8, true),
         ]);
 
         let definition = TableDefinitionBuilder::new(
-            TableReference::full("catalog", "schema", "table"),
+            ResolvedTableReference {
+                catalog: "catalog".into(),
+                schema: "schema".into(),
+                table: "table".into(),
+            },
             "s3://bucket/path",
             TableFormat::Delta,
             schema,
         )
         .with_partition_column_names(vec!["dt".to_string()])
-        .build()?;
+        .build();
 
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64,\n  `dt` Utf8\n)\nPARTITIONED BY (`dt`)\nUSING DELTA\nLOCATION 's3://bucket/path'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT,\n  `dt` STRING\n)\nPARTITIONED BY (`dt`)\nUSING DELTA\nLOCATION 's3://bucket/path'"
         );
-        Ok(())
     }
 
     #[test]
-    fn test_build_paimon_definition_with_partitions() -> Result<()> {
+    fn test_build_paimon_definition_with_partitions() {
         let schema = Schema::new(vec![
             Field::new("id", DataType::Int64, false),
             Field::new("dt", DataType::Utf8, true),
         ]);
 
-        let definition = TableDefinitionBuilder::new(
-            TableReference::full("catalog", "schema", "table"),
-            "hdfs://namenode:8020/warehouse/schema.db/table",
-            TableFormat::Paimon,
-            schema,
-        )
-        .with_partition_column_names(vec!["dt".to_string()])
-        .build()?;
+        let build = |table_options: Vec<(String, String)>| {
+            TableDefinitionBuilder::new(
+                ResolvedTableReference {
+                    catalog: "catalog".into(),
+                    schema: "schema".into(),
+                    table: "table".into(),
+                },
+                "hdfs://namenode:8020/warehouse/schema.db/table",
+                TableFormat::Paimon,
+                schema.clone(),
+            )
+            .with_partition_column_names(vec!["dt".to_string()])
+            .with_table_options(table_options)
+            .build()
+        };
 
+        let definition = build(vec![]);
         assert_eq!(
             definition,
-            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64,\n  `dt` Utf8\n)\nPARTITIONED BY (`dt`)\nUSING PAIMON\nLOCATION 'hdfs://namenode:8020/warehouse/schema.db/table'"
+            "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT,\n  `dt` STRING\n)\nPARTITIONED BY (`dt`)\nUSING PAIMON\nLOCATION 'hdfs://namenode:8020/warehouse/schema.db/table'"
         );
-        Ok(())
+        assert_eq!(
+            build(vec![
+                ("file.format".into(), "parquet".into()),
+                ("custom'key".into(), "O'Reilly".into()),
+                ("bucket".into(), "-1".into()),
+            ]),
+            format!(
+                "{definition}\nWITH (\n  'bucket' = '-1',\n  'custom''key' = 'O''Reilly',\n  'file.format' = 'parquet'\n)"
+            )
+        );
     }
 }

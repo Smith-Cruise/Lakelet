@@ -72,3 +72,23 @@ warehouse = "warehouse_name"
 token = "<REST catalog access token>"
 # Optional. It will override vended credentials
 s3-storage = { region = "us-east-1", access-key = "ak", secret-key = "sk" }
+
+# ---------------------------------------------------------------------------
+# TPC-H catalogs. Repeat the [[catalog.tpch]] block for each catalog.
+# Read-only generated data; no warehouse or storage credentials are needed.
+# Available schemas: sf1, sf10, sf100, sf300, sf1000.
+# Example: SELECT * FROM tpch_catalog.sf1.nation LIMIT 10;
+# ---------------------------------------------------------------------------
+[[catalog.tpch]]
+# Required. Unique catalog name used in SQL.
+name = "tpch_catalog"
+
+# ---------------------------------------------------------------------------
+# TPC-DS catalogs. Repeat the [[catalog.tpcds]] block for each catalog.
+# Read-only generated data; no warehouse or storage credentials are needed.
+# Available schemas: sf1, sf10, sf100, sf300, sf1000.
+# Example: SELECT * FROM tpcds_catalog.sf1.date_dim LIMIT 10;
+# ---------------------------------------------------------------------------
+[[catalog.tpcds]]
+# Required. Unique catalog name used in SQL.
+name = "tpcds_catalog"

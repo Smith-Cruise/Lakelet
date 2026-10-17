@@ -61,10 +61,28 @@ A configuration file can contain the following top-level sections:
 | `[[catalog.glue]]` | No | An AWS Glue catalog. |
 | `[[catalog.paimon-fs]]` | No | A Paimon filesystem catalog. |
 | `[[catalog.iceberg-rest]]` | No | An Iceberg REST catalog. |
+| `[[catalog.tpch]]` | No | Generated TPC-H data. |
+| `[[catalog.tpcds]]` | No | Generated TPC-DS data. |
 
 At least one external catalog is needed to
 query external tables. The built-in `internal` catalog is always available,
 even when no external catalog is configured.
+
+To try Lakelet without an external data source, save this as `config.toml`:
+
+```toml
+[[catalog.tpch]]
+name = "tpch"
+```
+
+Start the CLI and query the generated data:
+
+```bash
+./lakelet --config config.toml --command "SELECT * FROM tpch.sf1.nation LIMIT 10;"
+```
+
+See [TPC-H](catalogs/tpch.md) and [TPC-DS](catalogs/tpcds.md) for available tables
+and scales.
 
 The following is a minimal HMS configuration:
 
@@ -98,6 +116,23 @@ The configuration file is required for normal execution.
 
 You can get more help by `./lakelet --help`.
 
+Enter statements ending with `;`, and use `quit;` to exit.
+
+The interactive CLI displays at most the first **1000 rows**, with a notice
+inside the table when results are truncated. Use SQL `LIMIT` to request
+a smaller result.
+
+To run one statement or a SQL file and exit:
+
+```bash
+./lakelet --config config.toml --command "SHOW CATALOGS;"
+./lakelet --config config.toml --file query.sql
+```
+
+`--command` and `--file` do not apply the interactive 1000-row preview limit.
+A file can contain multiple statements separated by semicolons; they run in order
+in the same session.
+
 ## Start the server
 
 Instead of the interactive REPL, Lakelet can run as a server that speaks
@@ -116,15 +151,15 @@ Lakelet server is running
 
 The port is `server-port` under `[server]` (default 32010).
 
-### Flight SQL
-
-Each Flight SQL connection is a fresh session; it does not share any
-SessionState. So `USE` state is discarded after every RPC and does not affect
-the next query.
-
 ### Web UI
 
 Open `http://localhost:32010/` in a browser, then just feeling it.
+
+### Flight SQL
+
+Each Flight SQL query uses a fresh session. `USE` and `SET` changes do not carry
+over to the next query. Use fully qualified table names or the request headers
+shown below to choose a default catalog and schema.
 
 ### Connect with ADBC (Python)
 

@@ -1,3 +1,4 @@
+use crate::catalog::benchmark::BenchmarkCatalogConfig;
 use crate::catalog::iceberg_rest::IcebergRestCatalogConfig;
 use crate::glue_catalog::GlueCatalogConfig;
 use crate::hms_catalog::HMSCatalogConfig;
@@ -9,7 +10,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CatalogConfigs {
+    pub tpch: Option<Vec<BenchmarkCatalogConfig>>,
+    pub tpcds: Option<Vec<BenchmarkCatalogConfig>>,
     #[serde(rename = "iceberg-rest")]
     pub iceberg_rest: Option<Vec<IcebergRestCatalogConfig>>,
     pub hms: Option<Vec<HMSCatalogConfig>>,
@@ -22,6 +26,8 @@ pub struct CatalogConfigs {
 #[derive(Debug, Clone)]
 pub enum CatalogConfig {
     Internal,
+    Tpch(BenchmarkCatalogConfig),
+    Tpcds(BenchmarkCatalogConfig),
     IcebergRest(IcebergRestCatalogConfig),
     HMS(HMSCatalogConfig),
     GLUE(GlueCatalogConfig),
@@ -59,6 +65,16 @@ impl CatalogManager {
     }
 
     pub fn load_catalogs(&mut self, catalogs: &CatalogConfigs) -> Result<()> {
+        if let Some(configs) = &catalogs.tpch {
+            for config in configs {
+                self.add_catalog(&config.name, CatalogConfig::Tpch(config.clone()))?;
+            }
+        }
+        if let Some(configs) = &catalogs.tpcds {
+            for config in configs {
+                self.add_catalog(&config.name, CatalogConfig::Tpcds(config.clone()))?;
+            }
+        }
         if let Some(ref hms_catalogs) = catalogs.hms {
             for hms_catalog in hms_catalogs {
                 self.add_catalog(&hms_catalog.name, CatalogConfig::HMS(hms_catalog.clone()))?;
@@ -115,6 +131,12 @@ mod tests {
     fn test_load_format_catalogs_from_config() {
         let configs: CatalogConfigs = toml::from_str(
             r#"
+            [[tpch]]
+            name = "tpch"
+
+            [[tpcds]]
+            name = "tpcds"
+
             [[paimon-fs]]
             name = "paimon_fs_1"
             warehouse = "s3://bucket/warehouse"
@@ -129,6 +151,14 @@ mod tests {
 
         let mut catalog_manager = CatalogManager::new();
         catalog_manager.load_catalogs(&configs).unwrap();
+        assert!(matches!(
+            catalog_manager.get_catalog("tpch"),
+            Some(CatalogConfig::Tpch(_))
+        ));
+        assert!(matches!(
+            catalog_manager.get_catalog("tpcds"),
+            Some(CatalogConfig::Tpcds(_))
+        ));
         assert!(catalog_manager.catalog_exists("paimon_fs_1"));
         assert!(matches!(
             catalog_manager.get_catalog("paimon_fs_1"),
@@ -160,5 +190,22 @@ mod tests {
         let result = catalog_manager.load_catalogs(&configs);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
+
+        for name in ["dup", INTERNAL_CATALOG] {
+            let configs: CatalogConfigs = toml::from_str(&format!(
+                "[[tpch]]\nname = '{name}'\n[[tpcds]]\nname = '{name}'"
+            ))
+            .unwrap();
+            assert!(CatalogManager::new().load_catalogs(&configs).is_err());
+        }
+        for kind in ["tpch", "tpcds"] {
+            assert!(
+                toml::from_str::<CatalogConfigs>(&format!(
+                    "[[{kind}]]\nname = 'test'\nwarehouse = '/tmp'"
+                ))
+                .is_err()
+            );
+            assert!(toml::from_str::<CatalogConfigs>(&format!("[[{kind}]]")).is_err());
+        }
     }
 }

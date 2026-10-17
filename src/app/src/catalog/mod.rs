@@ -1,3 +1,4 @@
+pub(crate) mod benchmark;
 pub(crate) mod data_file_format;
 pub(crate) mod glue;
 pub(crate) mod hms;
@@ -17,12 +18,22 @@ use crate::catalog::internal::InternalCatalog;
 use crate::catalog::paimon_fs::PaimonFSCatalog;
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncCatalogProviderList};
-use datafusion::common::Result;
+use datafusion::common::{ResolvedTableReference, Result, SchemaReference, not_impl_err};
+use datafusion::logical_expr::sqlparser::ast::{CreateTable, Statement};
 pub(crate) use internal::{INFORMATION_SCHEMA_SHOW_VARIABLES, INTERNAL_CATALOG};
 pub(crate) use manager::{CatalogConfig, CatalogConfigs, CatalogManager};
 use std::collections::HashMap;
 use std::sync::Arc;
 pub(crate) use table_definition_builder::TableDefinitionBuilder;
+use table_format::TableFormat;
+
+/// A catalog-independent CREATE TABLE request retaining the SQL type information.
+pub struct CreateTableRequest<'a> {
+    pub name: ResolvedTableReference,
+    pub table_format: TableFormat,
+    pub definition: &'a CreateTable,
+    pub enable_ident_normalization: bool,
+}
 
 #[async_trait]
 pub trait LakeletCatalogProvider: AsyncCatalogProvider {
@@ -31,6 +42,34 @@ pub trait LakeletCatalogProvider: AsyncCatalogProvider {
     async fn list_table_names(&self, schema_name: &str) -> Result<Vec<String>>;
 
     async fn schema_exist(&self, schema_name: &str) -> Result<bool>;
+
+    fn default_table_format(&self) -> Option<TableFormat> {
+        None
+    }
+
+    /// Create a persistent table using the resolved destination and requested format.
+    async fn create_table(&self, request: &CreateTableRequest<'_>) -> Result<()> {
+        not_impl_err!(
+            "CREATE TABLE {} USING {:?} is not supported",
+            request.name,
+            request.table_format
+        )
+    }
+
+    /// Create a schema at the fully resolved destination using the original SQL definition.
+    async fn create_schema(&self, name: &SchemaReference, _stmt: &Statement) -> Result<()> {
+        not_impl_err!("CREATE SCHEMA {name} is not supported")
+    }
+
+    /// Drop a table at the fully resolved destination using the original SQL options.
+    async fn drop_table(&self, name: &ResolvedTableReference, _stmt: &Statement) -> Result<()> {
+        not_impl_err!("DROP TABLE {name} is not supported")
+    }
+
+    /// Drop a schema at the fully resolved destination using the original SQL options.
+    async fn drop_schema(&self, name: &SchemaReference, _stmt: &Statement) -> Result<()> {
+        not_impl_err!("DROP SCHEMA {name} is not supported")
+    }
 }
 
 pub struct LakeletCatalogProviderList {
@@ -41,6 +80,13 @@ pub struct LakeletCatalogProviderList {
 }
 
 impl LakeletCatalogProviderList {
+    #[cfg(test)]
+    pub(crate) fn from_catalogs(
+        catalogs: HashMap<String, Arc<dyn LakeletCatalogProvider>>,
+    ) -> Self {
+        Self { catalogs }
+    }
+
     pub fn new(lakelet_context: Arc<LakeletContext>) -> Result<LakeletCatalogProviderList> {
         let mut catalogs = HashMap::new();
         for (catalog_name, catalog_config) in lakelet_context.catalog_manager.list_catalogs() {
@@ -65,6 +111,14 @@ fn build_catalog_provider(
     catalog_config: CatalogConfig,
 ) -> Result<Arc<dyn LakeletCatalogProvider>> {
     let catalog: Arc<dyn LakeletCatalogProvider> = match catalog_config {
+        CatalogConfig::Tpch(_) => Arc::new(benchmark::BenchmarkCatalog::new(
+            benchmark::BenchmarkKind::Tpch,
+            lakelet_context.runtime_manager.cpu_handle(),
+        )),
+        CatalogConfig::Tpcds(_) => Arc::new(benchmark::BenchmarkCatalog::new(
+            benchmark::BenchmarkKind::Tpcds,
+            lakelet_context.runtime_manager.cpu_handle(),
+        )),
         CatalogConfig::IcebergRest(config) => Arc::new(IcebergRestCatalog::new(Arc::new(config))),
         CatalogConfig::Internal => Arc::new(InternalCatalog::new(lakelet_context.clone())),
         CatalogConfig::HMS(hms_catalog) => Arc::new(HMSCatalog::new(

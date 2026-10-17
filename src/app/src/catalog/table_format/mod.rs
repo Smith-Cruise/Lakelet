@@ -13,3 +13,17 @@ pub enum TableFormat {
     Hive,
     Paimon,
 }
+
+impl std::str::FromStr for TableFormat {
+    type Err = datafusion::common::DataFusionError;
+
+    fn from_str(format: &str) -> Result<Self, Self::Err> {
+        match format.to_ascii_uppercase().as_str() {
+            "ICEBERG" => Ok(Self::Iceberg),
+            "DELTA" => Ok(Self::Delta),
+            "HIVE" => Ok(Self::Hive),
+            "PAIMON" => Ok(Self::Paimon),
+            _ => datafusion::common::plan_err!("Unknown table format: {format}"),
+        }
+    }
+}

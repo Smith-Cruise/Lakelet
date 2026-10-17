@@ -8,7 +8,7 @@ use datafusion::object_store::ObjectStore;
 use object_store_opendal::OpendalStore;
 use opendal::Operator;
 use opendal::layers::{RetryLayer, TimeoutLayer};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use url::Url;
@@ -23,6 +23,7 @@ pub const HDFS_SCHEMA: &str = "hdfs";
 /// falls back to OpenDAL's own credential chain, and HDFS needs no
 /// configuration at all.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Storage {
     #[serde(rename = "s3-storage")]
     pub s3_storage: Option<S3Storage>,
@@ -31,6 +32,19 @@ pub struct Storage {
 }
 
 impl Storage {
+    /// Deserialize the remaining catalog fields as a strict storage table.
+    /// Buffer them first because Serde's flattened struct deserializer filters
+    /// out unknown keys before `deny_unknown_fields` can reject them.
+    pub fn deserialize_flattened<'de, D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let fields = toml::Table::deserialize(deserializer)?;
+        toml::Value::Table(fields)
+            .try_into()
+            .map_err(serde::de::Error::custom)
+    }
+
     /// Build an OpenDAL operator rooted at the storage's top level (bucket
     /// root for s3/oss, `/` for hdfs). This is the single place where a
     /// location scheme + authority is mapped onto a storage backend and

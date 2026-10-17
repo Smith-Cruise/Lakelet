@@ -5,7 +5,7 @@ use crate::table_format::metadata_table::MetadataTableType;
 use crate::table_format::paimon::paimon_table_provider::LakeletPaimonTableProvider;
 use crate::table_format::paimon::single_table_catalog::SingleTablePaimonCatalog;
 use datafusion::catalog::{SchemaProvider, TableProvider};
-use datafusion::common::{DataFusionError, Result, TableReference};
+use datafusion::common::{DataFusionError, ResolvedTableReference, Result};
 use lakelet_storage::storage::Storage;
 use paimon::catalog::Identifier;
 use paimon::io::FileIO;
@@ -18,7 +18,7 @@ pub struct PaimonTableProviderFactory;
 
 impl PaimonTableProviderFactory {
     pub async fn try_create_table_provider(
-        table_reference: TableReference,
+        table_reference: ResolvedTableReference,
         table_location: String,
         metadata_table_type: Option<MetadataTableType>,
         storage: Storage,
@@ -34,10 +34,12 @@ impl PaimonTableProviderFactory {
                     format!("Paimon schema not found at {table_location}").into(),
                 )
             })?;
-        let (database, table_name) = table_identifier_parts(&table_reference)?;
         let inner_table = Table::new(
             file_io,
-            Identifier::new(database, table_name),
+            Identifier::new(
+                table_reference.schema.to_string(),
+                table_reference.table.to_string(),
+            ),
             table_location.clone(),
             (*schema).clone(),
             None,
@@ -101,6 +103,10 @@ fn paimon_system_table_name(metadata_table_type: MetadataTableType) -> Result<&'
         MetadataTableType::PaimonTableIndexes => Ok("table_indexes"),
         MetadataTableType::PaimonPhysicalFilesSize => Ok("physical_files_size"),
         MetadataTableType::PaimonReferencedFilesSize => Ok("referenced_files_size"),
+        MetadataTableType::PaimonAggregationFields => Ok("aggregation_fields"),
+        MetadataTableType::PaimonAuditLog => Ok("audit_log"),
+        MetadataTableType::PaimonBuckets => Ok("buckets"),
+        MetadataTableType::PaimonConsumers => Ok("consumers"),
         _ => Err(DataFusionError::NotImplemented(format!(
             "paimon metadata table {metadata_table_type:?} is not supported"
         ))),
@@ -111,15 +117,6 @@ fn build_file_io(table_location: &str, properties: HashMap<String, String>) -> R
     FileIO::from_path(table_location)
         .and_then(|builder| builder.with_props(properties).build())
         .map_err(to_datafusion_error)
-}
-
-fn table_identifier_parts(table_reference: &TableReference) -> Result<(String, String)> {
-    match table_reference {
-        TableReference::Full { schema, table, .. } => Ok((schema.to_string(), table.to_string())),
-        _ => Err(DataFusionError::Plan(
-            "Paimon table reference must be fully qualified".to_string(),
-        )),
-    }
 }
 
 fn to_datafusion_error(error: paimon::Error) -> DataFusionError {

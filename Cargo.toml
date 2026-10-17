@@ -13,6 +13,8 @@ members = [
 [workspace.dependencies]
 datafusion = { version = "54.1.0", features = ["avro"] }
 datafusion-cli = "54.1.0"
+tpchgen = "3.0.0"
+tpcdsgen = "0.1.0-alpha.1"
 orc-rust = { version = "0.8.0", features = ["async"] }
 sqlparser = "0.62.0"
 arrow-flight = { version = "58.4.0", features = ["flight-sql"] }
@@ -40,8 +42,8 @@ iceberg-catalog-rest = { git = "https://github.com/apache/iceberg-rust", rev = "
 opendal = { version = "0.58.1", features = ["services-s3", "services-oss", "services-hdfs-native"] }
 object_store_opendal = "0.58.0"
 deltalake = { git = "https://github.com/delta-io/delta.rs", rev = "84fad0b1bd861367a94e144cd253323559c9d3bd", features = ["datafusion"] }
-paimon = { version = "0.3.0", features = ["storage-s3", "storage-oss", "storage-hdfs"] }
-paimon-datafusion = "0.3.0"
+paimon = { version = "0.4.0", features = ["storage-s3", "storage-oss", "storage-hdfs"] }
+paimon-datafusion = "0.4.0"
 mimalloc = { version = "0.1", default-features = false }
 moka = { version = "0.12.16", features = ["sync"] }
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }

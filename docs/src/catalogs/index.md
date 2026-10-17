@@ -10,9 +10,14 @@ Lakelet supports these catalogs:
 - [Glue](glue.md)
 - [Paimon FileSystem](paimon-filesystem.md)
 - [Iceberg REST](iceberg-rest.md)
+- [TPC-H](tpch.md)
+- [TPC-DS](tpcds.md)
 
-Storage settings are embedded directly in each catalog entry. See
+For catalogs that access stored tables, storage settings are embedded directly
+in each catalog entry. See
 [Storage](../storage.md) for their complete field reference.
+
+TPC-H and TPC-DS provide generated, read-only data and require no external storage.
 
 ## Catalog SQL
 

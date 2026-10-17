@@ -11,7 +11,7 @@ hide:
 
 <span class="ll-kicker">DATAFUSION · RUST · ARROW</span>
 
-# Simple, Fast Lakehouse Query Engine
+# Simple, Fast Lakehouse Engine
 
 <p class="ll-lead">A lightweight alternative to Trino for querying Iceberg, Delta Lake, Paimon and Hive.</p>
 

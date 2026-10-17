@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use datafusion::arrow::datatypes::Schema;
 use datafusion::catalog::{Session, TableProvider};
 use datafusion::common::Result;
-use datafusion::common::{DataFusionError, TableReference};
+use datafusion::common::{DataFusionError, ResolvedTableReference};
 use datafusion::datasource::TableType;
 use datafusion::logical_expr::{Expr, TableProviderFilterPushDown};
 use datafusion::physical_plan::ExecutionPlan;
@@ -22,7 +22,7 @@ pub struct IcebergTableProvider {
 
 impl IcebergTableProvider {
     pub async fn try_new_from_table(
-        table_reference: TableReference,
+        table_reference: ResolvedTableReference,
         table_location: String,
         table: Table,
     ) -> Result<Self> {
@@ -38,7 +38,7 @@ impl IcebergTableProvider {
 }
 
 fn build_table_definition(
-    table_reference: &TableReference,
+    table_reference: &ResolvedTableReference,
     table_location: &str,
     table: &Table,
 ) -> Result<String> {
@@ -46,14 +46,14 @@ fn build_table_definition(
         .map_err(|e| DataFusionError::External(Box::new(e)))?;
     let partition_column_names = build_partition_column_names(table)?;
 
-    TableDefinitionBuilder::new(
+    Ok(TableDefinitionBuilder::new(
         table_reference.clone(),
         table_location,
         TableFormat::Iceberg,
         table_schema,
     )
     .with_partition_column_names(partition_column_names)
-    .build()
+    .build())
 }
 
 fn build_partition_column_names(table: &Table) -> Result<Vec<String>> {

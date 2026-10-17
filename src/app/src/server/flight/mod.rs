@@ -72,18 +72,18 @@ impl LakeletFlightSqlService {
         session
     }
 
-    // Plan only (no execution) to learn the result schema.
+    // Discover the result schema without executing persistent catalog DDL.
     async fn plan_schema(
         &self,
         sql: &str,
         session_defaults: SessionDefaults,
     ) -> Result<Schema, Status> {
-        let dataframe = self
+        let schema = self
             .new_session(session_defaults)
-            .sql(sql)
+            .sql_schema(sql)
             .await
             .map_err(df_error_to_status)?;
-        Ok(advertised_schema(dataframe.schema().as_arrow().clone()))
+        Ok(advertised_schema(schema))
     }
 
     // Build a single-endpoint FlightInfo whose ticket carries the given
@@ -394,13 +394,20 @@ impl FlightSqlService for LakeletFlightSqlService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::catalog::{INFORMATION_SCHEMA_SHOW_VARIABLES, INTERNAL_CATALOG};
+    use crate::catalog::paimon_fs::{PaimonFSCatalog, PaimonFSCatalogConfig};
+    use crate::catalog::{
+        INFORMATION_SCHEMA_SHOW_VARIABLES, INTERNAL_CATALOG, LakeletCatalogProvider,
+    };
     use crate::server::tests::spawn_test_server;
+    use arrow_flight::decode::FlightRecordBatchStream;
     use arrow_flight::sql::client::FlightSqlServiceClient;
     use datafusion::arrow::array::{Int64Array, StringArray, UInt32Array};
     use datafusion::arrow::datatypes::DataType;
     use datafusion::arrow::record_batch::RecordBatch;
     use datafusion::catalog::information_schema::INFORMATION_SCHEMA;
+    use lakelet_storage::storage::Storage;
+    use std::collections::HashMap;
+    use std::path::Path;
     use tonic::transport::Channel;
 
     async fn start_test_server() -> Result<FlightSqlServiceClient<Channel>> {
@@ -411,6 +418,109 @@ mod tests {
             .await
             .map_err(|e| DataFusionError::External(Box::new(e)))?;
         Ok(FlightSqlServiceClient::new(channel))
+    }
+
+    fn paimon_service(warehouse: &Path) -> LakeletFlightSqlService {
+        let context = Arc::new(LakeletContext::default());
+        let config = Arc::new(PaimonFSCatalogConfig {
+            name: "paimon_fs".into(),
+            warehouse: warehouse.to_str().unwrap().into(),
+            storage: Storage::default(),
+        });
+        let catalog = Arc::new(PaimonFSCatalog::try_new(context.clone(), config).unwrap());
+        LakeletFlightSqlService::new(
+            Arc::new(LakeletCatalogProviderList::from_catalogs(HashMap::from([
+                (
+                    "paimon_fs".into(),
+                    catalog as Arc<dyn LakeletCatalogProvider>,
+                ),
+            ]))),
+            context,
+            Arc::new(RuntimeEnv::default()),
+        )
+    }
+
+    async fn ddl_ticket(service: &LakeletFlightSqlService, sql: &str) -> Ticket {
+        let command = CommandStatementQuery {
+            query: sql.into(),
+            transaction_id: None,
+        };
+        let info = service
+            .get_flight_info(Request::new(FlightDescriptor::new_cmd(
+                command.as_any().encode_to_vec(),
+            )))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(info.clone().try_decode_schema().unwrap(), Schema::empty());
+        assert_eq!(info.endpoint.len(), 1);
+        info.endpoint[0].ticket.clone().unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_ddl_executes_only_on_do_get() {
+        let warehouse = tempfile::TempDir::new().unwrap();
+        let service = paimon_service(warehouse.path());
+
+        // No IF [NOT] EXISTS: executing during both RPCs would make DoGet fail.
+        for (sql, relative_path, exists_before) in [
+            ("CREATE SCHEMA paimon_fs.db1", "db1.db", false),
+            ("CREATE TABLE paimon_fs.db1.t1 (id INT)", "db1.db/t1", false),
+            ("DROP TABLE paimon_fs.db1.t1", "db1.db/t1", true),
+            ("DROP SCHEMA paimon_fs.db1", "db1.db", true),
+        ] {
+            let path = warehouse.path().join(relative_path);
+            assert_eq!(path.exists(), exists_before, "{sql}");
+            // Repeated schema discovery must not create or remove objects.
+            let _ = ddl_ticket(&service, sql).await;
+            assert_eq!(path.exists(), exists_before, "{sql}");
+            let ticket = ddl_ticket(&service, sql).await;
+            assert_eq!(path.exists(), exists_before, "{sql}");
+
+            let response = service.do_get(Request::new(ticket)).await.unwrap();
+            let mut stream = FlightRecordBatchStream::new_from_flight_data(
+                response.into_inner().map_err(FlightError::from),
+            );
+            while let Some(batch) = stream.try_next().await.unwrap() {
+                assert_eq!(batch.num_rows(), 0, "{sql}");
+            }
+            assert_eq!(stream.schema().unwrap().as_ref(), &Schema::empty());
+            assert_eq!(path.exists(), !exists_before, "{sql}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_ddl_semantic_errors_are_deferred_to_do_get() {
+        let warehouse = tempfile::TempDir::new().unwrap();
+        let service = paimon_service(warehouse.path());
+        let session = service.new_session(SessionDefaults::default());
+        session.sql("CREATE SCHEMA paimon_fs.db1").await.unwrap();
+        session
+            .sql("CREATE TABLE paimon_fs.db1.t1 (id INT)")
+            .await
+            .unwrap();
+
+        for (sql, expected_error) in [
+            ("CREATE SCHEMA paimon_fs.db1", "already exists"),
+            ("CREATE TABLE paimon_fs.db1.t1 (id INT)", "already exists"),
+            ("CREATE SCHEMA missing.db1", "unknown catalog missing"),
+            (
+                "CREATE TABLE missing.db1.t1 (id INT)",
+                "unknown catalog missing",
+            ),
+            ("DROP TABLE paimon_fs.db1.missing", "does not exist"),
+            ("DROP SCHEMA paimon_fs.missing", "does not exist"),
+            (
+                "DROP TABLE paimon_fs.db1.t1 PURGE",
+                "only supports DROP TABLE",
+            ),
+        ] {
+            let ticket = ddl_ticket(&service, sql).await;
+            // The stream is not Debug, so use err() instead of unwrap_err().
+            let error = service.do_get(Request::new(ticket)).await.err().unwrap();
+            assert!(error.message().contains(expected_error), "{sql}: {error}");
+            assert!(warehouse.path().join("db1.db/t1/schema/schema-0").exists());
+        }
     }
 
     #[tokio::test]
@@ -454,14 +564,23 @@ mod tests {
     async fn test_invalid_sql_returns_invalid_argument() -> Result<()> {
         let mut client = start_test_server().await?;
 
-        let err = client
-            .execute("select from from".to_string(), None)
-            .await
-            .expect_err("invalid SQL should fail");
-        assert!(
-            err.to_string().contains("invalid argument"),
-            "unexpected error: {err}"
-        );
+        for sql in [
+            "select from from",
+            "",
+            ";",
+            "SELECT 1; SELECT 2",
+            "CREATE SCHEMA",
+            "CREATE SCHEMA missing.db1; DROP SCHEMA missing.db1",
+        ] {
+            let err = client
+                .execute(sql.to_string(), None)
+                .await
+                .expect_err("invalid SQL should fail");
+            assert!(
+                matches!(err, FlightError::Tonic(ref status) if status.code() == tonic::Code::InvalidArgument),
+                "{sql}: unexpected error: {err}"
+            );
+        }
         Ok(())
     }
 

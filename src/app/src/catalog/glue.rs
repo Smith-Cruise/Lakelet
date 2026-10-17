@@ -13,7 +13,7 @@ use aws_config::Region;
 use aws_sdk_glue::Client;
 use aws_sdk_glue::config::Credentials;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
-use datafusion::common::{Result, Statistics, TableReference};
+use datafusion::common::{ResolvedTableReference, Result, Statistics};
 use datafusion::error::DataFusionError;
 use lakelet_storage::storage::Storage;
 use serde::{Deserialize, Serialize};
@@ -32,7 +32,7 @@ pub struct GlueCatalogConfig {
     pub aws_glue_secret_key: Option<String>,
     #[serde(rename = "aws-glue-endpoint")]
     pub aws_glue_endpoint: Option<String>,
-    #[serde(flatten, default)]
+    #[serde(flatten, default, deserialize_with = "Storage::deserialize_flattened")]
     pub storage: Storage,
 }
 
@@ -147,11 +147,11 @@ impl AsyncSchemaProvider for GlueSchema {
             None => return Ok(None),
         };
 
-        let table_reference = TableReference::full(
-            self.config.name.as_str(),
-            self.schema_name.as_str(),
-            glue_table.name.as_str(),
-        );
+        let table_reference = ResolvedTableReference {
+            catalog: self.config.name.as_str().into(),
+            schema: self.schema_name.as_str().into(),
+            table: glue_table.name.as_str().into(),
+        };
         let glue_table_properties = match &glue_table.parameters {
             Some(parameters) => parameters.clone(),
             None => {
@@ -189,7 +189,7 @@ impl AsyncSchemaProvider for GlueSchema {
                         ),
                         &statistics_loader,
                     )
-                    .await?
+                    .await
             } else {
                 Statistics::new_unknown(table_schema.table_schema())
             };

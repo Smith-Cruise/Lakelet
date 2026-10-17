@@ -1,3 +1,5 @@
+mod ddl;
+mod describe;
 mod show;
 mod r#use;
 
@@ -5,17 +7,19 @@ use crate::catalog::{INTERNAL_CATALOG, LakeletCatalogProviderList};
 use crate::context::LakeletContext;
 use crate::parser::ExtendedParser;
 use crate::statements::ExtendedStatement;
+use datafusion::arrow::datatypes::Schema;
 use datafusion::catalog::AsyncCatalogProviderList;
 use datafusion::catalog::information_schema::INFORMATION_SCHEMA;
-use datafusion::common::Result;
+use datafusion::common::{Result, TableReference};
 use datafusion::config::ConfigOptions;
 use datafusion::dataframe::DataFrame;
 use datafusion::error::DataFusionError;
 use datafusion::execution::TaskContext;
 use datafusion::execution::runtime_env::RuntimeEnv;
-use datafusion::logical_expr::ExplainFormat;
-use datafusion::logical_expr::sqlparser::ast::Statement;
+use datafusion::logical_expr::sqlparser::ast::{ObjectType, Statement};
+use datafusion::logical_expr::{ExplainFormat, LogicalPlan};
 use datafusion::prelude::{SessionConfig, SessionContext};
+use datafusion::sql::parser::Statement as DataFusionStatement;
 use datafusion_cli::functions::MetadataCacheFunc;
 use std::sync::Arc;
 
@@ -77,7 +81,37 @@ impl ExtendedSessionContext {
     }
 
     pub async fn sql(&self, sql: &str) -> Result<DataFrame> {
-        let parser = ExtendedParser::parse_sql(sql)?;
+        let statement = Self::parse_single_statement(sql)?;
+        self.create_dataframe(&statement).await
+    }
+
+    /// Discover the result schema without executing persistent catalog DDL.
+    /// DDL semantic validation is deferred to `sql` at execution time.
+    pub(crate) async fn sql_schema(&self, sql: &str) -> Result<Schema> {
+        let statement = Self::parse_single_statement(sql)?;
+        let ExtendedStatement::SQLStatement(stmt) = &statement;
+        if matches!(
+            stmt.as_ref(),
+            Statement::CreateTable(_)
+                | Statement::CreateSchema { .. }
+                | Statement::Drop {
+                    object_type: ObjectType::Table | ObjectType::Schema,
+                    ..
+                }
+        ) {
+            // TODO: Support Flight SQL's CommandStatementUpdate (DoPut) for
+            // statements without result sets. Deferring DDL to DoGet is a
+            // workaround for clients using the query path; revisit this once
+            // the standard update path is available, preserving Web UI support.
+            return Ok(Schema::empty());
+        }
+
+        let dataframe = self.create_dataframe(&statement).await?;
+        Ok(dataframe.schema().as_arrow().clone())
+    }
+
+    fn parse_single_statement(sql: &str) -> Result<ExtendedStatement> {
+        let mut parser = ExtendedParser::parse_sql(sql)?;
         if parser.len() != 1 {
             // A client error, not an execution failure: callers map `Plan` to
             // 400 / INVALID_ARGUMENT rather than a generic internal error.
@@ -88,21 +122,33 @@ impl ExtendedSessionContext {
             )));
         }
 
-        let stmt = &parser[0];
-        self.create_dataframe(stmt).await
+        Ok(parser
+            .pop_front()
+            .expect("exactly one statement was parsed"))
     }
 
     pub async fn create_dataframe(&self, statement: &ExtendedStatement) -> Result<DataFrame> {
-        let sql_string: String = match statement {
-            ExtendedStatement::ShowCatalogsStatement(show_catalogs) => {
-                return self.handle_show_catalogs(show_catalogs);
-            }
-            ExtendedStatement::ShowVariablesStatement(show_variables) => {
-                self.build_show_variables_sql(&show_variables.filter, show_variables.verbose)?
-            }
+        let statement = match statement {
             ExtendedStatement::SQLStatement(stmt) => match stmt.as_ref() {
+                Statement::CreateTable(create) => {
+                    return self.handle_create_table_stmt(create).await;
+                }
+                Statement::CreateSchema { schema_name, .. } => {
+                    return self.handle_create_schema_stmt(schema_name, stmt).await;
+                }
+                Statement::Drop {
+                    object_type, names, ..
+                } if matches!(object_type, ObjectType::Table | ObjectType::Schema) => {
+                    return self.handle_drop_stmt(object_type, names, stmt).await;
+                }
+                Statement::ShowVariables { filter, .. } => {
+                    return self.handle_show_variables(filter).await;
+                }
                 Statement::Use(use_stmt) => {
                     return self.handle_use_stmt(use_stmt).await;
+                }
+                Statement::ShowCatalogs { show_options, .. } => {
+                    return self.handle_show_catalogs(show_options);
                 }
                 Statement::ShowSchemas { show_options, .. } => {
                     return self.handle_show_schemas(show_options).await;
@@ -110,45 +156,44 @@ impl ExtendedSessionContext {
                 Statement::ShowTables { show_options, .. } => {
                     return self.handle_show_tables(show_options).await;
                 }
-                _ => stmt.to_string(),
+                Statement::ShowCreate { obj_type, obj_name } => {
+                    return self.handle_show_create_stmt(obj_type, obj_name).await;
+                }
+                _ => stmt.clone(),
             },
         };
 
-        // Instead, to use a remote catalog, we must use lower level APIs on
-        // SessionState (what `SessionContext::sql` does internally).
-        let state = self.session_context.state();
-        // First, parse the SQL (but don't plan it / resolve any table references)
-        let dialect = state.config().options().sql_parser.dialect;
-        let statement = state.sql_to_statement(&sql_string, &dialect)?;
-        // Find all `TableReferences` in the parsed queries. These correspond to the
-        // tables referred to by the query (in this case
-        // `remote_schema.remote_table`)
+        let statement = DataFusionStatement::Statement(statement);
+        let references = self
+            .session_context
+            .state()
+            .resolve_table_references(&statement)?;
+        self.resolve_tables(&references).await?;
 
-        // DataFusion resolves SHOW CREATE through information_schema internally,
-        // which adds synthetic references such as information_schema.columns.
-        // Remote catalogs should only resolve the target table here; otherwise
-        // HMS/Glue would try to load those synthetic information_schema tables.
-        let references = match Self::show_create_statement(&statement) {
-            Some((obj_type, obj_name)) => {
-                self.resolve_show_create_table_references(obj_type, obj_name)?
-            }
-            None => state.resolve_table_references(&statement)?,
-        };
+        // Use fresh state so planning sees the catalogs registered above.
+        let plan = self
+            .session_context
+            .state()
+            .statement_to_plan(statement)
+            .await?;
+        if let LogicalPlan::DescribeTable(describe) = &plan {
+            return self.describe_dataframe(describe);
+        }
+        self.session_context.execute_logical_plan(plan).await
+    }
 
+    async fn resolve_tables(&self, references: &[TableReference]) -> Result<()> {
         // Now we can asynchronously resolve the table references to get a cached catalog
         // that we can use for our query. The provider list is shared across
         // statements, so catalog providers and their metastore clients are
         // reused instead of rebuilt per statement.
         let resolved_catalog_providers = self
             .catalog_provider_list
-            .resolve(&references, state.config())
+            .resolve(references, self.session_context.state().config())
             .await?;
         self.session_context
             .register_catalog_list(resolved_catalog_providers);
-        if let Some((obj_type, obj_name)) = Self::show_create_statement(&statement) {
-            return self.handle_show_create_stmt(obj_type, obj_name).await;
-        }
-        self.session_context.sql(&sql_string).await
+        Ok(())
     }
 
     pub fn task_ctx(&self) -> Arc<TaskContext> {

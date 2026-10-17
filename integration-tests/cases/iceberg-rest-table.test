@@ -51,10 +51,10 @@ SHOW CREATE TABLE iceberg_rest.iceberg_rest_db.orders;
 definition
 CREATE TABLE `iceberg_rest`.`iceberg_rest_db`.`orders`
 (
-`id` Int32,
-`name` Utf8,
-`amount` Decimal128(10, 2),
-`dt` Utf8
+`id` INT,
+`name` STRING,
+`amount` DECIMAL(10, 2),
+`dt` STRING
 )
 PARTITIONED BY (`dt`)
 USING ICEBERG

@@ -469,13 +469,13 @@ SHOW CREATE TABLE textfile_partitions;
 definition
 CREATE TABLE `moto_glue`.`hive_db`.`textfile_partitions`
 (
-`id` Int32,
-`name` Utf8,
-`amount` Decimal128(10, 2),
-`dt` Date32,
-`bucket` Int32,
-`region` Utf8,
-`price` Decimal128(6, 2)
+`id` INT,
+`name` STRING,
+`amount` DECIMAL(10, 2),
+`dt` DATE,
+`bucket` INT,
+`region` STRING,
+`price` DECIMAL(6, 2)
 )
 PARTITIONED BY (`dt`, `bucket`, `region`, `price`)
 USING HIVE

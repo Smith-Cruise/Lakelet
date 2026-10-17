@@ -5,6 +5,7 @@ use opendal::services::S3Config;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct S3Storage {
     #[serde(rename = "region")]
     pub region: Option<String>,

@@ -9,9 +9,9 @@ use crate::table_format::iceberg::IcebergTableProviderFactory;
 use crate::table_format::metadata_table::MetadataTableType;
 use crate::table_format::paimon::PaimonTableProviderFactory;
 use datafusion::catalog::TableProvider;
+use datafusion::common::ResolvedTableReference;
 use datafusion::common::Result;
 use datafusion::error::DataFusionError;
-use datafusion::sql::TableReference;
 use lakelet_storage::storage::Storage;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ use std::sync::Arc;
 pub struct TableProviderBuilder {
     lakelet_context: Arc<LakeletContext>,
     table_location: String,
-    table_reference: TableReference,
+    table_reference: ResolvedTableReference,
     table_properties: HashMap<String, String>,
     table_format: TableFormat,
     metadata_table_type: Option<MetadataTableType>,
@@ -32,7 +32,7 @@ impl TableProviderBuilder {
     pub fn new(
         lakelet_context: Arc<LakeletContext>,
         table_location: String,
-        table_reference: TableReference,
+        table_reference: ResolvedTableReference,
         table_properties: HashMap<String, String>,
         table_format: TableFormat,
         catalog_config: CatalogConfig,
@@ -41,7 +41,10 @@ impl TableProviderBuilder {
             CatalogConfig::GLUE(glue_config) => glue_config.storage.clone(),
             CatalogConfig::HMS(hms_config) => hms_config.storage.clone(),
             CatalogConfig::PaimonFS(paimon_fs_config) => paimon_fs_config.storage.clone(),
-            CatalogConfig::Internal | CatalogConfig::IcebergRest(_) => {
+            CatalogConfig::Internal
+            | CatalogConfig::IcebergRest(_)
+            | CatalogConfig::Tpch(_)
+            | CatalogConfig::Tpcds(_) => {
                 panic!("unreachable")
             }
         };
@@ -118,7 +121,7 @@ impl TableProviderBuilder {
                             .map(|field| field.name().to_string())
                             .collect(),
                     )
-                    .build()?;
+                    .build();
                     HiveTableProviderFactory::try_create_table_provider(
                         self.table_location,
                         storage_info,
@@ -177,7 +180,11 @@ mod tests {
         let provider = TableProviderBuilder::new(
             Arc::new(LakeletContext::default()),
             "s3://bucket/path".to_string(),
-            TableReference::full("catalog", "schema", "table"),
+            ResolvedTableReference {
+                catalog: "catalog".into(),
+                schema: "schema".into(),
+                table: "table".into(),
+            },
             HashMap::new(),
             TableFormat::Hive,
             CatalogConfig::HMS(crate::hms_catalog::HMSCatalogConfig {
@@ -194,7 +201,7 @@ mod tests {
         assert_eq!(
             provider.get_table_definition(),
             Some(
-                "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` Int64\n)\nUSING HIVE\nLOCATION 's3://bucket/path'"
+                "CREATE TABLE `catalog`.`schema`.`table`\n(\n  `id` BIGINT\n)\nUSING HIVE\nLOCATION 's3://bucket/path'"
             )
         );
         Ok(())

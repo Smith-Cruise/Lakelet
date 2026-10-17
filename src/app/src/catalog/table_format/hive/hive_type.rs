@@ -202,7 +202,7 @@ mod tests {
     use crate::catalog::TableDefinitionBuilder;
     use crate::table_format::TableFormat;
     use datafusion::arrow::datatypes::Schema;
-    use datafusion::common::TableReference;
+    use datafusion::common::ResolvedTableReference;
 
     fn parse(hive_type: &str) -> DataType {
         hive_type_to_arrow_type(hive_type).unwrap()
@@ -420,22 +420,21 @@ mod tests {
         );
 
         let definition = TableDefinitionBuilder::new(
-            TableReference::full("catalog", "schema", "table"),
+            ResolvedTableReference {
+                catalog: "catalog".into(),
+                schema: "schema".into(),
+                table: "table".into(),
+            },
             "s3://bucket/path",
             TableFormat::Hive,
             schema,
         )
-        .build()?;
+        .build();
 
-        assert!(definition.contains("`tags` List(Utf8, field: 'element')"));
-        assert!(definition.contains(
-            "`props` Map(\"key_value\": non-null Struct(\"key\": non-null Utf8, \"value\": Int32), unsorted)"
-        ));
-        assert!(definition.contains("`s` Struct(\"userId\": Int32)"));
-        assert!(
-            definition
-                .contains("`u` Union(Sparse, 0: (\"_union_0\": Int32), 1: (\"_union_1\": Utf8))")
-        );
+        assert!(definition.contains("`tags` ARRAY<STRING>"));
+        assert!(definition.contains("`props` MAP<STRING, INT>"));
+        assert!(definition.contains("`s` STRUCT<`userId` INT>"));
+        assert!(definition.contains("`u` UNIONTYPE<INT, STRING>"));
         Ok(())
     }
 
