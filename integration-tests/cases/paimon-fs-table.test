@@ -45,10 +45,10 @@ SHOW CREATE TABLE paimon_fs.paimon_db.orders;
 definition
 CREATE TABLE `paimon_fs`.`paimon_db`.`orders`
 (
-`id` Int32,
-`name` Utf8View,
-`amount` Decimal128(10, 2),
-`dt` Utf8View
+`id` INT,
+`name` STRING,
+`amount` DECIMAL(10, 2),
+`dt` STRING
 )
 PARTITIONED BY (`dt`)
 USING PAIMON
