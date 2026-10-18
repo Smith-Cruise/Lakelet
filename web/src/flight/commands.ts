@@ -69,8 +69,8 @@ export function commandGetDbSchemas(catalog: string): Uint8Array {
  *
  * Both name filters are LIKE patterns, so exact names are escaped. The
  * remaining fields are never set: Lakelet reports one table type, and it
- * refuses `include_schema` outright - a table's columns come from
- * `commandStatementQuery` below instead.
+ * refuses `include_schema` outright - a table's columns come from the
+ * DoGet result of a LIMIT 0 query instead.
  */
 export function commandGetTables(
   catalog: string,
@@ -84,19 +84,6 @@ export function commandGetTables(
       ...stringField(2, escapeLikePattern(dbSchema)),
       ...(options.table === undefined ? [] : stringField(3, escapeLikePattern(options.table))),
     ]),
-  );
-}
-
-/**
- * CommandStatementQuery: query = 1.
- *
- * Sent to GetFlightInfo on its own, to read a statement's schema without
- * running it; executing a statement goes through sparrowJS instead.
- */
-export function commandStatementQuery(sql: string): Uint8Array {
-  return wrapInAny(
-    "CommandStatementQuery",
-    new Uint8Array(stringField(1, sql)),
   );
 }
 

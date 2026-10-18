@@ -7,7 +7,6 @@ use crate::catalog::{INTERNAL_CATALOG, LakeletCatalogProviderList};
 use crate::context::LakeletContext;
 use crate::parser::ExtendedParser;
 use crate::statements::ExtendedStatement;
-use datafusion::arrow::datatypes::Schema;
 use datafusion::catalog::AsyncCatalogProviderList;
 use datafusion::catalog::information_schema::INFORMATION_SCHEMA;
 use datafusion::common::{Result, TableReference};
@@ -83,31 +82,6 @@ impl ExtendedSessionContext {
     pub async fn sql(&self, sql: &str) -> Result<DataFrame> {
         let statement = Self::parse_single_statement(sql)?;
         self.create_dataframe(&statement).await
-    }
-
-    /// Discover the result schema without executing persistent catalog DDL.
-    /// DDL semantic validation is deferred to `sql` at execution time.
-    pub(crate) async fn sql_schema(&self, sql: &str) -> Result<Schema> {
-        let statement = Self::parse_single_statement(sql)?;
-        let ExtendedStatement::SQLStatement(stmt) = &statement;
-        if matches!(
-            stmt.as_ref(),
-            Statement::CreateTable(_)
-                | Statement::CreateSchema { .. }
-                | Statement::Drop {
-                    object_type: ObjectType::Table | ObjectType::Schema,
-                    ..
-                }
-        ) {
-            // TODO: Support Flight SQL's CommandStatementUpdate (DoPut) for
-            // statements without result sets. Deferring DDL to DoGet is a
-            // workaround for clients using the query path; revisit this once
-            // the standard update path is available, preserving Web UI support.
-            return Ok(Schema::empty());
-        }
-
-        let dataframe = self.create_dataframe(&statement).await?;
-        Ok(dataframe.schema().as_arrow().clone())
     }
 
     fn parse_single_statement(sql: &str) -> Result<ExtendedStatement> {
