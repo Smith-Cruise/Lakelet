@@ -21,10 +21,9 @@ impl<'a> GlueTableSchemaBuilder<'a> {
         })?;
         let data_cols = Self::build_fields(storage_descriptor.columns())?;
         let table_partition_cols = Self::build_fields(self.table.partition_keys())?;
-        Ok(TableSchema::new(
-            Arc::new(Schema::new(data_cols)),
-            table_partition_cols,
-        ))
+        Ok(TableSchema::builder(Arc::new(Schema::new(data_cols)))
+            .with_table_partition_cols(table_partition_cols)
+            .build())
     }
 
     fn build_fields(columns: &[GlueColumn]) -> Result<Vec<Arc<Field>>> {
@@ -55,10 +54,9 @@ impl<'a> HMSTableSchemaBuilder<'a> {
         })?;
         let data_cols = Self::build_fields(&storage_descriptor.cols)?;
         let table_partition_cols = Self::build_fields(&self.table.partition_keys)?;
-        Ok(TableSchema::new(
-            Arc::new(Schema::new(data_cols)),
-            table_partition_cols,
-        ))
+        Ok(TableSchema::builder(Arc::new(Schema::new(data_cols)))
+            .with_table_partition_cols(table_partition_cols)
+            .build())
     }
 
     fn build_fields(field_schemas: &Option<Vec<FieldSchema>>) -> Result<Vec<Arc<Field>>> {

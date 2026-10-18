@@ -29,7 +29,11 @@ pub(super) async fn list_files_by_directories_grouped(
     object_store: &Arc<dyn ObjectStore>,
     dir_locations: Vec<String>,
 ) -> Result<Vec<Vec<ObjectMeta>>> {
-    let concurrency = state.config_options().execution.meta_fetch_concurrency;
+    let concurrency = state
+        .config_options()
+        .execution
+        .meta_fetch_concurrency
+        .get();
     let tasks = dir_locations.into_iter().map(|location| {
         let object_store = Arc::clone(object_store);
 

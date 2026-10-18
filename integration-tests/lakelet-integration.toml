@@ -1,3 +1,9 @@
+[[catalog.tpch]]
+name = "tpch"
+
+[[catalog.tpcds]]
+name = "tpcds"
+
 [[catalog.glue]]
 name = "moto_glue"
 aws-glue-region = "us-east-1"

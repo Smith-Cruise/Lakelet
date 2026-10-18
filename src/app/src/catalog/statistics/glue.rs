@@ -639,13 +639,16 @@ mod tests {
 
     #[test]
     fn aligns_statistics_to_full_table_schema() {
-        let table_schema = TableSchema::new(
-            std::sync::Arc::new(Schema::new(vec![
-                Field::new("id", DataType::Int64, true),
-                Field::new("name", DataType::Utf8, true),
-            ])),
-            vec![std::sync::Arc::new(Field::new("dt", DataType::Utf8, true))],
-        );
+        let table_schema = TableSchema::builder(std::sync::Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, true),
+            Field::new("name", DataType::Utf8, true),
+        ])))
+        .with_table_partition_cols(vec![std::sync::Arc::new(Field::new(
+            "dt",
+            DataType::Utf8,
+            true,
+        ))])
+        .build();
         let name_data = StringColumnStatisticsData::builder()
             .maximum_length(10)
             .average_length(3.0)
@@ -689,21 +692,18 @@ mod tests {
 
     #[test]
     fn skips_nested_columns_in_statistics_requests() {
-        let table_schema = TableSchema::new(
-            std::sync::Arc::new(Schema::new(vec![
-                Field::new("id", DataType::Int64, true),
-                Field::new(
-                    "tags",
-                    DataType::List(std::sync::Arc::new(Field::new(
-                        "element",
-                        DataType::Utf8,
-                        true,
-                    ))),
+        let table_schema = TableSchema::from(std::sync::Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, true),
+            Field::new(
+                "tags",
+                DataType::List(std::sync::Arc::new(Field::new(
+                    "element",
+                    DataType::Utf8,
                     true,
-                ),
-            ])),
-            vec![],
-        );
+                ))),
+                true,
+            ),
+        ])));
         assert_eq!(statistics_column_names(&table_schema), vec!["id"]);
     }
 
@@ -721,10 +721,11 @@ mod tests {
 
     #[test]
     fn successful_glue_responses_are_complete() {
-        let table_schema = TableSchema::new(
-            std::sync::Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, true)])),
-            vec![],
-        );
+        let table_schema = TableSchema::from(std::sync::Arc::new(Schema::new(vec![Field::new(
+            "id",
+            DataType::Int64,
+            true,
+        )])));
         let statistics = glue_statistics(
             "id",
             "bigint",
@@ -756,10 +757,11 @@ mod tests {
 
     #[test]
     fn successful_empty_glue_response_is_complete() {
-        let table_schema = TableSchema::new(
-            std::sync::Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, true)])),
-            vec![],
-        );
+        let table_schema = TableSchema::from(std::sync::Arc::new(Schema::new(vec![Field::new(
+            "id",
+            DataType::Int64,
+            true,
+        )])));
         let response = GetColumnStatisticsForTableOutput::builder().build();
 
         let loaded = collect_glue_columns_statistics(&table_schema, vec![Some(response)]);
@@ -770,13 +772,10 @@ mod tests {
 
     #[test]
     fn failed_glue_batches_keep_partial_statistics_but_are_not_complete() {
-        let table_schema = TableSchema::new(
-            std::sync::Arc::new(Schema::new(vec![
-                Field::new("id", DataType::Int64, true),
-                Field::new("name", DataType::Utf8, true),
-            ])),
-            vec![],
-        );
+        let table_schema = TableSchema::from(std::sync::Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, true),
+            Field::new("name", DataType::Utf8, true),
+        ])));
         let statistics = glue_statistics(
             "id",
             "bigint",
@@ -809,10 +808,11 @@ mod tests {
 
     #[test]
     fn per_column_glue_errors_are_not_complete() {
-        let table_schema = TableSchema::new(
-            std::sync::Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, true)])),
-            vec![],
-        );
+        let table_schema = TableSchema::from(std::sync::Arc::new(Schema::new(vec![Field::new(
+            "id",
+            DataType::Int64,
+            true,
+        )])));
         let response = GetColumnStatisticsForTableOutput::builder()
             .errors(ColumnError::builder().column_name("id").build())
             .build();

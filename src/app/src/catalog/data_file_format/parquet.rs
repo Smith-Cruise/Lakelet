@@ -26,7 +26,7 @@ pub struct ExtendedParquetReaderOptions {
     /// Process-wide parquet metadata cache, normally
     /// `state.runtime_env().cache_manager.get_file_metadata_cache()`.
     /// `None` falls back to reading the footer on every scan.
-    pub metadata_cache: Option<Arc<dyn FileMetadataCache>>,
+    pub metadata_cache: Option<Arc<FileMetadataCache>>,
 }
 
 #[derive(Debug)]

@@ -209,11 +209,13 @@ impl Storage for LakeletIcebergStorage {
 
     async fn writer(&self, path: &str) -> Result<Box<dyn FileWrite>> {
         let (op, path) = self.resolve(path)?;
-        Ok(Box::new(LakeletFileWriter(
-            op.writer(&path)
+        Ok(Box::new(LakeletFileWriter {
+            inner: op
+                .writer(&path)
                 .await
                 .map_err(|error| from_opendal_error("open file for write", error))?,
-        )))
+            bytes_written: 0,
+        }))
     }
 
     async fn delete(&self, path: &str) -> Result<()> {
@@ -299,24 +301,43 @@ impl FileRead for LakeletFileReader {
     }
 }
 
-struct LakeletFileWriter(opendal::Writer);
+struct LakeletFileWriter {
+    inner: opendal::Writer,
+    bytes_written: u64,
+}
 
 #[async_trait]
 impl FileWrite for LakeletFileWriter {
     async fn write(&mut self, bs: Bytes) -> Result<()> {
-        self.0
+        let len = bs.len() as u64;
+        self.inner
             .write(bs)
             .await
-            .map_err(|error| from_opendal_error("write file", error))
+            .map_err(|error| from_opendal_error("write file", error))?;
+        self.bytes_written += len;
+        Ok(())
     }
 
-    async fn close(&mut self) -> Result<()> {
-        let _ = self
-            .0
+    async fn close(&mut self) -> Result<FileMetadata> {
+        let metadata = self
+            .inner
             .close()
             .await
             .map_err(|error| from_opendal_error("close file", error))?;
-        Ok(())
+        // Some object stores omit the size in the write response.
+        let reported_size = metadata.content_length();
+        if reported_size != 0 && reported_size != self.bytes_written {
+            return Err(Error::new(
+                ErrorKind::Unexpected,
+                format!(
+                    "File size mismatch: wrote {} bytes, storage reported {reported_size}",
+                    self.bytes_written
+                ),
+            ));
+        }
+        Ok(FileMetadata {
+            size: self.bytes_written,
+        })
     }
 }
 
@@ -348,6 +369,20 @@ fn from_opendal_error(operation: &str, error: opendal::Error) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn writer_close_returns_file_size() -> Result<()> {
+        let operator = Operator::new(opendal::services::Memory::default()).unwrap();
+        let mut writer = LakeletFileWriter {
+            inner: operator.writer("data").await.unwrap(),
+            bytes_written: 0,
+        };
+        writer.write(Bytes::from_static(b"abc")).await?;
+        writer.write(Bytes::from_static(b"de")).await?;
+        assert_eq!(writer.close().await?.size, 5);
+        assert_eq!(operator.read("data").await.unwrap().to_bytes(), "abcde");
+        Ok(())
+    }
 
     fn resolve_relative(location: &str, prefix: &str) -> String {
         get_relative_path(location, prefix).unwrap()
