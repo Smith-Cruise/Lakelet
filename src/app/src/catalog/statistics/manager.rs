@@ -101,7 +101,7 @@ mod tests {
     }
 
     fn make_table_schema(fields: Vec<Field>) -> TableSchema {
-        TableSchema::new(Arc::new(Schema::new(fields)), vec![])
+        TableSchema::from(Arc::new(Schema::new(fields)))
     }
 
     #[tokio::test]

@@ -52,13 +52,6 @@ fn all_tables_generate_consistent_batches() {
         let first = sample(table, options(17), 257);
         assert!(first.num_rows() > 0, "{}", table.name);
         assert_eq!(first, sample(table, options(64), 257), "{}", table.name);
-        assert!(
-            !first
-                .schema()
-                .fields()
-                .iter()
-                .any(|f| f.data_type() == &DataType::Utf8View)
-        );
     }
 }
 
@@ -311,6 +304,14 @@ async fn lazy_generation_errors_and_cancellation() {
     for generate in [
         (|_| exec_err!("initialization failed")) as fn(GenerationOptions) -> Result<BatchIterator>,
         |_| Ok(Box::new(std::iter::once(exec_err!("generation failed"))) as BatchIterator),
+        |_| panic!("initialization failed"),
+        |_| {
+            Ok(
+                Box::new(std::iter::from_fn(|| -> Option<Result<RecordBatch>> {
+                    panic!("generation failed")
+                })) as BatchIterator,
+            )
+        },
     ] {
         let partition = BenchmarkPartitionStream {
             table: Table { generate, ..table },

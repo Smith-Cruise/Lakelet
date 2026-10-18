@@ -1,0 +1,32 @@
+-- TEST: benchmark_catalogs
+-- CATALOG: tpch
+-- DATABASE: sf1
+
+-- QUERY
+SELECT r_regionkey, r_name FROM region ORDER BY r_regionkey;
+-- EXPECTED
+r_regionkey,r_name
+0,AFRICA
+1,AMERICA
+2,ASIA
+3,EUROPE
+4,MIDDLE EAST
+
+-- QUERY
+SELECT n_name FROM nation WHERE n_name LIKE 'A%' ORDER BY n_name;
+-- EXPECTED
+n_name
+ALGERIA
+ARGENTINA
+
+-- QUERY
+SELECT COUNT(*) AS row_count FROM (SELECT * FROM tpcds.sf1.store_sales LIMIT 33);
+-- EXPECTED
+row_count
+33
+
+-- QUERY
+SELECT COUNT(*) AS row_count FROM (SELECT * FROM tpcds.sf1.store_returns LIMIT 33);
+-- EXPECTED
+row_count
+33

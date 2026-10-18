@@ -140,20 +140,29 @@ struct BenchmarkSchema {
 #[async_trait]
 impl AsyncSchemaProvider for BenchmarkSchema {
     async fn table(&self, name: &str) -> Result<Option<Arc<dyn TableProvider>>> {
-        Ok(self
+        let Some(table) = self
             .kind
             .tables()
             .iter()
             .find(|table| table.name == name)
-            .map(|table| {
-                Arc::new(BenchmarkTableProvider {
-                    kind: self.kind,
-                    table: *table,
-                    schema: (table.schema)(),
-                    scale_factor: self.scale_factor,
-                    cpu_handle: self.cpu_handle.clone(),
-                }) as Arc<dyn TableProvider>
-            }))
+            .copied()
+        else {
+            return Ok(None);
+        };
+        // Release adapters expose schemas through instances. Their constructors
+        // may initialize shared generator resources, so keep them off async workers.
+        let schema = self
+            .cpu_handle
+            .spawn_blocking(table.schema)
+            .await
+            .map_err(|e| datafusion::common::DataFusionError::External(Box::new(e)))?;
+        Ok(Some(Arc::new(BenchmarkTableProvider {
+            kind: self.kind,
+            table,
+            schema,
+            scale_factor: self.scale_factor,
+            cpu_handle: self.cpu_handle.clone(),
+        })))
     }
 }
 
@@ -203,7 +212,7 @@ impl TableProvider for BenchmarkTableProvider {
                         scale_factor: self.scale_factor,
                         partition,
                         partitions: count,
-                        batch_size: config.execution.batch_size.max(1),
+                        batch_size: config.execution.batch_size.get(),
                     },
                     cpu_handle: self.cpu_handle.clone(),
                 }) as Arc<dyn PartitionStream>
@@ -240,22 +249,37 @@ impl PartitionStream for BenchmarkPartitionStream {
         let options = self.options;
         stream.spawn_blocking_on(
             move || {
-                if tx.is_closed() {
-                    return Ok(());
-                }
-                // Initialization may allocate the shared TPCH text pool. Keep it out
-                // of metadata discovery and planning, and never share mutable cursors.
-                let mut generator = (table.generate)(options)?;
-                while !tx.is_closed() {
-                    let Some(batch) = generator.next() else { break };
-                    if tx.blocking_send(Ok(batch?)).is_err() {
-                        break;
+                catch_generation_panic(|| {
+                    if tx.is_closed() {
+                        return Ok(());
                     }
-                }
-                Ok(())
+                    // Each execution owns its cursor; cancellation drops it after the
+                    // current batch without sharing mutable state with other scans.
+                    let mut generator = (table.generate)(options)?;
+                    while !tx.is_closed() {
+                        let Some(batch) = generator.next() else { break };
+                        if tx.blocking_send(Ok(batch?)).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(())
+                })
             },
             &self.cpu_handle,
         );
         stream.build()
     }
+}
+
+// Published adapters panic on generation errors. Report them as query failures
+// instead of allowing the receiver stream to resume the worker's panic.
+fn catch_generation_panic<T>(generate: impl FnOnce() -> Result<T>) -> Result<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(generate)).unwrap_or_else(|panic| {
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap_or("unknown panic");
+        datafusion::common::exec_err!("Benchmark generation failed: {message}")
+    })
 }

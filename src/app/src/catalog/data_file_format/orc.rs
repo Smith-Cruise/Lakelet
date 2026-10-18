@@ -24,6 +24,7 @@ use super::orc_predicate::{combine_and, predicate_columns, to_orc_predicate};
 use bytes::Bytes;
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::Result;
+use datafusion::common::tree_node::TreeNodeRecursion;
 use datafusion::datasource::listing::PartitionedFile;
 use datafusion::datasource::physical_plan::{
     FileOpenFuture, FileOpener, FileScanConfig, FileSource,
@@ -77,6 +78,21 @@ impl OrcSource {
 }
 
 impl FileSource for OrcSource {
+    fn apply_expressions(
+        &self,
+        f: &mut dyn FnMut(&Arc<dyn PhysicalExpr>) -> Result<TreeNodeRecursion>,
+    ) -> Result<TreeNodeRecursion> {
+        datafusion::physical_plan::apply_expression_roots(
+            self.pruning_filters.iter().chain(
+                self.projection
+                    .source
+                    .iter()
+                    .map(|projection| &projection.expr),
+            ),
+            f,
+        )
+    }
+
     fn create_file_opener(
         &self,
         object_store: Arc<dyn ObjectStore>,
@@ -405,10 +421,9 @@ mod tests {
         let ctx = SessionContext::new();
         let url = ObjectStoreUrl::parse("s3://warehouse")?;
         ctx.runtime_env().register_object_store(url.as_ref(), store);
-        let table_schema = TableSchema::new(
-            batch.schema(),
-            vec![Arc::new(Field::new("dt", DataType::Utf8, true))],
-        );
+        let table_schema = TableSchema::builder(batch.schema())
+            .with_table_partition_cols(vec![Arc::new(Field::new("dt", DataType::Utf8, true))])
+            .build();
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
             .thread_name("orc-io-test")
@@ -523,11 +538,8 @@ mod tests {
                 .collect::<Vec<_>>();
             for projection in [vec![3], vec![]] {
                 let source = Arc::new(
-                    OrcSource::new(
-                        TableSchema::new(Arc::clone(&schema), vec![]),
-                        Handle::current(),
-                    )
-                    .with_pruning_filters(filters.clone()),
+                    OrcSource::new(TableSchema::from(Arc::clone(&schema)), Handle::current())
+                        .with_pruning_filters(filters.clone()),
                 );
                 let config = FileScanConfigBuilder::new(url.clone(), source)
                     .with_batch_size(Some(128))

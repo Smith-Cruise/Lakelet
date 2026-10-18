@@ -208,10 +208,11 @@ mod tests {
     }
 
     fn test_hive_storage_info() -> HiveStorageInfo {
-        let table_schema = TableSchema::new(
-            Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, true)])),
-            vec![],
-        );
+        let table_schema = TableSchema::from(Arc::new(Schema::new(vec![Field::new(
+            "id",
+            DataType::Int64,
+            true,
+        )])));
         let table_statistics = Statistics::new_unknown(table_schema.table_schema());
         HiveStorageInfo {
             input_format: HiveInputFormat::Parquet,

@@ -11,13 +11,15 @@ members = [
 ]
 
 [workspace.dependencies]
-datafusion = { version = "54.1.0", features = ["avro"] }
-datafusion-cli = "54.1.0"
+datafusion = { version = "55.2.0", features = ["avro"] }
+datafusion-cli = "55.2.0"
 tpchgen = "3.0.0"
+tpchgen-arrow = "3.0.0"
 tpcdsgen = "0.1.0-alpha.1"
-orc-rust = { version = "0.8.0", features = ["async"] }
+tpcdsgen-arrow = "0.1.0-alpha.1"
+orc-rust = { version = "0.9.0", features = ["async"] }
 sqlparser = "0.62.0"
-arrow-flight = { version = "58.4.0", features = ["flight-sql"] }
+arrow-flight = { version = "59.2.0", features = ["flight-sql"] }
 prost = "0.14"
 tonic = "0.14.6"
 tonic-web = "0.14.6"
@@ -36,14 +38,14 @@ async-trait = "0.1.92"
 bytes = "1"
 url = "2.5.7"
 percent-encoding = "2.3"
-iceberg = { git = "https://github.com/apache/iceberg-rust", rev = "d05d56645979804c659aa265f6041d93ea0e6557" }
-iceberg-datafusion = { git = "https://github.com/apache/iceberg-rust", rev = "d05d56645979804c659aa265f6041d93ea0e6557" }
-iceberg-catalog-rest = { git = "https://github.com/apache/iceberg-rust", rev = "d05d56645979804c659aa265f6041d93ea0e6557" }
+iceberg = { git = "https://github.com/apache/iceberg-rust", rev = "5b82ab99aeaf50bf4f5b3b776ac9cd6380a5f3e3" }
+iceberg-datafusion = { git = "https://github.com/apache/datafusion-iceberg", rev = "b641e5ebe9e92967499ae7e440ba10d7797712df" }
+iceberg-catalog-rest = { git = "https://github.com/apache/iceberg-rust", rev = "5b82ab99aeaf50bf4f5b3b776ac9cd6380a5f3e3" }
 opendal = { version = "0.58.1", features = ["services-s3", "services-oss", "services-hdfs-native"] }
 object_store_opendal = "0.58.0"
-deltalake = { git = "https://github.com/delta-io/delta.rs", rev = "84fad0b1bd861367a94e144cd253323559c9d3bd", features = ["datafusion"] }
-paimon = { version = "0.4.0", features = ["storage-s3", "storage-oss", "storage-hdfs"] }
-paimon-datafusion = "0.4.0"
+deltalake = { version = "1.1.2", features = ["datafusion"] }
+paimon = { git = "https://github.com/Smith-Cruise/paimon-rust", branch = "bump-datafusion", features = ["storage-s3", "storage-oss", "storage-hdfs"] }
+paimon-datafusion = { git = "https://github.com/Smith-Cruise/paimon-rust", branch = "bump-datafusion" }
 mimalloc = { version = "0.1", default-features = false }
 moka = { version = "0.12.16", features = ["sync"] }
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }

@@ -1,7 +1,7 @@
 use crate::statements::ExtendedStatement;
 use datafusion::common::Result;
 use datafusion::common::{Diagnostic, Span};
-use datafusion::config::SqlParserOptions;
+use datafusion::config::{ConfigNonZeroUsize, SqlParserOptions};
 use datafusion::error::DataFusionError;
 use datafusion::logical_expr::sqlparser::keywords::Keyword;
 use datafusion::logical_expr::sqlparser::parser::{Parser, ParserError};
@@ -126,7 +126,7 @@ impl<'a> ExtendedParserBuilder<'a> {
                 .with_tokens_with_locations(tokens)
                 .with_recursion_limit(self.recursion_limit),
             options: SqlParserOptions {
-                recursion_limit: self.recursion_limit,
+                recursion_limit: ConfigNonZeroUsize::try_new(self.recursion_limit)?,
                 ..Default::default()
             },
         })

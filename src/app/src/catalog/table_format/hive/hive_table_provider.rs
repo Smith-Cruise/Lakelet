@@ -103,7 +103,11 @@ impl TableProvider for HiveTableProvider {
         let store_url = ObjectStoreUrl::parse(format!("{}://{}", path_schema, path_bucket))?;
 
         let object_store = state.runtime_env().object_store(&store_url)?;
-        let meta_fetch_concurrency = state.config_options().execution.meta_fetch_concurrency;
+        let meta_fetch_concurrency = state
+            .config_options()
+            .execution
+            .meta_fetch_concurrency
+            .get();
 
         let mut partition_pruned = false;
         let is_partitioned = !self
@@ -247,16 +251,15 @@ fn build_csv_exec(
     // Hive null format and Hive's lenient parsing (bad values become NULL) can
     // be applied. The CSV reader supports neither.
     let file_schema = table_schema.file_schema();
-    let text_table_schema = TableSchema::new(
-        Arc::new(Schema::new(
-            file_schema
-                .fields()
-                .iter()
-                .map(|field| Field::new(field.name(), DataType::Utf8, true))
-                .collect::<Vec<_>>(),
-        )),
-        table_schema.table_partition_cols().clone(),
-    );
+    let text_table_schema = TableSchema::builder(Arc::new(Schema::new(
+        file_schema
+            .fields()
+            .iter()
+            .map(|field| Field::new(field.name(), DataType::Utf8, true))
+            .collect::<Vec<_>>(),
+    )))
+    .with_table_partition_cols(table_schema.table_partition_cols().clone())
+    .build();
     let text_statistics = Statistics {
         column_statistics: statistics
             .column_statistics
@@ -2394,10 +2397,14 @@ mod tests {
         ctx.runtime_env()
             .register_object_store(&Url::parse("s3://warehouse").unwrap(), store);
 
-        let table_schema = TableSchema::new(
-            Arc::new(Schema::new(fields)),
-            partition_fields.into_iter().map(Arc::new).collect(),
-        );
+        let table_schema = TableSchema::builder(Arc::new(Schema::new(fields)))
+            .with_table_partition_cols(
+                partition_fields
+                    .into_iter()
+                    .map(Arc::new)
+                    .collect::<Vec<_>>(),
+            )
+            .build();
         let table_statistics = Statistics::new_unknown(table_schema.table_schema());
         let provider = HiveTableProvider::new(
             "s3://warehouse/hive/table".to_string(),
