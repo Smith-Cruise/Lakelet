@@ -13,10 +13,10 @@ members = [
 [workspace.dependencies]
 datafusion = { version = "55.2.0", features = ["avro"] }
 datafusion-cli = "55.2.0"
-tpchgen = "3.0.0"
-tpchgen-arrow = "3.0.0"
-tpcdsgen = "0.1.0-alpha.1"
-tpcdsgen-arrow = "0.1.0-alpha.1"
+tpchgen = "4.0.0"
+tpchgen-arrow = { version = "4.0.0", default-features = false, features = ["arrow_59"] }
+tpcdsgen = "4.0.0"
+tpcdsgen-arrow = { version = "4.0.0", default-features = false, features = ["arrow_59"] }
 orc-rust = { version = "0.9.0", features = ["async"] }
 sqlparser = "0.62.0"
 arrow-flight = { version = "59.2.0", features = ["flight-sql"] }
