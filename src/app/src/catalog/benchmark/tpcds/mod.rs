@@ -1,28 +1,19 @@
 use super::{BatchIterator, GenerationOptions, Table};
-use datafusion::arrow::datatypes::SchemaRef;
-use std::sync::{Arc, LazyLock};
-use tpcdsgen::config::{CompatMode, Session, SessionBuilder};
-use tpcdsgen_arrow::RecordBatchIterator;
+use tpcdsgen::config::SessionBuilder;
 
 macro_rules! table {
     ($name:literal, $adapter:ident) => {
         Table {
             name: $name,
-            schema: || {
-                static SCHEMA: LazyLock<SchemaRef> = LazyLock::new(|| {
-                    Arc::clone(tpcdsgen_arrow::$adapter::new(Session::default()).schema())
-                });
-                Arc::clone(&SCHEMA)
-            },
+            schema: tpcdsgen_arrow::$adapter::schema_ref,
             generate: |options: GenerationOptions| {
                 let session = SessionBuilder::new()
                     .with_scale_factor(options.scale_factor)
-                    .with_compat_mode(CompatMode::Trino)
                     .build()
                     .map_err(|e| datafusion::common::DataFusionError::External(Box::new(e)))?;
                 let batches =
                     tpcdsgen_arrow::$adapter::new(session).with_batch_size(options.batch_size);
-                Ok(Box::new(batches.map(Ok)) as BatchIterator)
+                Ok(Box::new(batches.map(|batch| batch.map_err(Into::into))) as BatchIterator)
             },
         }
     };
