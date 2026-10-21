@@ -26,9 +26,18 @@ fn options(batch_size: usize) -> GenerationOptions {
 }
 
 fn sample(table: &Table, opts: GenerationOptions, max_rows: usize) -> RecordBatch {
+    sample_batches(table, opts, max_rows, (table.generate)(opts).unwrap())
+}
+
+fn sample_batches(
+    table: &Table,
+    opts: GenerationOptions,
+    max_rows: usize,
+    generator: BatchIterator,
+) -> RecordBatch {
     let mut batches = Vec::new();
     let mut remaining = max_rows;
-    for batch in (table.generate)(opts).unwrap() {
+    for batch in generator {
         let batch = batch.unwrap();
         assert!(
             batch.num_rows() > 0 && batch.num_rows() <= opts.batch_size,
@@ -46,6 +55,51 @@ fn sample(table: &Table, opts: GenerationOptions, max_rows: usize) -> RecordBatc
     concat_batches(&(table.schema)(), &batches).unwrap()
 }
 
+// Keep the reference independent of Lakelet's range planner and of
+// with_source_row_range, including the upstream adapter's own row count.
+fn tpcds_unranged(table: &Table, opts: GenerationOptions) -> BatchIterator {
+    let session = tpcdsgen::config::SessionBuilder::new()
+        .with_scale_factor(opts.scale_factor)
+        .build()
+        .unwrap();
+    macro_rules! adapter {
+        ($adapter:ident) => {
+            Box::new(
+                tpcdsgen_arrow::$adapter::new(session)
+                    .with_batch_size(opts.batch_size)
+                    .map(|batch| batch.map_err(Into::into)),
+            ) as BatchIterator
+        };
+    }
+    match table.name {
+        "call_center" => adapter!(CallCenterArrow),
+        "catalog_page" => adapter!(CatalogPageArrow),
+        "catalog_returns" => adapter!(CatalogReturnsArrow),
+        "catalog_sales" => adapter!(CatalogSalesArrow),
+        "customer" => adapter!(CustomerArrow),
+        "customer_address" => adapter!(CustomerAddressArrow),
+        "customer_demographics" => adapter!(CustomerDemographicsArrow),
+        "date_dim" => adapter!(DateDimArrow),
+        "household_demographics" => adapter!(HouseholdDemographicsArrow),
+        "income_band" => adapter!(IncomeBandArrow),
+        "inventory" => adapter!(InventoryArrow),
+        "item" => adapter!(ItemArrow),
+        "promotion" => adapter!(PromotionArrow),
+        "reason" => adapter!(ReasonArrow),
+        "ship_mode" => adapter!(ShipModeArrow),
+        "store" => adapter!(StoreArrow),
+        "store_returns" => adapter!(StoreReturnsArrow),
+        "store_sales" => adapter!(StoreSalesArrow),
+        "time_dim" => adapter!(TimeDimArrow),
+        "warehouse" => adapter!(WarehouseArrow),
+        "web_page" => adapter!(WebPageArrow),
+        "web_returns" => adapter!(WebReturnsArrow),
+        "web_sales" => adapter!(WebSalesArrow),
+        "web_site" => adapter!(WebSiteArrow),
+        _ => unreachable!(),
+    }
+}
+
 #[test]
 fn all_tables_generate_consistent_batches() {
     for table in tpch::TABLES.iter().chain(tpcds::TABLES) {
@@ -53,6 +107,121 @@ fn all_tables_generate_consistent_batches() {
         assert!(first.num_rows() > 0, "{}", table.name);
         assert_eq!(first, sample(table, options(64), 257), "{}", table.name);
     }
+
+    // The v4 CLI creates fresh adapters for inclusive source-row ranges.
+    // Check our scan starts against that path at fractional and larger scales,
+    // and compare split windows with uninterrupted windows near the middle/end.
+    // These are boundary samples, not full high-scale dataset comparisons.
+    macro_rules! check_tpcds_ranges {
+        ($adapter:ident, $source:ident, $parent:ident) => {{
+            use tpcdsgen::config::{SessionBuilder, Table as SourceTable};
+            let source = SourceTable::$source;
+            let table = tpcds::TABLES
+                .iter()
+                .find(|t| t.name == source.get_name())
+                .unwrap();
+            for scale_factor in [0.01, 0.1, 1.5, 10.0, 100.0, 300.0, 1000.0] {
+                let session = SessionBuilder::new()
+                    .with_scale_factor(scale_factor)
+                    .build()
+                    .unwrap();
+                let rows = session.get_scaling().get_row_count(source);
+                assert_eq!(
+                    rows,
+                    session.get_scaling().get_row_count(SourceTable::$parent)
+                );
+                let opts = GenerationOptions {
+                    scale_factor,
+                    ..options(13)
+                };
+                let range = |start, end, max_rows| {
+                    let batches = tpcdsgen_arrow::$adapter::new(session.clone())
+                        .with_source_row_range(start, end)
+                        .with_batch_size(opts.batch_size);
+                    sample_batches(
+                        table,
+                        opts,
+                        max_rows,
+                        Box::new(batches.map(|batch| batch.map_err(Into::into))),
+                    )
+                };
+                assert_eq!(
+                    sample(table, opts, 257),
+                    sample_batches(table, opts, 257, tpcds_unranged(table, opts)),
+                    "{} SF{scale_factor} unranged prefix",
+                    table.name
+                );
+                // Seven partitions exercise remainders and empty small-table partitions.
+                for partition in [0, 3, 6] {
+                    let start = 1 + rows / 7 * partition + partition.min(rows % 7);
+                    let count = rows / 7 + u64::from(partition < rows % 7);
+                    let expected = range(start, start + count - 1, 19);
+                    let actual = sample(
+                        table,
+                        GenerationOptions {
+                            partition: partition as i32,
+                            partitions: 7,
+                            ..opts
+                        },
+                        19,
+                    );
+                    assert_eq!(
+                        actual, expected,
+                        "{} SF{scale_factor} partition {partition}",
+                        table.name
+                    );
+                }
+                for end in [rows.min(17), rows / 2, rows] {
+                    if end == 0 {
+                        continue;
+                    }
+                    let start = end.saturating_sub(6).max(1);
+                    let whole = range(start, end, usize::MAX);
+                    let pieces: Vec<_> = (start..=end)
+                        .map(|row| range(row, row, usize::MAX))
+                        .collect();
+                    assert_eq!(
+                        whole,
+                        concat_batches(&(table.schema)(), &pieces).unwrap(),
+                        "{} SF{scale_factor} range {start}..={end}",
+                        table.name
+                    );
+                }
+            }
+        }};
+    }
+    check_tpcds_ranges!(CallCenterArrow, CallCenter, CallCenter);
+    check_tpcds_ranges!(CatalogPageArrow, CatalogPage, CatalogPage);
+    check_tpcds_ranges!(CatalogReturnsArrow, CatalogReturns, CatalogSales);
+    check_tpcds_ranges!(CatalogSalesArrow, CatalogSales, CatalogSales);
+    check_tpcds_ranges!(CustomerArrow, Customer, Customer);
+    check_tpcds_ranges!(CustomerAddressArrow, CustomerAddress, CustomerAddress);
+    check_tpcds_ranges!(
+        CustomerDemographicsArrow,
+        CustomerDemographics,
+        CustomerDemographics
+    );
+    check_tpcds_ranges!(DateDimArrow, DateDim, DateDim);
+    check_tpcds_ranges!(
+        HouseholdDemographicsArrow,
+        HouseholdDemographics,
+        HouseholdDemographics
+    );
+    check_tpcds_ranges!(IncomeBandArrow, IncomeBand, IncomeBand);
+    check_tpcds_ranges!(InventoryArrow, Inventory, Inventory);
+    check_tpcds_ranges!(ItemArrow, Item, Item);
+    check_tpcds_ranges!(PromotionArrow, Promotion, Promotion);
+    check_tpcds_ranges!(ReasonArrow, Reason, Reason);
+    check_tpcds_ranges!(ShipModeArrow, ShipMode, ShipMode);
+    check_tpcds_ranges!(StoreArrow, Store, Store);
+    check_tpcds_ranges!(StoreReturnsArrow, StoreReturns, StoreSales);
+    check_tpcds_ranges!(StoreSalesArrow, StoreSales, StoreSales);
+    check_tpcds_ranges!(TimeDimArrow, TimeDim, TimeDim);
+    check_tpcds_ranges!(WarehouseArrow, Warehouse, Warehouse);
+    check_tpcds_ranges!(WebPageArrow, WebPage, WebPage);
+    check_tpcds_ranges!(WebReturnsArrow, WebReturns, WebSales);
+    check_tpcds_ranges!(WebSalesArrow, WebSales, WebSales);
+    check_tpcds_ranges!(WebSiteArrow, WebSite, WebSite);
 }
 
 #[test]
@@ -63,7 +232,7 @@ fn benchmark_sf1_partition_equivalence() {
         .into_iter()
         .flat_map(|kind| kind.tables().iter().map(move |table| (kind, table)))
     {
-        let digest = |partitions| {
+        let digest = |partitions, scale_factor| {
             let converter = RowConverter::new(
                 (table.schema)()
                     .fields()
@@ -76,11 +245,17 @@ fn benchmark_sf1_partition_equivalence() {
             let mut sum = 0_u64;
             for partition in 0..partitions {
                 let opts = GenerationOptions {
+                    scale_factor,
                     partition,
                     partitions,
                     ..options(8192)
                 };
-                for batch in (table.generate)(opts).unwrap() {
+                let generator = if partitions == 1 && matches!(kind, BenchmarkKind::Tpcds) {
+                    tpcds_unranged(table, opts)
+                } else {
+                    (table.generate)(opts).unwrap()
+                };
+                for batch in generator {
                     let batch = batch.unwrap();
                     count += batch.num_rows();
                     for row in converter.convert_columns(batch.columns()).unwrap().iter() {
@@ -92,7 +267,7 @@ fn benchmark_sf1_partition_equivalence() {
             }
             (count, sum)
         };
-        let single = digest(1);
+        let single = digest(1, 1.0);
         assert!(single.0 > 0, "{}", table.name);
         let expected = match (kind, table.name) {
             (BenchmarkKind::Tpch, "customer") => 150_000,
@@ -108,7 +283,17 @@ fn benchmark_sf1_partition_equivalence() {
         };
         assert_eq!(single.0, expected, "{}", table.name);
         let partitions = kind.partitions(table, 7).unwrap();
-        assert_eq!(single, digest(partitions), "{}", table.name);
+        assert_eq!(single, digest(partitions, 1.0), "{}", table.name);
+        if matches!(kind, BenchmarkKind::Tpcds) {
+            // Fractional scales are adapter-level coverage; catalog schemas
+            // expose only the integer scales listed in SCALES.
+            assert_eq!(
+                digest(1, 0.01),
+                digest(partitions, 0.01),
+                "{} SF0.01",
+                table.name
+            );
+        }
     }
 }
 
