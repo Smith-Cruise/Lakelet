@@ -74,11 +74,9 @@ impl BenchmarkKind {
 
     fn partitions(self, table: &Table, target: usize) -> Result<i32> {
         match self {
-            // The published TPCDS generators cannot reliably skip rows for
-            // stateful tables and returns. Each scan owns one sequential cursor.
-            Self::Tpcds => Ok(1),
+            // These fixed-size upstream generators ignore partition arguments.
             Self::Tpch if matches!(table.name, "nation" | "region") => Ok(1),
-            Self::Tpch => i32::try_from(target.max(1))
+            Self::Tpch | Self::Tpcds => i32::try_from(target.max(1))
                 .map_err(|_| plan_datafusion_err!("Too many benchmark scan partitions: {target}")),
         }
     }

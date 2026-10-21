@@ -56,10 +56,13 @@ fn all_tables_generate_consistent_batches() {
 }
 
 #[test]
-fn tpch_sf1_partition_equivalence() {
+fn benchmark_sf1_partition_equivalence() {
     // Hash complete rows with bounded memory, checking all partition boundaries
     // (including lineitem's variable rows per order and partsupp's four rows per part).
-    for table in tpch::TABLES {
+    for (kind, table) in [BenchmarkKind::Tpch, BenchmarkKind::Tpcds]
+        .into_iter()
+        .flat_map(|kind| kind.tables().iter().map(move |table| (kind, table)))
+    {
         let digest = |partitions| {
             let converter = RowConverter::new(
                 (table.schema)()
@@ -90,19 +93,21 @@ fn tpch_sf1_partition_equivalence() {
             (count, sum)
         };
         let single = digest(1);
-        let expected = match table.name {
-            "customer" => 150_000,
-            "lineitem" => 6_001_215,
-            "nation" => 25,
-            "orders" => 1_500_000,
-            "part" => 200_000,
-            "partsupp" => 800_000,
-            "region" => 5,
-            "supplier" => 10_000,
+        assert!(single.0 > 0, "{}", table.name);
+        let expected = match (kind, table.name) {
+            (BenchmarkKind::Tpch, "customer") => 150_000,
+            (BenchmarkKind::Tpch, "lineitem") => 6_001_215,
+            (BenchmarkKind::Tpch, "nation") => 25,
+            (BenchmarkKind::Tpch, "orders") => 1_500_000,
+            (BenchmarkKind::Tpch, "part") => 200_000,
+            (BenchmarkKind::Tpch, "partsupp") => 800_000,
+            (BenchmarkKind::Tpch, "region") => 5,
+            (BenchmarkKind::Tpch, "supplier") => 10_000,
+            (BenchmarkKind::Tpcds, _) => single.0,
             _ => unreachable!(),
         };
         assert_eq!(single.0, expected, "{}", table.name);
-        let partitions = BenchmarkKind::Tpch.partitions(table, 3).unwrap();
+        let partitions = kind.partitions(table, 7).unwrap();
         assert_eq!(single, digest(partitions), "{}", table.name);
     }
 }
@@ -131,14 +136,28 @@ async fn catalog_metadata_and_partition_policy() {
                 assert_eq!(provider.schema(), (table.schema)());
                 assert!(provider.get_table_definition().is_none());
                 let scan = provider.scan(&ctx.state(), None, &[], None).await.unwrap();
-                let expected = if matches!(kind, BenchmarkKind::Tpcds)
-                    || matches!(table.name, "nation" | "region")
+                let expected = if matches!(kind, BenchmarkKind::Tpch)
+                    && matches!(table.name, "nation" | "region")
                 {
                     1
                 } else {
                     4
                 };
                 assert_eq!(scan.output_partitioning().partition_count(), expected);
+                if *name == "sf1" {
+                    let streams = (0..expected).map(|partition| {
+                        let mut stream = scan.execute(partition, ctx.task_ctx()).unwrap();
+                        async move { stream.next().await.unwrap().unwrap() }
+                    });
+                    let batches = futures::future::join_all(streams).await;
+                    for (partition, batch) in batches.iter().enumerate() {
+                        assert!(batch.num_rows() > 0, "{} partition {partition}", table.name);
+                        assert_eq!(batch.schema(), provider.schema());
+                        for previous in &batches[..partition] {
+                            assert_ne!(batch, previous, "{} repeated partition", table.name);
+                        }
+                    }
+                }
             }
         }
     }
@@ -204,7 +223,15 @@ async fn sql_discovery_projection_filters_limits_and_read_only() {
         "inventory",
         "item",
     ] {
-        let sql = format!("SELECT * FROM tpcds.sf1.{name} LIMIT 33");
+        let key = match name {
+            "catalog_returns" => "cr_order_number, cr_item_sk",
+            "store_returns" => "sr_ticket_number, sr_item_sk",
+            "web_returns" => "wr_order_number, wr_item_sk",
+            "inventory" => "inv_date_sk, inv_item_sk, inv_warehouse_sk",
+            "item" => "i_item_sk",
+            _ => unreachable!(),
+        };
+        let sql = format!("SELECT * FROM tpcds.sf1.{name} ORDER BY {key} LIMIT 33");
         query(&ctx, "SET datafusion.execution.target_partitions = 1").await;
         let a = query(&ctx, &sql).await;
         query(&ctx, "SET datafusion.execution.target_partitions = 4").await;
@@ -301,6 +328,49 @@ async fn lazy_generation_errors_and_cancellation() {
     .unwrap();
     assert!(GENERATED.load(Ordering::SeqCst) <= 3);
     assert_eq!(INITIALIZED.load(Ordering::SeqCst), 1);
+    // Require all workers to enter generation before any can emit a batch.
+    // This detects serialization even when the plan advertises multiple partitions.
+    static ENTERED: AtomicUsize = AtomicUsize::new(0);
+    for kind in [BenchmarkKind::Tpch, BenchmarkKind::Tpcds] {
+        ENTERED.store(0, Ordering::SeqCst);
+        let provider = BenchmarkTableProvider {
+            kind,
+            table: Table {
+                generate: |opts| {
+                    ENTERED.fetch_add(1, Ordering::SeqCst);
+                    let start = std::time::Instant::now();
+                    while ENTERED.load(Ordering::SeqCst) < 4 {
+                        if start.elapsed() > Duration::from_secs(10) {
+                            return exec_err!("generation partitions did not run concurrently");
+                        }
+                        std::thread::yield_now();
+                    }
+                    let batch = RecordBatch::try_new(
+                        synthetic_schema(),
+                        vec![Arc::new(Int64Array::from(vec![opts.partition as i64]))],
+                    )?;
+                    Ok(Box::new(std::iter::once(Ok(batch))))
+                },
+                ..table
+            },
+            schema: synthetic_schema(),
+            scale_factor: 1.0,
+            cpu_handle: Handle::current(),
+        };
+        let ctx = SessionContext::new_with_config(SessionConfig::new().with_target_partitions(4));
+        let plan = provider.scan(&ctx.state(), None, &[], None).await.unwrap();
+        let streams = (0..4).map(|partition| {
+            let mut stream = plan.execute(partition, ctx.task_ctx()).unwrap();
+            async move { stream.next().await.unwrap().unwrap() }
+        });
+        for (partition, batch) in futures::future::join_all(streams).await.iter().enumerate() {
+            assert_eq!(
+                array_value_to_string(batch.column(0), 0).unwrap(),
+                partition.to_string()
+            );
+        }
+        assert_eq!(ENTERED.load(Ordering::SeqCst), 4);
+    }
     for generate in [
         (|_| exec_err!("initialization failed")) as fn(GenerationOptions) -> Result<BatchIterator>,
         |_| Ok(Box::new(std::iter::once(exec_err!("generation failed"))) as BatchIterator),
