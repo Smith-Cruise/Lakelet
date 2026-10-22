@@ -72,38 +72,28 @@ impl LakeletFlightSqlService {
         session
     }
 
-    // Discover the result schema without executing persistent catalog DDL.
-    async fn plan_schema(
-        &self,
-        sql: &str,
-        session_defaults: SessionDefaults,
-    ) -> Result<Schema, Status> {
-        let schema = self
-            .new_session(session_defaults)
-            .sql_schema(sql)
-            .await
-            .map_err(df_error_to_status)?;
-        Ok(advertised_schema(schema))
-    }
-
     // Build a single-endpoint FlightInfo whose ticket carries the given
     // Any-encoded command, so DoGet dispatches back to the matching handler.
     fn flight_info(
-        schema: &Schema,
+        schema: Option<&Schema>,
         ticket: Vec<u8>,
         descriptor: FlightDescriptor,
     ) -> Result<FlightInfo, Status> {
         let endpoint = FlightEndpoint::new().with_ticket(Ticket {
             ticket: ticket.into(),
         });
-        Ok(FlightInfo::new()
-            .try_with_schema(schema)
-            .map_err(|e| Status::internal(format!("Failed to encode schema: {e}")))?
+        let mut info = FlightInfo::new()
             .with_endpoint(endpoint)
-            .with_descriptor(descriptor))
+            .with_descriptor(descriptor);
+        if let Some(schema) = schema {
+            info = info
+                .try_with_schema(schema)
+                .map_err(|e| Status::internal(format!("Failed to encode schema: {e}")))?;
+        }
+        Ok(info)
     }
 
-    // Re-plan and execute, streaming the result batches back to the client.
+    // Parse and execute, streaming the result batches back to the client.
     async fn execute_sql(
         &self,
         sql: &str,
@@ -129,21 +119,6 @@ impl LakeletFlightSqlService {
     }
 }
 
-// The schema the DoGet stream actually carries: FlightDataEncoder hydrates
-// dictionary columns (e.g. Delta partition columns) to their value types, so
-// run the planned schema through the same preparation. Advertising the raw
-// planned schema makes strict clients (the ADBC flightsql driver) reject the
-// stream as inconsistent.
-fn advertised_schema(schema: Schema) -> Schema {
-    let encoder = FlightDataEncoderBuilder::new()
-        .with_schema(Arc::new(schema))
-        .build(futures::stream::empty());
-    let schema = encoder
-        .known_schema()
-        .expect("with_schema always sets the encoder schema");
-    schema.as_ref().clone()
-}
-
 // The statement ticket handle is the SQL text itself, so the server stays
 // stateless. DoGet uses it to reconstruct and execute the query.
 fn handle_to_sql(handle: &[u8]) -> Result<String, Status> {
@@ -153,8 +128,8 @@ fn handle_to_sql(handle: &[u8]) -> Result<String, Status> {
 
 /// Per-request default catalog/schema, from the `default-catalog` and
 /// `default-schema` gRPC metadata headers — named after the CLI flags of the
-/// same spelling. Every RPC reads its own headers (nothing is baked into
-/// statement tickets), so clients must send them on each call — which ADBC's
+/// same spelling. SQL execution reads the DoGet headers (nothing is baked
+/// into statement tickets). Clients can send them on every call — ADBC's
 /// connection-level `adbc.flight.sql.rpc.call_header.*` options already do.
 #[derive(Default)]
 struct SessionDefaults {
@@ -225,18 +200,13 @@ impl FlightSqlService for LakeletFlightSqlService {
         query: CommandStatementQuery,
         request: Request<FlightDescriptor>,
     ) -> Result<Response<FlightInfo>, Status> {
-        // The SQL text is embedded in the ticket, so the server stays
-        // stateless; DoGet re-plans.
-        let session_defaults = SessionDefaults::from_metadata(request.metadata())?;
-        let schema = self.plan_schema(&query.query, session_defaults).await?;
+        // Issue a stateless ticket without parsing SQL or accessing catalogs.
+        // DoGet validates and executes the statement and supplies its schema.
         let ticket = TicketStatementQuery {
             statement_handle: query.query.into_bytes().into(),
         };
-        let flight_info = Self::flight_info(
-            &schema,
-            ticket.as_any().encode_to_vec(),
-            request.into_inner(),
-        )?;
+        let flight_info =
+            Self::flight_info(None, ticket.as_any().encode_to_vec(), request.into_inner())?;
         Ok(Response::new(flight_info))
     }
 
@@ -259,7 +229,7 @@ impl FlightSqlService for LakeletFlightSqlService {
         // DoGet receives the same info filter list.
         let ticket = query.as_any().encode_to_vec();
         let builder = query.into_builder(&sql_info::SQL_INFO_DATA);
-        let flight_info = Self::flight_info(&builder.schema(), ticket, request.into_inner())?;
+        let flight_info = Self::flight_info(Some(&builder.schema()), ticket, request.into_inner())?;
         Ok(Response::new(flight_info))
     }
 
@@ -280,7 +250,7 @@ impl FlightSqlService for LakeletFlightSqlService {
         request: Request<FlightDescriptor>,
     ) -> Result<Response<FlightInfo>, Status> {
         let flight_info = Self::flight_info(
-            &metadata::catalogs_schema(),
+            Some(&metadata::catalogs_schema()),
             query.as_any().encode_to_vec(),
             request.into_inner(),
         )?;
@@ -312,7 +282,7 @@ impl FlightSqlService for LakeletFlightSqlService {
             "GetDbSchemas",
         )?;
         let flight_info = Self::flight_info(
-            &metadata::db_schemas_schema(),
+            Some(&metadata::db_schemas_schema()),
             query.as_any().encode_to_vec(),
             request.into_inner(),
         )?;
@@ -342,7 +312,7 @@ impl FlightSqlService for LakeletFlightSqlService {
         // letting it through would promise an answer to a different question.
         metadata::validate_tables_request(&self.catalog_provider_list, &query)?;
         let flight_info = Self::flight_info(
-            &metadata::tables_schema(),
+            Some(&metadata::tables_schema()),
             query.as_any().encode_to_vec(),
             request.into_inner(),
         )?;
@@ -367,7 +337,7 @@ impl FlightSqlService for LakeletFlightSqlService {
         request: Request<FlightDescriptor>,
     ) -> Result<Response<FlightInfo>, Status> {
         let flight_info = Self::flight_info(
-            &metadata::table_types_schema(),
+            Some(&metadata::table_types_schema()),
             query.as_any().encode_to_vec(),
             request.into_inner(),
         )?;
@@ -405,6 +375,7 @@ mod tests {
     use datafusion::arrow::datatypes::DataType;
     use datafusion::arrow::record_batch::RecordBatch;
     use datafusion::catalog::information_schema::INFORMATION_SCHEMA;
+    use futures::StreamExt;
     use lakelet_storage::storage::Storage;
     use std::collections::HashMap;
     use std::path::Path;
@@ -452,7 +423,7 @@ mod tests {
             .await
             .unwrap()
             .into_inner();
-        assert_eq!(info.clone().try_decode_schema().unwrap(), Schema::empty());
+        assert!(info.schema.is_empty());
         assert_eq!(info.endpoint.len(), 1);
         info.endpoint[0].ticket.clone().unwrap()
     }
@@ -471,7 +442,7 @@ mod tests {
         ] {
             let path = warehouse.path().join(relative_path);
             assert_eq!(path.exists(), exists_before, "{sql}");
-            // Repeated schema discovery must not create or remove objects.
+            // Repeated ticket requests must not create or remove objects.
             let _ = ddl_ticket(&service, sql).await;
             assert_eq!(path.exists(), exists_before, "{sql}");
             let ticket = ddl_ticket(&service, sql).await;
@@ -525,44 +496,39 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_statement_query() -> Result<()> {
-        let mut client = start_test_server().await?;
+        let mut client = start_test_server().await.unwrap();
 
-        let flight_info = client
-            .execute("select 1 as a".to_string(), None)
-            .await
-            .expect("execute should return a FlightInfo");
-        assert_eq!(flight_info.endpoint.len(), 1);
-        let schema = flight_info
-            .clone()
-            .try_decode_schema()
-            .expect("FlightInfo should carry the result schema");
-        assert_eq!(schema.field(0).name(), "a");
-
-        let ticket = flight_info.endpoint[0]
-            .ticket
-            .clone()
-            .expect("endpoint should carry a ticket");
-        let batches: Vec<_> = client
-            .do_get(ticket)
-            .await
-            .expect("do_get should stream results")
-            .try_collect()
-            .await
-            .expect("result stream should decode");
-
-        assert_eq!(batches.len(), 1);
-        let column = batches[0]
-            .column(0)
-            .as_any()
-            .downcast_ref::<Int64Array>()
-            .expect("column should be Int64");
-        assert_eq!(column.value(0), 1);
+        for (sql, expected_rows) in [("select 1 as a", 1), ("select 1 as a limit 0", 0)] {
+            let flight_info = client.execute(sql.to_string(), None).await.unwrap();
+            assert!(flight_info.schema.is_empty());
+            assert_eq!(flight_info.endpoint.len(), 1);
+            let ticket = flight_info.endpoint[0].ticket.clone().unwrap();
+            let mut stream = client.do_get(ticket).await.unwrap();
+            let batches: Vec<_> = stream.by_ref().try_collect().await.unwrap();
+            let schema = stream
+                .schema()
+                .expect("even an empty result must have a schema");
+            assert_eq!(schema.field(0).name(), "a");
+            assert_eq!(schema.field(0).data_type(), &DataType::Int64);
+            assert_eq!(
+                batches.iter().map(|batch| batch.num_rows()).sum::<usize>(),
+                expected_rows
+            );
+            if expected_rows != 0 {
+                let column = batches[0]
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap();
+                assert_eq!(column.value(0), 1);
+            }
+        }
         Ok(())
     }
 
     #[tokio::test]
-    async fn test_invalid_sql_returns_invalid_argument() -> Result<()> {
-        let mut client = start_test_server().await?;
+    async fn test_invalid_sql_returns_invalid_argument_on_do_get() -> Result<()> {
+        let mut client = start_test_server().await.unwrap();
 
         for sql in [
             "select from from",
@@ -572,10 +538,13 @@ mod tests {
             "CREATE SCHEMA",
             "CREATE SCHEMA missing.db1; DROP SCHEMA missing.db1",
         ] {
+            let info = client.execute(sql.to_string(), None).await.unwrap();
+            assert!(info.schema.is_empty());
+            let ticket = info.endpoint[0].ticket.clone().unwrap();
             let err = client
-                .execute(sql.to_string(), None)
+                .do_get(ticket)
                 .await
-                .expect_err("invalid SQL should fail");
+                .expect_err("invalid SQL should fail at DoGet");
             assert!(
                 matches!(err, FlightError::Tonic(ref status) if status.code() == tonic::Code::InvalidArgument),
                 "{sql}: unexpected error: {err}"
@@ -608,6 +577,7 @@ mod tests {
             .get_sql_info(vec![])
             .await
             .expect("get_sql_info should succeed");
+        assert!(flight_info.clone().try_decode_schema().is_ok());
         let ticket = flight_info.endpoint[0]
             .ticket
             .clone()
@@ -651,42 +621,44 @@ mod tests {
 
     #[tokio::test]
     async fn test_catalog_schema_headers_applied() -> Result<()> {
-        let mut client = start_test_server().await?;
+        let mut client = start_test_server().await.unwrap();
+        let sql = "select * from variables".to_string();
 
-        // Baseline: the server defaults (internal.information_schema) resolve
-        // the unqualified name.
-        client
-            .execute("select * from variables".to_string(), None)
-            .await
-            .expect("default catalog/schema should resolve 'variables'");
-
-        // A bogus schema header overrides the default and breaks resolution
-        // at the GetFlightInfo (planning) stage.
-        client.set_header("default-schema", "no_such_schema");
-        client
-            .execute("select * from variables".to_string(), None)
-            .await
-            .expect_err("bogus 'schema' header should break name resolution");
-
-        // Explicit valid headers work across the whole GetFlightInfo -> DoGet
-        // chain: set_header attaches them to every call from this client.
-        client.set_header("default-catalog", "internal");
-        client.set_header("default-schema", "information_schema");
-        let flight_info = client
-            .execute("select * from variables".to_string(), None)
-            .await
-            .expect("valid catalog/schema headers should resolve 'variables'");
-        let ticket = flight_info.endpoint[0]
-            .ticket
-            .clone()
-            .expect("endpoint should carry a ticket");
+        let info = client.execute(sql.clone(), None).await.unwrap();
+        let ticket = info.endpoint[0].ticket.clone().unwrap();
         let _batches: Vec<_> = client
             .do_get(ticket)
             .await
-            .expect("do_get should honor the same headers")
+            .unwrap()
             .try_collect()
             .await
-            .expect("result stream should decode");
+            .unwrap();
+
+        // Ticket creation neither resolves names nor binds session headers.
+        for (catalog, schema) in [
+            ("internal", "no_such_schema"),
+            ("missing", "information_schema"),
+        ] {
+            client.set_header("default-catalog", catalog);
+            client.set_header("default-schema", schema);
+            let info = client.execute(sql.clone(), None).await.unwrap();
+            let ticket = info.endpoint[0].ticket.clone().unwrap();
+            assert!(client.do_get(ticket.clone()).await.is_err());
+
+            // The same ticket uses the headers supplied at DoGet, and can be
+            // executed repeatedly because statement tickets remain stateless.
+            client.set_header("default-catalog", "internal");
+            client.set_header("default-schema", "information_schema");
+            for _ in 0..2 {
+                let _batches: Vec<_> = client
+                    .do_get(ticket.clone())
+                    .await
+                    .unwrap()
+                    .try_collect()
+                    .await
+                    .unwrap();
+            }
+        }
         Ok(())
     }
 
@@ -707,23 +679,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_dictionary_schema_advertised_hydrated() -> Result<()> {
+    async fn test_dictionary_schema_hydrated_in_do_get() -> Result<()> {
         let mut client = start_test_server().await?;
 
         // Dictionary columns (e.g. Delta partition columns) are hydrated by
-        // the DoGet encoder; the advertised schema must match or strict
-        // clients (the ADBC flightsql driver) reject the stream.
+        // the DoGet encoder, which supplies the only result schema.
         let sql = "select arrow_cast('a', 'Dictionary(Int32, Utf8)') as d".to_string();
 
         let flight_info = client
             .execute(sql, None)
             .await
             .expect("execute should return a FlightInfo");
-        let schema = flight_info
-            .clone()
-            .try_decode_schema()
-            .expect("FlightInfo should carry the result schema");
-        assert_eq!(schema.field(0).data_type(), &DataType::Utf8);
+        assert!(flight_info.schema.is_empty());
 
         let ticket = flight_info.endpoint[0]
             .ticket
@@ -737,6 +704,7 @@ mod tests {
             .await
             .expect("result stream should decode");
         assert_eq!(batches[0].schema().field(0).data_type(), &DataType::Utf8);
+        assert_eq!(string_column(&batches[0], "d"), vec!["a"]);
         Ok(())
     }
 
@@ -744,6 +712,8 @@ mod tests {
         client: &mut FlightSqlServiceClient<Channel>,
         flight_info: FlightInfo,
     ) -> Vec<RecordBatch> {
+        // Metadata commands continue to advertise their fixed result schema.
+        assert!(flight_info.clone().try_decode_schema().is_ok());
         let ticket = flight_info.endpoint[0]
             .ticket
             .clone()
@@ -818,7 +788,7 @@ mod tests {
         assert!(batches[0].column_by_name("table_schema").is_none());
 
         // Refused outright, narrow enough to be cheap or not — a table's
-        // schema comes from GetFlightInfo on a statement instead.
+        // schema comes from the DoGet result of a statement instead.
         let err = client
             .get_tables(CommandGetTables {
                 catalog: Some(INTERNAL_CATALOG.to_string()),

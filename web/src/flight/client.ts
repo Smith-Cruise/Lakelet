@@ -12,14 +12,12 @@
 
 import { connect, type FlightClient } from "@sparrowflight/js";
 import type { RecordBatch, Table } from "apache-arrow";
-import { decodeIpcSchema } from "../lib/ipc";
 import { describeColumn, type ColumnMeta } from "../lib/values";
 import { qualifiedName } from "../lib/sql";
 import {
   commandGetCatalogs,
   commandGetDbSchemas,
   commandGetTables,
-  commandStatementQuery,
 } from "./commands";
 
 /** Rows kept in the browser. Past this the stream is cancelled. */
@@ -134,18 +132,7 @@ export function listTables(catalog: string, dbSchema: string): Promise<string[]>
   return metadataColumn(commandGetTables(catalog, dbSchema), "table_name");
 }
 
-/**
- * The columns of one table, read from the FlightInfo of a statement that is
- * planned but never run.
- *
- * GetFlightInfo answers a statement with the Arrow schema its result would
- * have, so a `limit 0` select is the cheapest way to ask what a table looks
- * like: one round trip, no DoGet, no rows. It also means the type labels here
- * come from the same schema the result grid renders.
- *
- * The ticket that comes back is dropped. Lakelet's statement ticket is the
- * SQL text itself, so not redeeming it leaves nothing behind on the server.
- */
+/** Reads table columns from a schema-only query's DoGet result. */
 export async function describeTable(
   catalog: string,
   dbSchema: string,
@@ -153,11 +140,8 @@ export async function describeTable(
 ): Promise<ColumnMeta[]> {
   const flight = await client();
   const sql = `select * from ${qualifiedName(catalog, dbSchema, table)} limit 0`;
-  const info = await flight.getFlightInfo({ cmd: commandStatementQuery(sql) });
-  if (info.schema.byteLength === 0) {
-    throw new Error("server returned no schema for the statement");
-  }
-  return decodeIpcSchema(info.schema).fields.map(describeColumn);
+  const { table: result } = await flight.query(sql);
+  return result.schema.fields.map(describeColumn);
 }
 
 /**

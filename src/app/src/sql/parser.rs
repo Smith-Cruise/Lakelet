@@ -6,7 +6,7 @@ use datafusion::error::DataFusionError;
 use datafusion::logical_expr::sqlparser::keywords::Keyword;
 use datafusion::logical_expr::sqlparser::parser::{Parser, ParserError};
 use datafusion::logical_expr::sqlparser::tokenizer::{Token, TokenWithSpan, Tokenizer};
-use sqlparser::ast::{ShowStatementFilter, Statement};
+use sqlparser::ast::{ObjectName, ShowStatementFilter, Statement};
 use sqlparser::dialect::{DatabricksDialect, Dialect};
 use std::any::TypeId;
 use std::collections::VecDeque;
@@ -139,6 +139,16 @@ pub struct ExtendedParser<'a> {
 }
 
 impl<'a> ExtendedParser<'a> {
+    /// Parse an identifier supplied as a procedure's table argument using the SQL dialect.
+    pub(crate) fn parse_table_name(name: &'a str) -> Result<ObjectName> {
+        let mut parser = ExtendedParserBuilder::new(name).build()?;
+        let name = parser.parser.parse_object_name(false)?;
+        if parser.parser.peek_token() != Token::EOF {
+            return parser.expected("end of table name", parser.parser.peek_token());
+        }
+        Ok(name)
+    }
+
     pub fn parse_sql(sql: &str) -> Result<VecDeque<ExtendedStatement>> {
         let mut parser = ExtendedParserBuilder::new(sql).build()?;
         parser.parse_statements()
