@@ -19,7 +19,8 @@ use crate::catalog::paimon_fs::PaimonFSCatalog;
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncCatalogProviderList};
 use datafusion::common::{ResolvedTableReference, Result, SchemaReference, not_impl_err};
-use datafusion::logical_expr::sqlparser::ast::{CreateTable, Statement};
+use datafusion::logical_expr::sqlparser::ast::{CreateTable, FunctionArguments, Statement};
+use datafusion::prelude::{DataFrame, SessionContext};
 pub(crate) use internal::{INFORMATION_SCHEMA_SHOW_VARIABLES, INTERNAL_CATALOG};
 pub(crate) use manager::{CatalogConfig, CatalogConfigs, CatalogManager};
 use std::collections::HashMap;
@@ -35,8 +36,28 @@ pub struct CreateTableRequest<'a> {
     pub enable_ident_normalization: bool,
 }
 
+/// A procedure call with original arguments and a resolved table target.
+pub struct CallProcedureRequest<'a> {
+    pub table_format: TableFormat,
+    pub table_name: ResolvedTableReference,
+    pub procedure_name: String,
+    pub procedure_args: &'a FunctionArguments,
+}
+
 #[async_trait]
 pub trait LakeletCatalogProvider: AsyncCatalogProvider {
+    async fn call_procedure(
+        &self,
+        _ctx: &SessionContext,
+        request: &CallProcedureRequest<'_>,
+    ) -> Result<DataFrame> {
+        not_impl_err!(
+            "CALL {:?}.{} is not supported by this catalog",
+            request.table_format,
+            request.procedure_name
+        )
+    }
+
     async fn list_schema_names(&self) -> Result<Vec<String>>;
 
     async fn list_table_names(&self, schema_name: &str) -> Result<Vec<String>>;

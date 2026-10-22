@@ -1,6 +1,8 @@
 mod ddl;
 
-use crate::catalog::{CatalogConfig, CreateTableRequest, LakeletCatalogProvider};
+use crate::catalog::{
+    CallProcedureRequest, CatalogConfig, CreateTableRequest, LakeletCatalogProvider,
+};
 use crate::context::LakeletContext;
 use crate::table_format::TableFormat;
 use crate::table_format::table_provider_factory::{TableProviderBuilder, parse_table_reference};
@@ -8,7 +10,10 @@ use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
 use datafusion::common::{ResolvedTableReference, Result, SchemaReference, not_impl_err};
 use datafusion::error::DataFusionError;
-use datafusion::logical_expr::sqlparser::ast::{ObjectType, SchemaName, Statement};
+use datafusion::logical_expr::sqlparser::ast::{
+    Expr, FunctionArg, FunctionArgExpr, FunctionArguments, ObjectType, SchemaName, Statement, Value,
+};
+use datafusion::prelude::{DataFrame, SessionContext};
 use lakelet_storage::storage::Storage;
 use paimon::catalog::{Catalog, Identifier};
 use paimon::{CatalogOptions, FileSystemCatalog, Options};
@@ -66,6 +71,49 @@ impl PaimonFSCatalog {
 
 #[async_trait]
 impl LakeletCatalogProvider for PaimonFSCatalog {
+    async fn call_procedure(
+        &self,
+        ctx: &SessionContext,
+        request: &CallProcedureRequest<'_>,
+    ) -> Result<DataFrame> {
+        if request.table_format != TableFormat::Paimon {
+            return not_impl_err!(
+                "Paimon filesystem catalog does not support {:?} procedures",
+                request.table_format
+            );
+        }
+        let mut arguments = request.procedure_args.clone();
+        let table = &request.table_name;
+        // Paimon procedures split the table argument on dots.
+        if table.schema.contains('.') || table.table.contains('.') {
+            return datafusion::common::plan_err!(
+                "Paimon procedure table identifiers cannot contain dots in schema or table names"
+            );
+        }
+        if let FunctionArguments::List(args) = &mut arguments {
+            for arg in &mut args.args {
+                if let FunctionArg::Named { name, arg, .. } = arg
+                    && name.value.eq_ignore_ascii_case("table")
+                {
+                    *arg = FunctionArgExpr::Expr(Expr::Value(
+                        Value::SingleQuotedString(format!("{}.{}", table.schema, table.table))
+                            .into(),
+                    ));
+                    break;
+                }
+            }
+        }
+        let catalog: Arc<dyn Catalog> = self.inner_catalog.clone();
+        paimon_datafusion::execute_procedure(
+            ctx,
+            &catalog,
+            &self.config.name,
+            &request.procedure_name,
+            &arguments,
+        )
+        .await
+    }
+
     fn default_table_format(&self) -> Option<TableFormat> {
         Some(TableFormat::Paimon)
     }

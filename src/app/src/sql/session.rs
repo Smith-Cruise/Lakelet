@@ -1,5 +1,6 @@
 mod ddl;
 mod describe;
+mod procedure;
 mod show;
 mod r#use;
 
@@ -104,6 +105,9 @@ impl ExtendedSessionContext {
     pub async fn create_dataframe(&self, statement: &ExtendedStatement) -> Result<DataFrame> {
         let statement = match statement {
             ExtendedStatement::SQLStatement(stmt) => match stmt.as_ref() {
+                Statement::Call(function) => {
+                    return self.handle_call_stmt(function).await;
+                }
                 Statement::CreateTable(create) => {
                     return self.handle_create_table_stmt(create).await;
                 }

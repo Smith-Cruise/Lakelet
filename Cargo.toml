@@ -44,8 +44,8 @@ iceberg-catalog-rest = { git = "https://github.com/apache/iceberg-rust", rev = "
 opendal = { version = "0.58.1", features = ["services-s3", "services-oss", "services-hdfs-native"] }
 object_store_opendal = "0.58.0"
 deltalake = { version = "1.1.2", features = ["datafusion"] }
-paimon = { git = "https://github.com/Smith-Cruise/paimon-rust", branch = "bump-datafusion", features = ["storage-s3", "storage-oss", "storage-hdfs"] }
-paimon-datafusion = { git = "https://github.com/Smith-Cruise/paimon-rust", branch = "bump-datafusion" }
+paimon = { git = "https://github.com/Smith-Cruise/paimon-rust", rev = "c58218ef7bd7deec8ce0272c0c160f2e6881c615", features = ["storage-s3", "storage-oss", "storage-hdfs"] }
+paimon-datafusion = { git = "https://github.com/Smith-Cruise/paimon-rust", rev = "c58218ef7bd7deec8ce0272c0c160f2e6881c615" }
 mimalloc = { version = "0.1", default-features = false }
 moka = { version = "0.12.16", features = ["sync"] }
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
