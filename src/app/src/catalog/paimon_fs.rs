@@ -801,6 +801,46 @@ mod tests {
             .unwrap();
         assert_eq!(count.value(0), 2);
 
+        let procedure_tables = [
+            ("orders", "unqualified_tag"),
+            ("db1.orders", "schema_qualified_tag"),
+            ("paimon_fs_1.db1.orders", "catalog_qualified_tag"),
+        ];
+        let tag_manager = table.tag_manager();
+        let snapshot = table
+            .snapshot_manager()
+            .get_latest_snapshot()
+            .await
+            .unwrap()
+            .unwrap();
+        for (table_name, tag_name) in procedure_tables {
+            assert_eq!(
+                query_rows(
+                    &session,
+                    &format!(
+                        "CALL paimon.create_tag(table => '{table_name}', tag => '{tag_name}')"
+                    ),
+                )
+                .await,
+                vec![vec![Some("OK".into())]]
+            );
+            let tag = tag_manager.get(tag_name).await.unwrap().unwrap();
+            assert_eq!(tag.id(), snapshot.id());
+        }
+        for (table_name, tag_name) in procedure_tables {
+            assert_eq!(
+                query_rows(
+                    &session,
+                    &format!(
+                        "CALL paimon.delete_tag(table => '{table_name}', tag => '{tag_name}')"
+                    ),
+                )
+                .await,
+                vec![vec![Some("OK".into())]]
+            );
+            assert!(!tag_manager.tag_exists(tag_name).await.unwrap());
+        }
+
         // Lakelet rebuilds the provider per statement, so read back through a
         // fresh one to make sure the commit is visible from the warehouse.
         let rows = query_rows(&session, "SELECT * FROM orders ORDER BY id, dt").await;
