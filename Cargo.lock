@@ -5648,7 +5648,7 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 [[package]]
 name = "paimon"
 version = "0.5.0"
-source = "git+https://github.com/Smith-Cruise/paimon-rust?rev=c58218ef7bd7deec8ce0272c0c160f2e6881c615#c58218ef7bd7deec8ce0272c0c160f2e6881c615"
+source = "git+https://github.com/Smith-Cruise/paimon-rust?rev=2b67fc6f2df2f1020885a0c35ab7955f3fa3580e#2b67fc6f2df2f1020885a0c35ab7955f3fa3580e"
 dependencies = [
  "apache-avro 0.21.0",
  "arrow-arith",
@@ -5730,7 +5730,7 @@ dependencies = [
 [[package]]
 name = "paimon-datafusion"
 version = "0.5.0"
-source = "git+https://github.com/Smith-Cruise/paimon-rust?rev=c58218ef7bd7deec8ce0272c0c160f2e6881c615#c58218ef7bd7deec8ce0272c0c160f2e6881c615"
+source = "git+https://github.com/Smith-Cruise/paimon-rust?rev=2b67fc6f2df2f1020885a0c35ab7955f3fa3580e#2b67fc6f2df2f1020885a0c35ab7955f3fa3580e"
 dependencies = [
  "arrow-select",
  "async-trait",
