@@ -141,6 +141,15 @@ impl ExtendedSessionContext {
             },
         };
 
+        let plan = self.plan_statement(statement).await?;
+        if let LogicalPlan::DescribeTable(describe) = &plan {
+            return self.describe_dataframe(describe);
+        }
+        self.session_context.execute_logical_plan(plan).await
+    }
+
+    /// Resolve table references and use the same SQL planner for user and internal statements.
+    async fn plan_statement(&self, statement: Box<Statement>) -> Result<LogicalPlan> {
         let statement = DataFusionStatement::Statement(statement);
         let references = self
             .session_context
@@ -149,15 +158,10 @@ impl ExtendedSessionContext {
         self.resolve_tables(&references).await?;
 
         // Use fresh state so planning sees the catalogs registered above.
-        let plan = self
-            .session_context
+        self.session_context
             .state()
             .statement_to_plan(statement)
-            .await?;
-        if let LogicalPlan::DescribeTable(describe) = &plan {
-            return self.describe_dataframe(describe);
-        }
-        self.session_context.execute_logical_plan(plan).await
+            .await
     }
 
     async fn resolve_tables(&self, references: &[TableReference]) -> Result<()> {
