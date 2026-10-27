@@ -1,4 +1,5 @@
 use super::to_datafusion_error;
+use crate::catalog::CreateTableSchema;
 use datafusion::common::{Result, not_impl_err, plan_datafusion_err, plan_err};
 use datafusion::logical_expr::sqlparser::ast::helpers::stmt_create_table::CreateTableBuilder;
 use datafusion::logical_expr::sqlparser::ast::{
@@ -14,9 +15,13 @@ use paimon::spec::{
 };
 use std::collections::{HashMap, HashSet};
 
-pub(super) fn build_schema(stmt: &CreateTable, normalize_identifiers: bool) -> Result<Schema> {
+pub(super) fn build_schema(
+    stmt: &CreateTable,
+    columns: &CreateTableSchema,
+    normalize_identifiers: bool,
+) -> Result<Schema> {
     validate_statement(stmt)?;
-    if stmt.columns.is_empty() {
+    if matches!(columns, CreateTableSchema::Declared) && stmt.columns.is_empty() {
         return plan_err!("CREATE TABLE requires at least one column");
     }
     let normalizer = IdentNormalizer::new(normalize_identifiers);
@@ -24,6 +29,25 @@ pub(super) fn build_schema(stmt: &CreateTable, normalize_identifiers: bool) -> R
     let mut column_names = HashSet::new();
     let mut explicitly_nullable = HashSet::new();
     let mut primary_keys = None;
+    if let CreateTableSchema::Derived(schema) = columns {
+        if !stmt.columns.is_empty() {
+            return plan_err!("Derived table schemas cannot include column definitions");
+        }
+        if schema.fields().is_empty() {
+            return plan_err!("CREATE TABLE requires at least one column");
+        }
+        for field in schema.fields() {
+            if !column_names.insert(field.name().clone()) {
+                return plan_err!("Duplicate column: {}", field.name());
+            }
+            let data_type =
+                paimon::arrow::arrow_to_paimon_type(field.data_type(), field.is_nullable())
+                    .map_err(to_datafusion_error)?;
+            // Names are already resolved; do not normalize quoted query aliases again.
+            // The builder assigns fresh IDs to top-level and nested fields.
+            builder = builder.column(field.name(), data_type);
+        }
+    }
     for column in &stmt.columns {
         let name = normalize_name(&column.name, &normalizer)?;
         if !column_names.insert(name.clone()) {
@@ -352,7 +376,7 @@ mod tests {
         let Statement::CreateTable(create) = statement.as_ref() else {
             panic!("expected CREATE TABLE: {sql}");
         };
-        build_schema(create, normalize)
+        build_schema(create, &CreateTableSchema::Declared, normalize)
     }
 
     #[test]

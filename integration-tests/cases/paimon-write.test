@@ -116,6 +116,52 @@ DROP TABLE replacement;
 -- EXPECTED
 
 -- QUERY
+CREATE TABLE iceberg_copy WITH ('file.format' = 'parquet')
+AS SELECT id, name, amount, dt FROM moto_glue.iceberg_db.orders WHERE id <= 2;
+-- EXPECTED
+
+-- QUERY
+CREATE TABLE IF NOT EXISTS iceberg_copy AS SELECT id FROM orders;
+-- EXPECTED
+
+-- QUERY
+SELECT id, name, amount, dt FROM iceberg_copy ORDER BY id;
+-- EXPECTED
+id,name,amount,dt
+1,alice,10.50,2026-06-25
+2,bob,20.25,2026-06-25
+
+-- QUERY
+CREATE TABLE hive_columns LIKE moto_glue.hive_db.nested_orders;
+-- EXPECTED
+
+-- QUERY
+SELECT id, tags, attrs, shipto, lineitems FROM hive_columns;
+-- EXPECTED
+id,tags,attrs,shipto,lineitems
+
+-- QUERY
+INSERT INTO hive_columns SELECT * FROM moto_glue.hive_db.nested_orders;
+-- EXPECTED
+count
+6
+
+-- QUERY
+SELECT id, shipto['zipcode'] AS zipcode FROM hive_columns WHERE id <= 2 ORDER BY id;
+-- EXPECTED
+id,zipcode
+1,10001
+2,94105
+
+-- QUERY
+DROP TABLE hive_columns;
+-- EXPECTED
+
+-- QUERY
+DROP TABLE iceberg_copy;
+-- EXPECTED
+
+-- QUERY
 DROP TABLE orders;
 -- EXPECTED
 

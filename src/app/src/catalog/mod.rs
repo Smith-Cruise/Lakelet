@@ -17,6 +17,7 @@ use crate::catalog::iceberg_rest::IcebergRestCatalog;
 use crate::catalog::internal::InternalCatalog;
 use crate::catalog::paimon_fs::PaimonFSCatalog;
 use async_trait::async_trait;
+use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncCatalogProviderList};
 use datafusion::common::{ResolvedTableReference, Result, SchemaReference, not_impl_err};
 use datafusion::logical_expr::sqlparser::ast::{CreateTable, FunctionArguments, Statement};
@@ -33,7 +34,21 @@ pub struct CreateTableRequest<'a> {
     pub name: ResolvedTableReference,
     pub table_format: TableFormat,
     pub definition: &'a CreateTable,
+    pub schema: CreateTableSchema,
     pub enable_ident_normalization: bool,
+}
+
+/// Column definitions supplied by SQL or derived from a query/table schema.
+pub enum CreateTableSchema {
+    Declared,
+    Derived(SchemaRef),
+}
+
+/// Only a newly created table may receive the initial CTAS insert.
+#[derive(Debug, PartialEq, Eq)]
+pub enum CreateTableOutcome {
+    Created,
+    Skipped,
 }
 
 /// A procedure call with original arguments and a resolved table target.
@@ -69,7 +84,7 @@ pub trait LakeletCatalogProvider: AsyncCatalogProvider {
     }
 
     /// Create a persistent table using the resolved destination and requested format.
-    async fn create_table(&self, request: &CreateTableRequest<'_>) -> Result<()> {
+    async fn create_table(&self, request: &CreateTableRequest<'_>) -> Result<CreateTableOutcome> {
         not_impl_err!(
             "CREATE TABLE {} USING {:?} is not supported",
             request.name,

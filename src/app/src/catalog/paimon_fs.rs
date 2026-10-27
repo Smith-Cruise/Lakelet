@@ -1,7 +1,8 @@
 mod ddl;
 
 use crate::catalog::{
-    CallProcedureRequest, CatalogConfig, CreateTableRequest, LakeletCatalogProvider,
+    CallProcedureRequest, CatalogConfig, CreateTableOutcome, CreateTableRequest,
+    LakeletCatalogProvider,
 };
 use crate::context::LakeletContext;
 use crate::table_format::TableFormat;
@@ -118,22 +119,33 @@ impl LakeletCatalogProvider for PaimonFSCatalog {
         Some(TableFormat::Paimon)
     }
 
-    async fn create_table(&self, request: &CreateTableRequest<'_>) -> Result<()> {
+    async fn create_table(&self, request: &CreateTableRequest<'_>) -> Result<CreateTableOutcome> {
         if request.table_format != TableFormat::Paimon {
             return datafusion::common::plan_err!(
                 "Paimon filesystem catalog only supports USING PAIMON, got {:?}",
                 request.table_format
             );
         }
-        let schema = ddl::build_schema(request.definition, request.enable_ident_normalization)?;
-        self.inner_catalog
+        let schema = ddl::build_schema(
+            request.definition,
+            &request.schema,
+            request.enable_ident_normalization,
+        )?;
+        match self
+            .inner_catalog
             .create_table(
                 &Identifier::new(request.name.schema.as_ref(), request.name.table.as_ref()),
                 schema,
-                request.definition.if_not_exists,
+                false,
             )
             .await
-            .map_err(to_datafusion_error)
+        {
+            Ok(()) => Ok(CreateTableOutcome::Created),
+            Err(paimon::Error::TableAlreadyExist { .. }) if request.definition.if_not_exists => {
+                Ok(CreateTableOutcome::Skipped)
+            }
+            Err(error) => Err(to_datafusion_error(error)),
+        }
     }
 
     async fn list_schema_names(&self) -> Result<Vec<String>> {
@@ -947,5 +959,156 @@ mod tests {
         .await;
         assert_eq!(bucket_rows.len(), 2);
         assert_eq!(bucket_rows, file_rows);
+
+        // Both derived forms share the same schema conversion, including nested
+        // columns and nullable fields. LIKE must not copy keys or properties.
+        session
+            .sql("CREATE TABLE columns_only LIKE orders")
+            .await
+            .unwrap();
+        let columns_only = catalog
+            .inner_catalog
+            .get_table(&Identifier::new("db1", "columns_only"))
+            .await
+            .unwrap();
+        assert!(columns_only.schema().primary_keys().is_empty());
+        assert!(columns_only.schema().partition_keys().is_empty());
+        assert!(columns_only.schema().options().is_empty());
+        let source_schema = session.sql("SELECT * FROM orders").await.unwrap();
+        for (index, (original, copied)) in schema
+            .fields()
+            .iter()
+            .zip(columns_only.schema().fields())
+            .enumerate()
+        {
+            assert_eq!(original.name(), copied.name());
+            // LIKE follows the provider's read schema, which can be more
+            // nullable than the stored schema after schema-evolution casts.
+            assert_eq!(
+                &original
+                    .data_type()
+                    .copy_with_nullable(source_schema.schema().field(index).is_nullable(),)
+                    .unwrap(),
+                copied.data_type()
+            );
+            assert!(copied.description().is_none());
+        }
+        assert!(
+            query_rows(&session, "SELECT * FROM columns_only")
+                .await
+                .is_empty()
+        );
+        session
+            .sql("CREATE TABLE IF NOT EXISTS columns_only LIKE orders")
+            .await
+            .unwrap();
+
+        let result = session
+            .sql(
+                "CREATE TABLE populated PARTITIONED BY (dt)
+             WITH ('primary-key' = 'id,dt', 'bucket' = '2') AS SELECT * FROM orders",
+            )
+            .await
+            .unwrap()
+            .collect()
+            .await
+            .unwrap();
+        assert_eq!(result.iter().map(|b| b.num_rows()).sum::<usize>(), 0);
+        assert_eq!(
+            query_rows(&session, "SELECT * FROM populated ORDER BY id, dt").await,
+            rows
+        );
+        let populated = catalog
+            .inner_catalog
+            .get_table(&Identifier::new("db1", "populated"))
+            .await
+            .unwrap();
+        assert_eq!(populated.schema().primary_keys(), &["id", "dt"]);
+        assert_eq!(populated.schema().partition_keys(), &["dt"]);
+        session.sql(
+            "CREATE TABLE IF NOT EXISTS populated AS SELECT CAST(note AS INT) AS id FROM orders"
+        ).await.unwrap();
+        assert_eq!(
+            query_rows(&session, "SELECT * FROM populated ORDER BY id, dt").await,
+            rows
+        );
+
+        session
+            .sql(
+                "CREATE TABLE configured_like LIKE orders PARTITIONED BY (dt)
+             WITH ('primary-key' = 'id,dt', 'bucket' = '1')",
+            )
+            .await
+            .unwrap();
+        let configured = catalog
+            .inner_catalog
+            .get_table(&Identifier::new("db1", "configured_like"))
+            .await
+            .unwrap();
+        assert_eq!(configured.schema().primary_keys(), &["id", "dt"]);
+        assert_eq!(configured.schema().partition_keys(), &["dt"]);
+        assert_eq!(configured.schema().options().get("bucket").unwrap(), "1");
+        assert!(
+            query_rows(&session, "SELECT * FROM configured_like")
+                .await
+                .is_empty()
+        );
+
+        session
+            .sql("CREATE TABLE no_rows AS SELECT * FROM orders WHERE false")
+            .await
+            .unwrap();
+        assert!(
+            query_rows(&session, "SELECT * FROM no_rows")
+                .await
+                .is_empty()
+        );
+        session.sql(
+            "CREATE TABLE totals AS SELECT count(*) AS `RowCount`, sum(amount) AS total FROM orders"
+        ).await.unwrap();
+        assert_eq!(
+            query_rows(&session, "SELECT `RowCount`, total FROM totals").await,
+            vec![vec![Some("2".into()), Some("69.12".into())]]
+        );
+        session
+            .sql("CREATE TABLE constant AS SELECT 'hello' AS `Kept`")
+            .await
+            .unwrap();
+        assert_eq!(
+            query_rows(&session, "SELECT `Kept` FROM constant").await,
+            vec![vec![Some("hello".into())]]
+        );
+
+        for sql in [
+            "CREATE TABLE invalid AS SELECT NULL AS id",
+            "CREATE TABLE invalid AS SELECT * FROM orders a CROSS JOIN orders b",
+            "CREATE TABLE invalid PARTITIONED BY (missing) AS SELECT id FROM orders",
+            "CREATE TABLE invalid USING ICEBERG AS SELECT id FROM orders",
+            "CREATE TABLE IF NOT EXISTS populated AS SELECT * FROM missing",
+            "CREATE TABLE IF NOT EXISTS columns_only LIKE missing",
+        ] {
+            assert!(session.sql(sql).await.is_err(), "{sql}");
+            assert!(!temp_dir.path().join("db1.db/invalid").exists());
+        }
+        assert!(
+            session
+                .sql("CREATE TABLE failed_write AS SELECT CAST(note AS INT) AS id FROM orders")
+                .await
+                .is_err()
+        );
+        assert!(
+            catalog
+                .inner_catalog
+                .get_table(&Identifier::new("db1", "failed_write"))
+                .await
+                .is_ok()
+        );
+
+        session.sql("DROP TABLE populated").await.unwrap();
+        session.sql("DROP TABLE columns_only").await.unwrap();
+        assert_eq!(
+            query_rows(&session, "SELECT * FROM orders ORDER BY id, dt").await,
+            rows
+        );
     }
 }
