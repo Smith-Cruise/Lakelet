@@ -9,7 +9,7 @@ hide:
 
 <div class="ll-band ll-hero" markdown>
 
-# A lightweight data&nbsp;lake query engine.
+# A lightweight lakehouse query engine.
 
 [Getting Started](getting-started.md){ .md-button .md-button--primary }
 [View on GitHub](https://github.com/Smith-Cruise/Lakelet){ .md-button }
