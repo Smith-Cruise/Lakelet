@@ -9,11 +9,7 @@ hide:
 
 <div class="ll-band ll-hero" markdown>
 
-<span class="ll-kicker">DATAFUSION · RUST · ARROW</span>
-
-# Simple, Fast Lakehouse Engine
-
-<p class="ll-lead">A lightweight alternative to Trino for querying Iceberg, Delta Lake, Paimon and Hive.</p>
+# A lightweight data&nbsp;lake query engine.
 
 [Getting Started](getting-started.md){ .md-button .md-button--primary }
 [View on GitHub](https://github.com/Smith-Cruise/Lakelet){ .md-button }
@@ -31,55 +27,55 @@ curl -fsSL https://lakelet.dev/install.sh | sh
 <p class="ll-note">The shell installer supports Linux and macOS. For Windows, grab a build from
 <a href="https://github.com/Smith-Cruise/Lakelet/releases/tag/nightly">releases/nightly</a>.</p>
 
+<div class="ll-overview" markdown>
+
 <div class="ll-section" markdown>
 
-<span class="ll-eyebrow">Interfaces</span>
+<div class="ll-eyebrow">Interfaces</div>
 
 ## Two ways to query
-
-<p class="ll-sub">The same engine behind both, reading the same catalogs. Pick whichever fits how you work.</p>
 
 <div class="ll-modes" markdown>
 
 <div class="ll-mode" markdown>
 
-<div class="ll-mode__id">
-  <span class="ll-mode__icon" aria-hidden="true">
+<div class="ll-mode__id" markdown>
+  <div class="ll-mode__icon" aria-hidden="true">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" stroke-linejoin="miter">
       <rect width="20" height="7" x="2" y="3"></rect>
       <rect width="20" height="7" x="2" y="14"></rect>
       <line x1="6" x2="6.01" y1="6.5" y2="6.5"></line>
       <line x1="6" x2="6.01" y1="17.5" y2="17.5"></line>
     </svg>
-  </span>
-  <span class="ll-eyebrow">Server</span>
-</div>
+  </div>
 
 ### Server
 
-Serve Arrow Flight SQL to ADBC clients, with a built-in web console on the same port.
+</div>
 
-[See the console →](#query-from-the-browser){ .ll-mode__go }
+Start Arrow Flight SQL with built-in web console.
+
+[See the web console →](#query-from-the-browser){ .ll-mode__go }
 
 </div>
 
 <div class="ll-mode" markdown>
 
-<div class="ll-mode__id">
-  <span class="ll-mode__icon" aria-hidden="true">
+<div class="ll-mode__id" markdown>
+  <div class="ll-mode__icon" aria-hidden="true">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" stroke-linejoin="miter">
       <polyline points="4 17 10 11 4 5"></polyline>
       <line x1="12" x2="20" y1="19" y2="19"></line>
     </svg>
-  </span>
-  <span class="ll-eyebrow">Terminal</span>
-</div>
+  </div>
 
 ### CLI
 
-Query lake tables directly from your terminal. Point it at a catalog and start typing SQL.
+</div>
 
-[See a session →](#query-from-the-cli){ .ll-mode__go }
+Query with terminal.
+
+[See terminal →](#query-from-the-cli){ .ll-mode__go }
 
 </div>
 
@@ -89,11 +85,11 @@ Query lake tables directly from your terminal. Point it at a catalog and start t
 
 <div class="ll-section" markdown>
 
-<span class="ll-eyebrow">Coverage</span>
+<div class="ll-eyebrow">Coverage</div>
 
 ## One engine across your lake
 
-<p class="ll-sub">A metastore-backed catalog reads whichever format each table declares. The two single-format catalogs serve exactly what their name says.</p>
+<p class="ll-sub">Lakelet support different kinds of open data lake format.</p>
 
 <div class="ll-matrix" markdown>
 
@@ -143,32 +139,49 @@ Query lake tables directly from your terminal. Point it at a catalog and start t
 
 </div>
 
+</div>
+
 <div class="ll-section" markdown>
 
-<span class="ll-eyebrow">Console</span>
+<div class="ll-showcase__header" markdown>
+
+<div markdown>
+
+<div class="ll-eyebrow">Console</div>
 
 ## Query from the browser
 
-<p class="ll-sub">Run the server and it serves a web console on the same port as Flight SQL — catalog explorer, SQL editor and results, no extra process.</p>
+<p class="ll-sub">Start Lakelet with <code>--server</code>, query in the built-in web console.</p>
 
-<div class="ll-shot">
-<img src="assets/console.png" width="2880" height="1800" decoding="async" alt="The Lakelet web console: catalog explorer, SQL editor and a result grid">
 </div>
-
-<span class="ll-caption">lakelet --config config.toml --server · http://localhost:32010</span>
 
 [Server guide →](server.md){ .ll-go }
 
 </div>
 
+<div class="ll-shot">
+<img src="assets/console.png" width="2880" height="1800" decoding="async" alt="The Lakelet web console: catalog explorer, SQL editor and a result grid">
+</div>
+
+</div>
+
 <div class="ll-section" markdown>
 
-<span class="ll-eyebrow">Terminal</span>
+<div class="ll-showcase__header" markdown>
+
+<div markdown>
+
+<div class="ll-eyebrow">Terminal</div>
 
 ## Query from the CLI
 
-<p class="ll-sub">The same binary, started without <code>--server</code>, is a SQL shell. Pick a catalog,
-type a statement, end it with a semicolon.</p>
+<p class="ll-sub">Start in a SQL shell.</p>
+
+</div>
+
+[CLI quick start →](getting-started.md#start-lakelet-cli){ .ll-go }
+
+</div>
 
 <div class="ll-term">
 <div class="ll-term__bar">
@@ -273,10 +286,6 @@ Lakelet: compiled with a0f747f 2026-09-21 13:47:20 UTC
 </div>
 </div>
 
-<span class="ll-caption">./lakelet --config config.toml</span>
-
-[CLI quick start →](getting-started.md#start-lakelet-cli){ .ll-go }
-
 </div>
 
 <div class="ll-band ll-close" markdown>
@@ -284,8 +293,6 @@ Lakelet: compiled with a0f747f 2026-09-21 13:47:20 UTC
 ## Start querying
 
 `curl -fsSL https://lakelet.dev/install.sh | sh`
-
-<span class="ll-colophon">Apache-2.0 · Built on Apache DataFusion &amp; Arrow</span>
 
 </div>
 

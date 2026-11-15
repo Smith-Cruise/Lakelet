@@ -94,7 +94,7 @@ paragraphs, descriptions, help text.
 
 | Use | Family | Weight | Notes |
 | --- | --- | --- | --- |
-| Display / hero | JetBrains Mono | 800 | `letter-spacing: -0.03em`, `line-height: 0.95` |
+| Display / hero | JetBrains Mono | 800 | `letter-spacing: -0.03em`, `line-height: 1.12` |
 | Headings | JetBrains Mono | 800 / 700 | H2 on the docs home is uppercase |
 | Eyebrow labels | JetBrains Mono | 700 | 10–11px, uppercase, `letter-spacing: .16em` |
 | Body | Inter | 400 / 500 | `line-height` 1.6 |
@@ -240,16 +240,17 @@ not reintroduce it without being asked.
 
 ### Docs home page
 
-Seven bands, top to bottom, all full-bleed. Classes live in `docs/src/index.md` and are
-styled in the home-page section of `extra.css`.
+The home page uses full-bleed backgrounds with a shared content width. Classes live in
+`docs/src/index.md` and are styled in the home-page section of `extra.css`.
 
-1. `.ll-hero` — volt band with a faint ink grid, an ink `.ll-kicker` chip, a mono-800 H1,
-   an Inter `.ll-lead`, and two buttons (primary = ink fill with volt text).
+1. `.ll-hero` — volt band with a faint ink grid, one mono-800 heading, and two buttons
+   (primary = ink fill with volt text). The heading shares the band with the bolt on
+   wide screens and can wrap across the full width on narrow screens.
 2. `.ll-install` — terminal card straddling the band's bottom edge, `6px 6px 0` shadow.
    The `$` prompt is a `::before`, so the copied command stays runnable.
-3. `.ll-modes` — two hard-edged cards that lift on hover. They are a mid-page table of
-   contents, not a destination: each jumps to its own showcase band further down, in the
-   same order the bands appear. The links out to the docs belong in those bands, not here.
+3. `.ll-modes` — two hard-edged cards that lift on hover. The cards jump to the console
+   and CLI showcases in page order. They sit side by side on wide screens, followed by
+   the coverage table in its own full-width section.
 4. `.ll-matrix` — catalog × table-format grid. Three states, three shapes, so colour is
    never the only cue: `.ll-yes` (filled volt block with a tick), `.ll-beta` (outlined,
    volt-wash, `β`), `.ll-no` (a dash). Always ship the `.ll-legend` with it. **Keep the
@@ -258,11 +259,10 @@ styled in the home-page section of `extra.css`.
 5. `.ll-shot` — the console. A real screenshot, nothing on top of it, in a 2px frame
    with an `8px 8px 0` shadow.
 6. `.ll-term` — the CLI. A terminal card with a tab strip over three captured sessions.
-7. `.ll-close` — ink band, volt-bordered install command, colophon on its own line.
+7. `.ll-close` — ink band with a volt-bordered install command.
 
-Bands 5 and 6 are a pair and should stay one: a picture of the console, then the same
-engine as type. Each closes with a `.ll-caption` giving the command that starts it and a
-`.ll-go` link into the docs.
+The console and CLI showcases stay together in page order. Each includes its guide link
+beside the introduction, above the preview.
 
 The screenshot was once annotated: four numbered volt markers over the image, each
 opening a card about the region under it. It was tried and removed as a net loss. The

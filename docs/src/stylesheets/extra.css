@@ -513,6 +513,11 @@ html .md-footer-meta.md-typeset .md-copyright a:focus {
  * contains it, so doc pages stay untouched.
  * ========================================================================= */
 
+body:has(.ll-home) {
+  --ll-home-gutter: clamp(1.2rem, 3.33vw, 2.4rem);
+  --ll-home-inset: max(var(--ll-home-gutter), (100% - 56rem) / 2);
+}
+
 body:has(.ll-home) .md-main__inner {
   margin-top: 0;
 }
@@ -534,79 +539,56 @@ body:has(.ll-home) .md-grid {
   margin: 0;
 }
 
-/* The home page drops the grid's max-width, which also un-gutters the footer
-   bar. Put it back on the bands' own gutter so the attribution lines up under
-   the closing band instead of the viewport edge. (`.md-copyright` carries its
-   own 0.6rem side margin, hence the difference.) */
+/* Align the attribution with the closing band after its own 0.6rem margin. */
 body:has(.ll-home) .md-footer-meta__inner {
-  padding-left: 1.8rem;
-  padding-right: 1.8rem;
+  padding-inline: calc(var(--ll-home-inset) - 0.6rem);
 }
 
 /* Full-bleed bands ---------------------------------------------------------- */
 
 .md-typeset .ll-band {
-  padding: 3.2rem 2.4rem;
+  padding-inline: var(--ll-home-inset);
 }
 
 /* Hero ---------------------------------------------------------------------- */
 
 .md-typeset .ll-hero {
-  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1.4rem clamp(1.5rem, 6vw, 4.8rem);
   background-color: var(--ll-volt);
   background-image:
     linear-gradient(rgba(20, 23, 15, 0.07) 1px, transparent 1px),
     linear-gradient(90deg, rgba(20, 23, 15, 0.07) 1px, transparent 1px);
   background-size: 1.7rem 1.7rem;
   border-bottom: 2px solid var(--ll-rule);
-  padding-bottom: 4.8rem;
+  padding-block: 3.2rem 4.8rem;
   color: var(--ll-ink);
-}
-
-.md-typeset .ll-kicker {
-  display: inline-block;
-  margin-bottom: 1.1rem;
-  padding: 0.25rem 0.55rem;
-  background: var(--ll-ink);
-  color: var(--ll-volt);
-  font-family: var(--ll-mono);
-  font-size: 0.55rem;
-  font-weight: 700;
-  letter-spacing: 0.16em;
 }
 
 .md-typeset .ll-hero h1 {
-  max-width: 15ch;
+  max-width: 26ch;
   margin: 0;
-  font-size: clamp(2rem, 1.1rem + 3.6vw, 3.7rem);
-  line-height: 0.95;
+  font-size: clamp(1.2rem, 1rem + 1.5vw, 2.2rem);
+  line-height: 1.12;
+  text-wrap: balance;
   color: var(--ll-ink);
 }
 
-.md-typeset .ll-hero .ll-lead {
-  max-width: 44ch;
-  margin-top: 1.1rem;
-  font-size: 0.82rem;
-  line-height: 1.6;
-  color: #2c3020;
+.md-typeset .ll-hero > p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0;
 }
 
-.md-typeset .ll-hero .md-button {
-  margin: 1.5rem 0.5rem 0 0;
-}
-
-/* The mark's bolt, blown up to fill the empty right half of the hero. It uses
-   the same geometry as `assets/lakelet-mark.svg`, cropped to the bolt's
-   bounding box. The cuts are masked out so the grid shows through them. */
+/* The bolt uses the geometry of assets/lakelet-mark.svg with its cuts masked out. */
 .md-typeset .ll-hero::after {
   content: "";
-  position: absolute;
-  top: 50%;
-  right: 8%;
-  height: 66%;
+  grid-area: 1 / 2 / span 2;
+  width: clamp(4rem, 8vw, 6rem);
   aspect-ratio: 256 / 400;
-  max-width: 30%;
-  transform: translateY(-50%);
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 400'%3E%3Cmask id='c'%3E%3Crect width='256' height='400' fill='%23fff'/%3E%3Cg fill='%23000'%3E%3Crect y='96' width='256' height='14'/%3E%3Crect y='192' width='256' height='14'/%3E%3Crect y='288' width='256' height='14'/%3E%3C/g%3E%3C/mask%3E%3Cpolygon points='168,0 0,232 112,232 80,400 256,160 144,160' fill='%2314170F' mask='url(%23c)'/%3E%3C/svg%3E") center / contain no-repeat;
   pointer-events: none;
 }
@@ -617,7 +599,7 @@ body:has(.ll-home) .md-footer-meta__inner {
   z-index: 2;
   width: auto;
   max-width: 32rem;
-  margin: -2.9rem 2.4rem 0;
+  margin: -2.9rem var(--ll-home-inset) 0;
 }
 
 .md-typeset .ll-install > .highlight {
@@ -666,15 +648,34 @@ body:has(.ll-home) .md-footer-meta__inner {
 .md-typeset .ll-note {
   width: auto;
   max-width: 32rem;
-  margin: 0.7rem 2.4rem 0;
+  margin: 0.7rem var(--ll-home-inset) 0;
   font-size: 0.62rem;
   color: var(--ll-ink-soft);
 }
 
 /* Sections ------------------------------------------------------------------ */
 
-.md-typeset .ll-section {
-  padding: 2.8rem 2.4rem;
+.md-typeset .ll-overview,
+.md-typeset .ll-home > .ll-section {
+  padding: 1.4rem var(--ll-home-inset);
+}
+
+.md-typeset .ll-overview {
+  display: grid;
+  gap: 1.4rem;
+}
+
+.md-typeset .ll-overview > .ll-section {
+  min-width: 0;
+}
+
+.md-typeset .ll-overview > .ll-section + .ll-section {
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--ll-line);
+}
+
+.md-typeset .ll-home > .ll-section + .ll-section {
+  padding-top: 1.1rem;
 }
 
 .md-typeset .ll-eyebrow {
@@ -757,12 +758,8 @@ body:has(.ll-home) .md-footer-meta__inner {
   height: 0.8rem;
 }
 
-.md-typeset .ll-mode .ll-eyebrow {
-  margin: 0;
-}
-
 .md-typeset .ll-mode h3 {
-  margin: 0 0 0.4rem;
+  margin: 0;
   font-size: 1rem;
 }
 
@@ -792,8 +789,16 @@ body:has(.ll-home) .md-footer-meta__inner {
   text-transform: uppercase;
 }
 
-.md-typeset .ll-section > p:has(> .ll-go) {
-  margin: 0.7rem 0 0;
+.md-typeset .ll-showcase__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 0.65rem 1.4rem;
+}
+
+.md-typeset .ll-showcase__header > p {
+  margin: 0;
 }
 
 /* Support matrix ------------------------------------------------------------ */
@@ -898,7 +903,7 @@ body:has(.ll-home) .md-footer-meta__inner {
   display: flex;
   flex-wrap: wrap;
   gap: 1.2rem;
-  margin-top: 0.8rem;
+  margin: 0.8rem 0 0;
   font-family: var(--ll-mono);
   font-size: 0.55rem;
   letter-spacing: 0.06em;
@@ -923,16 +928,6 @@ body:has(.ll-home) .md-footer-meta__inner {
 .md-typeset .ll-shot img {
   display: block;
   width: 100%;
-}
-
-.md-typeset .ll-caption {
-  display: block;
-  margin-top: 0.8rem;
-  font-family: var(--ll-mono);
-  font-size: 0.52rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ll-ink-faint);
 }
 
 /* CLI terminal -------------------------------------------------------------- */
@@ -1090,11 +1085,12 @@ body:has(.ll-home) .md-footer-meta__inner {
 .md-typeset .ll-close {
   display: flex;
   align-items: center;
-  gap: 1.6rem;
+  justify-content: space-between;
+  gap: 0.85rem 1.6rem;
   flex-wrap: wrap;
   background: var(--ll-ink);
   border-top: 2px solid var(--ll-rule);
-  padding: 2.4rem;
+  padding-block: 2.4rem;
 }
 
 .md-typeset .ll-close h2 {
@@ -1105,16 +1101,8 @@ body:has(.ll-home) .md-footer-meta__inner {
 }
 
 .md-typeset .ll-close > p {
+  min-width: 0;
   margin: 0;
-}
-
-.md-typeset .ll-close > p:has(> code) {
-  margin-left: auto;
-}
-
-.md-typeset .ll-close > p:has(> .ll-colophon) {
-  width: 100%;
-  padding-top: 0.4rem;
 }
 
 /* inline-block keeps the command in one bordered box. As a plain inline
@@ -1124,21 +1112,13 @@ body:has(.ll-home) .md-footer-meta__inner {
   display: inline-block;
   max-width: 100%;
   line-height: 1.6;
+  overflow-wrap: anywhere;
   padding: 0.6rem 0.8rem;
   background: transparent;
   border: 2px solid var(--ll-volt);
   box-shadow: none;
   color: var(--ll-volt);
   font-size: 0.68rem;
-}
-
-.md-typeset .ll-close .ll-colophon {
-  width: 100%;
-  font-family: var(--ll-mono);
-  font-size: 0.52rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: rgba(235, 233, 222, 0.45);
 }
 
 /* Responsive ---------------------------------------------------------------- */
@@ -1152,34 +1132,44 @@ body:has(.ll-home) .md-footer-meta__inner {
 }
 
 @media screen and (max-width: 59.9375em) {
-  .md-typeset .ll-hero,
-  .md-typeset .ll-section,
-  .md-typeset .ll-close {
-    padding-left: 1.2rem;
-    padding-right: 1.2rem;
+  .md-typeset .ll-hero {
+    grid-template-columns: 1fr;
   }
 
-  .md-typeset .ll-install,
-  .md-typeset .ll-note {
-    margin-left: 1.2rem;
-    margin-right: 1.2rem;
-  }
-
-  /* One column: the bolt would sit on top of the headline. */
   .md-typeset .ll-hero::after {
     display: none;
+  }
+}
+
+@media screen and (max-width: 29.9375em) {
+  .md-typeset .ll-hero {
+    padding-block: 2.4rem 4.2rem;
+  }
+
+  .md-typeset .ll-hero h1 {
+    font-size: 1.15rem;
+  }
+
+  .md-typeset .ll-hero .md-button {
+    padding-inline: 0.45rem;
+  }
+
+  .md-typeset .ll-install > .highlight pre > code {
+    padding-right: 1.9rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .md-typeset .ll-modes {
     grid-template-columns: 1fr;
   }
 
-  .md-typeset .ll-close code {
-    margin-left: 0;
+  .md-typeset .ll-matrix th,
+  .md-typeset .ll-matrix td {
+    padding-inline: 0.2rem;
   }
 
-  body:has(.ll-home) .md-footer-meta__inner {
-    padding-left: 0.6rem;
-    padding-right: 0.6rem;
+  .md-typeset .ll-matrix tbody th {
+    white-space: normal;
   }
 }
