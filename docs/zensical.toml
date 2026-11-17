@@ -31,8 +31,13 @@ nav = [
   ] },
 ]
 
+[project.extra]
+generator = false
+
 [project.theme]
 language = "en"
+# Fonts are self-hosted in assets/fonts for reliable loading.
+font = false
 logo = "assets/lakelet-mark.svg"
 favicon = "assets/favicon.png"
 features = [
@@ -42,14 +47,7 @@ features = [
   "content.code.copy",
 ]
 
-# Lakebed is a single theme, so there is no palette table: without one the
-# theme emits no `data-md-color-scheme`, renders no light/dark toggle, and
-# falls back to its own `:root` defaults, which `stylesheets/extra.css`
-# overrides wholesale.
-
-[project.theme.font]
-text = "Inter"
-code = "JetBrains Mono"
+# Lakeside has one light theme; extra.css supplies the shared design tokens.
 
 [project.markdown_extensions.attr_list]
 [project.markdown_extensions.md_in_html]

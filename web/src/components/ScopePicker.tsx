@@ -32,7 +32,7 @@ export function ScopePicker({ tab }: { tab: EditorTab }) {
   }, [tab.id, tab.catalog, tab.schema, schemas.data, setTabScope]);
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="lk-scope flex items-center gap-1">
       <Chip
         icon={Database}
         label={tab.catalog}
@@ -64,12 +64,12 @@ function Chip({ icon: Icon, label, muted, options, onSelect }: ChipProps) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
-        className={`flex h-[26px] items-center gap-1.5 border border-line px-2.5 font-mono text-[12px] outline-none hover:border-line-strong focus-visible:shadow-[0_0_0_2px_var(--lk-accent)] ${
+        className={`flex h-[30px] items-center gap-1.5 rounded border border-line px-2.5 font-mono text-[12px] outline-none hover:border-line-strong focus-visible:shadow-[0_0_0_2px_var(--lk-accent)] ${
           muted ? "text-fg-faint" : "text-fg"
         }`}
       >
         <Icon size={13} className="text-fg-faint" />
-        {label}
+        <span className="lk-scope-label">{label}</span>
         <ChevronDown size={11} className="text-fg-faint" />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

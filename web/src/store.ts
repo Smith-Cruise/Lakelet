@@ -41,7 +41,7 @@ interface AppState {
 }
 
 const TABS_KEY = "lakelet.tabs";
-/** Lakebed has a single theme; drop the key earlier versions wrote. */
+/** The console has a single theme; drop the key earlier versions wrote. */
 const RETIRED_THEME_KEY = "lakelet.theme";
 
 /** Mirrors the server's own defaults, so an unqualified name resolves the

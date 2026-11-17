@@ -41,7 +41,7 @@ export function ColumnHeader(params: IHeaderParams & HeaderContext) {
 
   const name = (
     <Tip label={meta.typeLabel}>
-      <span className="min-w-0 truncate text-[10.5px] font-bold tracking-[.12em] text-fg-muted uppercase" title={meta.name}>
+      <span className="min-w-0 truncate text-[11px] font-medium text-fg-muted" title={meta.name}>
         {meta.name}
       </span>
     </Tip>

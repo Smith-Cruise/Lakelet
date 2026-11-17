@@ -12,30 +12,28 @@ export function StatusBar({ connected, busy }: { connected: boolean; busy: boole
   const scope = tab.schema ? `${tab.catalog}.${tab.schema}` : tab.catalog;
 
   return (
-    <footer className="flex h-6 shrink-0 items-center border-t-2 border-line-strong bg-fg font-mono text-[10.5px] tracking-[.1em] text-page/70">
-      {/* On ink, a saturated red reads at about 2.5:1 as text, so a failure
-          state is a filled chip rather than coloured lettering. */}
+    <footer className="flex h-7 shrink-0 items-center overflow-hidden bg-page font-mono text-[10.5px] text-fg-muted">
       <Cell
         className={
           connected
-            ? "flex items-center gap-2 text-accent"
-            : "flex items-center gap-2 bg-danger-fg text-page"
+            ? "flex items-center gap-2 text-link"
+            : "flex items-center gap-2 bg-danger-bg text-danger-fg"
         }
       >
-        <span aria-hidden className={`h-[7px] w-[7px] ${connected ? "bg-accent" : "bg-page"}`} />
-        {connected ? "CONNECTED" : busy ? "CONNECTING" : "OFFLINE"}
+        <span aria-hidden className={`h-[7px] w-[7px] ${connected ? "bg-link" : "bg-danger-fg"}`} />
+        {connected ? "Connected" : busy ? "Connecting" : "Offline"}
       </Cell>
       <Cell>{window.location.origin.replace(/^https?:/, "grpc:")}</Cell>
       <Cell className="truncate">{scope}</Cell>
       <Outcome />
-      <Cell className="ml-auto border-r-0 border-l border-l-page/15">⌘↵ RUN</Cell>
+      <Cell className="ml-auto border-r-0 border-l border-line">⌘↵ Run</Cell>
     </footer>
   );
 }
 
 function Cell({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <span className={`border-r border-page/15 px-3 leading-[22px] ${className}`}>{children}</span>
+    <span className={`shrink-0 border-r border-line px-3 leading-[18px] ${className}`}>{children}</span>
   );
 }
 
@@ -45,20 +43,20 @@ function Outcome() {
   if (run.status === "running") {
     return (
       <Cell>
-        {run.streamedRows > 0 ? `${run.streamedRows.toLocaleString()} ROWS…` : "RUNNING…"}
+        {run.streamedRows > 0 ? `${run.streamedRows.toLocaleString()} rows…` : "Running…"}
       </Cell>
     );
   }
   if (run.status === "error") {
-    return <Cell className="bg-danger-fg text-page">STATEMENT FAILED</Cell>;
+    return <Cell className="bg-danger-bg text-danger-fg">Statement failed</Cell>;
   }
   if (run.status !== "done" || !run.result) {
     return null;
   }
   return (
     <>
-      <Cell>{run.result.rowCount.toLocaleString()} ROWS</Cell>
-      <Cell>{Math.round(run.result.elapsedMs)} MS</Cell>
+      <Cell>{run.result.rowCount.toLocaleString()} rows</Cell>
+      <Cell>{Math.round(run.result.elapsedMs)} ms</Cell>
     </>
   );
 }

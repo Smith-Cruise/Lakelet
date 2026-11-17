@@ -9,12 +9,14 @@ hide:
 
 <div class="ll-band ll-hero" markdown>
 
+<div class="ll-hero__copy" markdown>
+
 # A lightweight lakehouse query engine.
 
-[Getting Started](getting-started.md){ .md-button .md-button--primary }
-[View on GitHub](https://github.com/Smith-Cruise/Lakelet){ .md-button }
+<p class="ll-hero__lead">Explore Iceberg, Delta Lake, Paimon and Hive with SQL. From your terminal or your browser.</p>
 
-</div>
+[<span class="ll-button-face">Getting started</span>](getting-started.md){ .md-button .md-button--primary }
+[<span class="ll-button-face">View on GitHub</span>](https://github.com/Smith-Cruise/Lakelet){ .md-button }
 
 <div class="ll-install" markdown>
 
@@ -27,11 +29,15 @@ curl -fsSL https://lakelet.dev/install.sh | sh
 <p class="ll-note">The shell installer supports Linux and macOS. For Windows, grab a build from
 <a href="https://github.com/Smith-Cruise/Lakelet/releases/tag/nightly">releases/nightly</a>.</p>
 
+</div>
+
+<img class="ll-hero__art" src="assets/lake-query.svg" width="560" height="460" alt="" aria-hidden="true">
+
+</div>
+
 <div class="ll-overview" markdown>
 
 <div class="ll-section" markdown>
-
-<div class="ll-eyebrow">Interfaces</div>
 
 ## Two ways to query
 
@@ -53,7 +59,7 @@ curl -fsSL https://lakelet.dev/install.sh | sh
 
 </div>
 
-Start Arrow Flight SQL with built-in web console.
+Explore catalogs and run SQL in the built-in web console.
 
 [See the web console →](#query-from-the-browser){ .ll-mode__go }
 
@@ -73,7 +79,7 @@ Start Arrow Flight SQL with built-in web console.
 
 </div>
 
-Query with terminal.
+Run queries, explore tables and execute scripts from your terminal.
 
 [See terminal →](#query-from-the-cli){ .ll-mode__go }
 
@@ -85,11 +91,9 @@ Query with terminal.
 
 <div class="ll-section" markdown>
 
-<div class="ll-eyebrow">Coverage</div>
-
 ## One engine across your lake
 
-<p class="ll-sub">Lakelet support different kinds of open data lake format.</p>
+<p class="ll-sub">Query open table formats through the catalogs you already use.</p>
 
 <div class="ll-matrix" markdown>
 
@@ -100,31 +104,31 @@ Query with terminal.
 <tbody>
 <tr>
   <th><img src="assets/logos/hive.svg" alt=""> Hive Metastore</th>
-  <td><span class="ll-yes" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
-  <td><span class="ll-beta" title="Experimental">β</span></td>
-  <td><span class="ll-yes" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
-  <td><span class="ll-yes" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
+  <td><span class="ll-yes" role="img" aria-label="Supported" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
+  <td><span class="ll-beta" role="img" aria-label="Experimental" title="Experimental">β</span></td>
+  <td><span class="ll-yes" role="img" aria-label="Supported" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
+  <td><span class="ll-yes" role="img" aria-label="Supported" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
 </tr>
 <tr>
   <th><img src="assets/logos/aws-glue.png" alt=""> AWS Glue</th>
-  <td><span class="ll-yes" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
-  <td><span class="ll-beta" title="Experimental">β</span></td>
-  <td><span class="ll-yes" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
-  <td><span class="ll-yes" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
+  <td><span class="ll-yes" role="img" aria-label="Supported" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
+  <td><span class="ll-beta" role="img" aria-label="Experimental" title="Experimental">β</span></td>
+  <td><span class="ll-yes" role="img" aria-label="Supported" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
+  <td><span class="ll-yes" role="img" aria-label="Supported" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
 </tr>
 <tr>
   <th><img src="assets/logos/iceberg-icon.png" alt=""> Iceberg REST</th>
-  <td><span class="ll-yes" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
-  <td><span class="ll-no">—</span></td>
-  <td><span class="ll-no">—</span></td>
-  <td><span class="ll-no">—</span></td>
+  <td><span class="ll-yes" role="img" aria-label="Supported" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
+  <td><span class="ll-no" role="img" aria-label="Not served by this catalog">—</span></td>
+  <td><span class="ll-no" role="img" aria-label="Not served by this catalog">—</span></td>
+  <td><span class="ll-no" role="img" aria-label="Not served by this catalog">—</span></td>
 </tr>
 <tr>
   <th><img src="assets/logos/paimon-icon.svg" alt=""> Paimon FileSystem</th>
-  <td><span class="ll-no">—</span></td>
-  <td><span class="ll-no">—</span></td>
-  <td><span class="ll-yes" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
-  <td><span class="ll-no">—</span></td>
+  <td><span class="ll-no" role="img" aria-label="Not served by this catalog">—</span></td>
+  <td><span class="ll-no" role="img" aria-label="Not served by this catalog">—</span></td>
+  <td><span class="ll-yes" role="img" aria-label="Supported" title="Supported"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"></polyline></svg></span></td>
+  <td><span class="ll-no" role="img" aria-label="Not served by this catalog">—</span></td>
 </tr>
 </tbody>
 </table>
@@ -141,13 +145,11 @@ Query with terminal.
 
 </div>
 
-<div class="ll-section" markdown>
+<div class="ll-section ll-console-section" markdown>
 
 <div class="ll-showcase__header" markdown>
 
 <div markdown>
-
-<div class="ll-eyebrow">Console</div>
 
 ## Query from the browser
 
@@ -170,8 +172,6 @@ Query with terminal.
 <div class="ll-showcase__header" markdown>
 
 <div markdown>
-
-<div class="ll-eyebrow">Terminal</div>
 
 ## Query from the CLI
 

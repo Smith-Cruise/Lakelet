@@ -28,44 +28,43 @@
     U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* ---------------------------------------------------------------------------
- * Lakebed: one theme, no dark mode.
- *
- * Near-black ink on warm paper, square corners, hard rules, and a single
- * high-voltage accent. The same values drive the docs site, so a change here
- * belongs in `docs/src/stylesheets/extra.css` too.
- *
- * `--lk-accent` is a FILL and MARK colour only. At 2:1 against paper it is
- * unreadable as text, so anything sitting on it uses `--lk-accent-contrast`.
- * ------------------------------------------------------------------------- */
+/* Lakeside: warm paper, lake-blue actions and a small sun-yellow highlight.
+   Keep these tokens aligned with docs/src/stylesheets/extra.css and DESIGN.md.
+   Pale accents are fills; text and keyboard focus use ink or deep blue. */
 :root {
-  --lk-page: #ebe9de;
-  --lk-panel: #f7f6ef;
+  --lk-page: #f5f1e9;
+  --lk-panel: #fffcf7;
   --lk-panel-alt: #ffffff;
-  --lk-sub: #e4e2d6;
-  --lk-border: rgba(20, 23, 15, 0.14);
-  --lk-border-soft: rgba(20, 23, 15, 0.07);
-  --lk-border-strong: #14170f;
-  --lk-fg: #14170f;
-  --lk-fg-muted: #5a5e4e;
-  --lk-fg-faint: #8c907e;
-  --lk-accent: #c8f135;
-  --lk-accent-deep: #a7ce1c;
-  --lk-accent-bg: #edf9c4;
-  --lk-accent-contrast: #14170f;
-  --lk-hover: rgba(20, 23, 15, 0.06);
-  --lk-danger-bg: #f7ded9;
-  --lk-danger-fg: #c4392b;
-  --lk-success-bg: #edf9c4;
-  --lk-success-fg: #14170f;
-  --lk-warning-bg: #f6e9c9;
-  --lk-warning-fg: #b8791a;
-  --lk-shadow: 4px 4px 0 rgba(20, 23, 15, 0.16);
+  --lk-sub: #ece8df;
+  --lk-border: rgba(48, 56, 58, 0.18);
+  --lk-border-soft: rgba(48, 56, 58, 0.08);
+  --lk-border-strong: #30383a;
+  --lk-fg: #30383a;
+  --lk-fg-muted: #5b686a;
+  --lk-fg-faint: #627174;
+  --lk-accent: #95d5ee;
+  --lk-accent-deep: #78c4e2;
+  --lk-accent-bg: #e5f4fa;
+  --lk-accent-contrast: #30383a;
+  --lk-link: #24657c;
+  --lk-sun: #f3cf65;
+  --lk-sun-bg: #fff3ce;
+  --lk-hover: rgba(48, 56, 58, 0.06);
+  --lk-danger-bg: #fce9e4;
+  --lk-danger-fg: #a6362b;
+  --lk-success-bg: #e5f4fa;
+  --lk-success-fg: #30383a;
+  --lk-warning-bg: #fff3ce;
+  --lk-warning-fg: #805a12;
+  --lk-shadow: 3px 3px 0 var(--lk-border-strong);
   --lk-shadow-press: 2px 2px 0 var(--lk-border-strong);
-  --lk-syntax-keyword: #b5451f;
-  --lk-syntax-string: #3d7a2e;
-  --lk-syntax-number: #8a6a1f;
-  --lk-syntax-comment: #8c907e;
+  --lk-button-lift: 7px;
+  --lk-button-duration: 120ms;
+  --lk-button-press-duration: 30ms;
+  --lk-syntax-keyword: #285e88;
+  --lk-syntax-string: #39704e;
+  --lk-syntax-number: #95602c;
+  --lk-syntax-comment: #627174;
   --lk-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", sans-serif;
   --lk-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas,
@@ -88,6 +87,9 @@
   --color-accent-deep: var(--lk-accent-deep);
   --color-accent-bg: var(--lk-accent-bg);
   --color-accent-contrast: var(--lk-accent-contrast);
+  --color-link: var(--lk-link);
+  --color-sun: var(--lk-sun);
+  --color-sun-bg: var(--lk-sun-bg);
   --color-hover: var(--lk-hover);
   --color-danger-bg: var(--lk-danger-bg);
   --color-danger-fg: var(--lk-danger-fg);
@@ -101,17 +103,16 @@
   --font-sans: var(--lk-sans);
   --font-mono: var(--lk-mono);
 
-  /* Nothing in Lakebed is rounded. Flattening the scale here saves editing
-     every `rounded-*` in the components; only arbitrary values need changing. */
-  --radius: 0px;
-  --radius-xs: 0px;
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --radius-xl: 0px;
-  --radius-2xl: 0px;
-  --radius-3xl: 0px;
-  --radius-4xl: 0px;
+  /* A small corner softens controls; data grids and pane joins stay square. */
+  --radius: 2px;
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --radius-2xl: 2px;
+  --radius-3xl: 2px;
+  --radius-4xl: 2px;
 }
 
 html,
@@ -148,4 +149,56 @@ body {
 .ag-cell.lk-null {
   color: var(--lk-fg-faint);
   font-style: italic;
+}
+
+/* The console is a single working sheet on a paper canvas. */
+.lk-shell { min-width: 960px; }
+.lk-workspace {
+  margin: 0 12px;
+  border: 1px solid var(--lk-border-strong);
+  background: var(--lk-panel-alt);
+}
+.lk-shell button:not(:disabled), .lk-shell a { cursor: pointer; }
+.lk-shell button:focus-visible, .lk-shell a:focus-visible,
+.lk-shell input:focus-visible, [data-radix-menu-content] :focus-visible {
+  outline: 2px solid var(--lk-link);
+  outline-offset: 2px;
+}
+.lk-shell ::selection { background: var(--lk-accent-bg); }
+.lk-shell .cm-content:focus-visible { outline: none; }
+.lk-scope { min-width: 0; }
+.lk-scope > button { min-width: 0; max-width: 200px; }
+.lk-scope svg { flex-shrink: 0; }
+.lk-scope-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A fixed base keeps the hover target stable as the button face lifts. */
+.lk-button-base {
+  display: inline-flex;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background: var(--lk-border-strong);
+}
+.lk-button-face { transition: transform var(--lk-button-duration) ease-in-out; }
+@media (hover: hover) and (pointer: fine) {
+  .lk-button-base:hover:not(:disabled) .lk-button-face {
+    transform: translate(var(--lk-button-lift), calc(-1 * var(--lk-button-lift)));
+  }
+}
+.lk-button-base:focus-visible .lk-button-face { transform: translate(var(--lk-button-lift), calc(-1 * var(--lk-button-lift))); }
+.lk-button-base:active:not(:disabled) .lk-button-face {
+  transform: none;
+  transition-duration: var(--lk-button-press-duration);
+  background: var(--lk-accent-deep);
+}
+.lk-button-base:disabled { cursor: default; }
+.lk-button-base:disabled .lk-button-face { background: var(--lk-sub); color: var(--lk-fg-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lk-button-base:hover:not(:disabled) .lk-button-face,
+  .lk-button-base:focus-visible .lk-button-face { transform: none; background: var(--lk-accent-deep); }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

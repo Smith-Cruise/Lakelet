@@ -1,4 +1,4 @@
-import { CircleAlert, Download, LoaderCircle } from "lucide-react";
+import { CircleAlert, Download, LoaderCircle, Waves } from "lucide-react";
 import { TableView } from "./TableView";
 import { downloadCsv } from "../lib/csv";
 import { useApp } from "../store";
@@ -10,8 +10,8 @@ export function ResultPanel() {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <div className="flex h-[30px] shrink-0 items-center gap-3 border-y border-line-strong bg-page px-3">
-        <h2 className="m-0 font-mono text-[10px] font-bold tracking-[.16em] text-fg-faint uppercase">
+      <div className="flex h-[38px] shrink-0 items-center gap-3 border-b border-line bg-accent-bg px-3">
+        <h2 className="m-0 text-[12px] font-semibold text-fg">
           Results
         </h2>
         <div className="flex-1" />
@@ -38,12 +38,13 @@ export function ResultPanel() {
           <TableView result={result} />
         ) : (
           <div className="flex h-full items-center justify-center bg-panel-alt">
-            <div className="border border-line px-5 py-4 text-center">
-              <p className="m-0 font-mono text-[11px] font-bold tracking-[.16em] text-fg-muted uppercase">
-                {run.status === "running" ? "Running…" : "No result yet"}
+            <div className="max-w-sm px-5 py-4 text-center">
+              <Waves size={36} strokeWidth={1.25} className="mx-auto mb-4 text-link" aria-hidden />
+              <p className="m-0 font-mono text-[15px] text-fg">
+                {run.status === "running" ? "Running…" : "Ready when you are"}
               </p>
               {run.status === "running" ? null : (
-                <p className="m-0 mt-2 font-mono text-[11px] text-fg-faint">
+                <p className="m-0 mt-2 text-[12px] leading-relaxed text-fg-muted">
                   <kbd className="border border-line bg-sub px-1.5 py-0.5 font-mono">⌘↵</kbd> runs the
                   statement at the cursor
                 </p>
