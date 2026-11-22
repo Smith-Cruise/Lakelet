@@ -8,7 +8,7 @@ successor to MkDocs and Material for MkDocs by the same authors.
 
 ## Local development
 
-Requires Python 3.10 or newer. From this directory (`docs/`):
+Requires Python 3.11 or newer. From this directory (`docs/`):
 
 ```bash
 pip install -r requirements.txt
@@ -24,7 +24,9 @@ To build the static site without serving it:
 zensical build
 ```
 
-The output goes to `site/` (gitignored).
+The output goes to `site/` (gitignored). Open `/llms.txt` for links to the
+Markdown version of each page, or `/llms-full.txt` for all pages in one file.
+Each page also has a **Copy as Markdown** action.
 
 ## Deployment
 

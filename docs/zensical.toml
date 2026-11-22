@@ -44,8 +44,17 @@ features = [
   "navigation.instant",
   "navigation.tabs",
   "navigation.footer",
+  "content.action.copy",
   "content.code.copy",
 ]
+
+[project.plugins.llmstxt]
+full_output = "llms-full.txt"
+
+[project.plugins.llmstxt.sections]
+Guides = ["index.md", "getting-started.md", "server.md", "storage.md"]
+Catalogs = ["catalogs/*.md"]
+"Table Formats" = ["table-formats/*.md"]
 
 # Lakeside has one light theme; extra.css supplies the shared design tokens.
 

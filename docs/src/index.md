@@ -11,7 +11,7 @@ hide:
 
 <div class="ll-hero__copy" markdown>
 
-# A lightweight lakehouse query engine.
+# A Lightweight Lakehouse Query Engine
 
 <p class="ll-hero__lead">Explore Iceberg, Delta Lake, Paimon and Hive with SQL. From your terminal or your browser.</p>
 
@@ -179,7 +179,7 @@ Run queries, explore tables and execute scripts from your terminal.
 
 </div>
 
-[CLI quick start →](getting-started.md#start-lakelet-cli){ .ll-go }
+[CLI quick start →](getting-started.md#lakelet-cli){ .ll-go }
 
 </div>
 

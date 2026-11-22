@@ -4,13 +4,14 @@ icon: lucide/rocket
 
 # Getting started
 
-Lakelet's philosophy is to be simple, fast, and be easy to use.
+Install Lakelet, configure a catalog, and run your first SQL query.
 
-## Install binary
+If you use an AI agent, give it [llms.txt](https://lakelet.dev/llms.txt).
+It lists the Markdown version of each guide so your agent can read the pages it needs.
 
-The quickest way is the installation script, which downloads the latest nightly
-binary into the current directory as `./lakelet`, along with the example
-configuration `config_demo.toml`:
+## Install prebuilt binary
+
+Run the installation script to download the latest nightly build.
 
 ```bash
 curl -fsSL https://lakelet.dev/install.sh | sh
@@ -25,8 +26,7 @@ also the way to get the Windows build
 
 ## Build from source
 
-Lakelet requires a Rust toolchain. Build the release binary from the repository
-root:
+Lakelet requires a Rust toolchain. Build the release binary from the git repository:
 
 ```bash
 git clone https://github.com/Smith-Cruise/Lakelet.git
@@ -35,7 +35,7 @@ cargo build --release
 cp target/release/lakelet .
 ```
 
-To include the web UI, build it first (needs Node.js and
+To include the web UI, build `/web` first (needs Node.js and
 [pnpm](https://pnpm.io/)):
 
 ```bash
@@ -64,18 +64,18 @@ A configuration file can contain the following top-level sections:
 | `[[catalog.tpch]]` | No | Generated TPC-H data. |
 | `[[catalog.tpcds]]` | No | Generated TPC-DS data. |
 
-At least one external catalog is needed to
-query external tables. The built-in `internal` catalog is always available,
+The built-in `internal` catalog is always available, 
 even when no external catalog is configured.
 
-To try Lakelet without an external data source, save this as `config.toml`:
+Try Lakelet without an external data source, you can use TPCH catalog.
+Config is:
 
 ```toml
 [[catalog.tpch]]
 name = "tpch"
 ```
 
-Start the CLI and query the generated data:
+Start the CLI and query the TPCH data:
 
 ```bash
 ./lakelet --config config.toml --command "SELECT * FROM tpch.sf1.nation LIMIT 10;"
@@ -104,7 +104,7 @@ s3-storage = { region = "us-east-1", endpoint = "http://127.0.0.1:9000", access-
 See [Server](server.md), [Catalog](catalogs/index.md), and [Storage](storage.md) for
 the complete configuration reference.
 
-## Start Lakelet cli
+## Lakelet CLI
 
 Pass the configuration file with `--config`:
 
@@ -114,7 +114,7 @@ Pass the configuration file with `--config`:
 
 The configuration file is required for normal execution.
 
-You can get more help by `./lakelet --help`.
+Run `./lakelet --help` to list the available options.
 
 Enter statements ending with `;`, and use `quit;` to exit.
 
@@ -135,7 +135,7 @@ in the same session.
 
 ## Start the server
 
-Instead of the interactive REPL, Lakelet can run as a server that speaks
+Instead of the interactive REPL, Lakelet can run as a server that serve
 [Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html) (including
 ADBC) and hosts a web UI, both on the same port:
 
@@ -153,13 +153,14 @@ The port is `server-port` under `[server]` (default 32010).
 
 ### Web UI
 
-Open `http://localhost:32010/` in a browser, then just feeling it.
+Open `http://localhost:32010/` in your browser.
 
 ### Flight SQL
 
 Each Flight SQL query uses a fresh session. `USE` and `SET` changes do not carry
-over to the next query. Use fully qualified table names or the request headers
-shown below to choose a default catalog and schema.
+over to the next query. 
+
+Better to use fully qualified table names or set default catalog/schema name in the request headers.
 
 ### Connect with ADBC (Python)
 
@@ -181,7 +182,7 @@ with flight_sql.connect("grpc://127.0.0.1:32010", autocommit=True) as conn:
 
 Parameter binding (`cur.execute(sql, params)`) is not supported.
 
-Every request may carry `default-catalog` and/or `default-schema` gRPC
+Every request may carry `default-catalog` and/or `default-schema` in gRPC
 metadata headers.
 
 ```python
