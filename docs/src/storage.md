@@ -11,14 +11,13 @@ credentials needed to access table data.
 | --- | --- |
 | `s3://`, `s3a://` | `s3-storage` |
 | `oss://` | `oss-storage` |
-| `hdfs://` | No storage block; the NameNode authority comes from the location. |
+| `hdfs://` | None |
 
-Storage configuration is optional. Without a block for a location scheme,
-Lakelet builds that backend with no explicit credentials, which leaves
-authentication to the backend's own chain: environment variables, a shared
-profile, or instance metadata. A configured block always wins over that chain.
+Storage configuration is optional. Without storage credentials in config,
+Lakelet will authenticate with `OpenDAL`'s default credential chain:
+environment variables, a shared profile, or instance metadata.
 
-## AWS S3
+## AWS S3 / S3-compatible storge
 
 Configure S3-compatible storage with the `s3-storage` inline table.
 
@@ -32,14 +31,14 @@ Configure S3-compatible storage with the `s3-storage` inline table.
 | `path-style-access` | Boolean | No | `false` | Uses path-style requests when `true`; otherwise uses virtual-hosted-style requests. |
 
 ```toml
-# Minio demo
+# Minio/Rust-FS demo
 [[catalog.hms]]
 name = "hms"
 metastore-uri = "127.0.0.1:9083"
 s3-storage = { region = "us-east-1", endpoint = "http://127.0.0.1:9000", access-key = "admin", secret-key = "password", path-style-access = true }
 ```
 
-Self-hosted S3-compatible services(like Minio) usually also set `path-style-access = true`.
+Self-hosted S3-compatible services(like MinIO/Rust-FS) usually set `path-style-access = true`.
 
 ## Aliyun OSS
 
@@ -51,7 +50,7 @@ role.
 
 | Option | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `endpoint` | String | Yes | None | OSS endpoint, for example `https://oss-cn-hangzhou.aliyuncs.com`. Must not include the bucket name. It has no environment fallback, so an `oss://` location without one fails. |
+| `endpoint` | String | Yes | None | OSS endpoint, for example `https://oss-cn-hangzhou.aliyuncs.com`. Must not include the bucket name. It has no environment fallback. |
 | `access-key` | String | No | None | Static access key ID. |
 | `secret-key` | String | No | None | Static access key secret. |
 | `path-style-access` | Boolean | No | `false` | Uses path-style requests when `true`; otherwise uses virtual-hosted-style requests. |
@@ -68,4 +67,4 @@ oss-storage = { endpoint = "https://oss-cn-hangzhou.aliyuncs.com", access-key = 
 
 Don't need to configure anything.
 
-Kerberos is not supported yet.
+Kerberos is not supported.

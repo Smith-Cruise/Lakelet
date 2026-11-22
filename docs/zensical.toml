@@ -28,6 +28,21 @@ nav = [
       { "Delta Lake" = "table-formats/delta-lake.md" },
       { "Paimon" = "table-formats/paimon.md" },
     ] },
+    { "SQL" = [
+      { "CALL" = "sql/call.md" },
+      { "CREATE SCHEMA" = "sql/create-schema.md" },
+      { "CREATE TABLE" = "sql/create-table.md" },
+      { "DESCRIBE" = "sql/describe.md" },
+      { "DROP SCHEMA" = "sql/drop-schema.md" },
+      { "DROP TABLE" = "sql/drop-table.md" },
+      { "INSERT" = "sql/insert.md" },
+      { "SHOW CATALOGS" = "sql/show-catalogs.md" },
+      { "SHOW CREATE TABLE" = "sql/show-create-table.md" },
+      { "SHOW SCHEMAS" = "sql/show-schemas.md" },
+      { "SHOW TABLES" = "sql/show-tables.md" },
+      { "SHOW VARIABLES" = "sql/show-variables.md" },
+      { "USE" = "sql/use.md" },
+    ] },
   ] },
 ]
 
@@ -55,6 +70,7 @@ full_output = "llms-full.txt"
 Guides = ["index.md", "getting-started.md", "server.md", "storage.md"]
 Catalogs = ["catalogs/*.md"]
 "Table Formats" = ["table-formats/*.md"]
+SQL = ["sql/*.md"]
 
 # Lakeside has one light theme; extra.css supplies the shared design tokens.
 

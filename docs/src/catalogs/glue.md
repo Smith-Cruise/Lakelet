@@ -14,10 +14,6 @@ Use `[[catalog.glue]]` to connect to the AWS Glue Data Catalog.
 | `aws-glue-secret-key` | String | No | AWS SDK default credential chain | Static secret key used for Glue requests. |
 | `aws-glue-endpoint` | String | No | AWS SDK default | Custom endpoint URL used for Glue API requests. |
 
-Static Glue credentials are used only when both `aws-glue-access-key` and
-`aws-glue-secret-key` are present. If either value is missing, the AWS SDK
-default credential chain and region resolution are used.
-
 ```toml
 [[catalog.glue]]
 name = "glue_prod"

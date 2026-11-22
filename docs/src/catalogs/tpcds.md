@@ -4,8 +4,8 @@ icon: lucide/database
 
 # TPC-DS
 
-Use `[[catalog.tpcds]]` to query generated TPC-DS data without an external
-metastore or data files. Data is generated when queried; the catalog is read-only.
+Use `[[catalog.tpcds]]` to query generated TPC-DS data. 
+Data is generated when queried; the catalog is read-only.
 
 ## Configuration
 
@@ -14,9 +14,9 @@ metastore or data files. Data is generated when queried; the catalog is read-onl
 name = "tpcds"
 ```
 
-| Option | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `name` | String | Yes | None | Unique catalog name used in SQL. |
+| Option | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | String | Yes | Unique catalog name used in SQL. |
 
 ## Schemas
 
@@ -29,18 +29,6 @@ The schema name selects the scale factor.
 | `sf100` | 100 |
 | `sf300` | 300 |
 | `sf1000` | 1000 |
-
-## Query the data
-
-```sql
-SHOW SCHEMAS FROM tpcds;
-SHOW TABLES FROM tpcds.sf1;
-DESC tpcds.sf1.date_dim;
-SELECT d_date_sk, d_date FROM tpcds.sf1.date_dim LIMIT 10;
-
-USE tpcds.sf1;
-SELECT * FROM income_band LIMIT 10;
-```
 
 ## Tables
 

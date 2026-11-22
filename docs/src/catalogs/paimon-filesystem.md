@@ -7,12 +7,12 @@ icon: lucide/folder-tree
 Use `[[catalog.paimon-fs]]` to connect to a
 [Paimon filesystem catalog](https://paimon.apache.org/docs/master/concepts/catalog/):
 a warehouse directory that stores all metadata directly on the filesystem,
-without a metastore service. This catalog serves Paimon tables only.
+without a metastore service.
 
-| Option | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `name` | String | Yes | None | Unique catalog name used by Lakelet. |
-| `warehouse` | String | Yes | None | Warehouse root path, e.g. `s3://bucket/warehouse` or `file:///data/warehouse`. |
+| Option | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | String | Yes | Unique catalog name used by Lakelet. |
+| `warehouse` | String | Yes | Warehouse root path, e.g. `s3://bucket/warehouse` or `file:///data/warehouse`. |
 
 ```toml
 [[catalog.paimon-fs]]
@@ -21,8 +21,7 @@ warehouse = "s3://bucket/warehouse"
 s3-storage = { region = "us-east-1", access-key = "access-key", secret-key = "secret-key" }
 ```
 
-A local warehouse uses a `file://` URI and needs no storage block at all
-(a bare absolute path is also accepted):
+A local warehouse uses a `file://` URI:
 
 ```toml
 [[catalog.paimon-fs]]
