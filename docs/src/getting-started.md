@@ -2,14 +2,14 @@
 icon: lucide/rocket
 ---
 
-# Getting started
+# Getting Started
 
 Install Lakelet, configure a catalog, and run your first SQL query.
 
 If you use an AI agent, give it [llms.txt](https://lakelet.dev/llms.txt).
 It lists the Markdown version of each guide so your agent can read the pages it needs.
 
-## Install prebuilt binary
+## Install the Prebuilt Binary { #install-prebuilt-binary }
 
 Run the installation script to download the latest nightly build.
 
@@ -24,7 +24,7 @@ Alternatively, download an archive directly from
 also the way to get the Windows build
 (`lakelet-nightly-x86_64-pc-windows-msvc.zip`).
 
-## Build from source
+## Build from Source
 
 Lakelet requires a Rust toolchain. Build the release binary from the git repository:
 
@@ -67,15 +67,15 @@ A configuration file can contain the following top-level sections:
 The built-in `internal` catalog is always available, 
 even when no external catalog is configured.
 
-Try Lakelet without an external data source, you can use TPCH catalog.
-Config is:
+To try Lakelet without an external data source, add the TPC-H catalog to your
+configuration.
 
 ```toml
 [[catalog.tpch]]
 name = "tpch"
 ```
 
-Start the CLI and query the TPCH data:
+Start the CLI and query the TPC-H data:
 
 ```bash
 ./lakelet --config config.toml --command "SELECT * FROM tpch.sf1.nation LIMIT 10;"
@@ -133,11 +133,11 @@ To run one statement or a SQL file and exit:
 A file can contain multiple statements separated by semicolons; they run in order
 in the same session.
 
-## Start the server
+## Start the Server
 
-Instead of the interactive REPL, Lakelet can run as a server that serve
-[Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html) (including
-ADBC) and hosts a web UI, both on the same port:
+Start Lakelet with `--server` to use the web UI or connect through
+[Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html),
+including from an ADBC client. Both use the same port.
 
 ```bash
 lakelet --config config.toml --server
@@ -160,7 +160,8 @@ Open `http://localhost:32010/` in your browser.
 Each Flight SQL query uses a fresh session. `USE` and `SET` changes do not carry
 over to the next query. 
 
-Better to use fully qualified table names or set default catalog/schema name in the request headers.
+Use fully qualified table names, or set `default-catalog` and `default-schema`
+as needed in the request headers.
 
 ### Connect with ADBC (Python)
 

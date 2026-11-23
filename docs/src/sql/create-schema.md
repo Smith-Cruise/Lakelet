@@ -12,7 +12,7 @@ Create a schema in the current catalog, or use `catalog.schema` to select
 another catalog. If the schema already exists, the statement fails unless
 you specify `IF NOT EXISTS`.
 
-## Supported catalogs
+## Supported Catalogs
 
 - [Paimon FileSystem](../catalogs/paimon-filesystem.md)
 

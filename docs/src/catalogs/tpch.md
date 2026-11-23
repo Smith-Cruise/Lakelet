@@ -4,8 +4,8 @@ icon: lucide/database
 
 # TPC-H
 
-Use `[[catalog.tpch]]` to query generated TPC-H data. 
-Data is generated when queried; the catalog is read-only.
+Configure `[[catalog.tpch]]` to query read-only TPC-H tables. Lakelet
+generates the data on demand.
 
 ## Configuration
 

@@ -115,7 +115,7 @@ Two ways to query                  Server / CLI entry points
 One engine across your lake        Catalog × format matrix
 ---------------------------------------------------------------
 Query from the browser             Guide
-[ Real console screenshot                                    ]
+[ Native console demo: catalog, SQL examples, result grid     ]
 ---------------------------------------------------------------
 Query from the CLI                 Guide
 [ Explore | Query | Script                                   ]
@@ -161,14 +161,34 @@ The editor and grid read CSS variables in `editor/theme.ts` and `TableView.tsx`.
 Tailwind v4's `@theme inline` maps shared tokens to utilities. Use those utilities
 instead of raw palette classes. The embedded console's fonts must work offline.
 
+### Homepage console demo
+
+Render the console showcase with HTML, shared `--ll-*` tokens and a little delegated
+JavaScript. Keep the actual console's fonts, panel colours, row heights and button
+motion. Text stays selectable at its native size. The desktop layout scrolls locally
+below 960px; do not shrink the entire preview or add a mobile console layout.
+Reset the documentation theme's closed-summary margins and table-cell alignment
+inside the demo: collapsed tree rows stay 30px apart, and grid text is vertically
+centred. Match the console's 36px column headers, 52px row-number column and 160px
+minimum data columns. Column types appear on hover, not beside the column names.
+
+Show a complete SQL example and its matching result on first paint. Example tabs
+switch both together; the sample catalog expands using native disclosure controls.
+Run shows preloaded results, Copy SQL copies the displayed statement, and the Demo
+badge and example labels distinguish this from a connected session. Use consistent
+TPC-H nation/region data; never invent query timings, connection state or loading
+delays. Keep the markup readable without fetching data or loading the React app.
+
 ## Verification and maintenance
 
 When changing colour, font or geometry, update `web/src/styles.css`,
-`docs/src/stylesheets/extra.css` and this file together. Retake
-`docs/src/assets/console.png` when the console changes; it must show the real UI.
+`docs/src/stylesheets/extra.css` and this file together. When the console changes,
+keep the native homepage demo's appearance aligned with it.
 
 Verify docs at desktop and phone widths, and the console at desktop widths. Check
 keyboard focus, navigation/search, CLI tabs,
 catalog expansion, SQL execution, error feedback and result sorting. Colour never
 carries state alone. Run web typecheck/build and docs build in the selected Python
 environment. Follow `AGENTS.md` for PR checks.
+For the homepage demo, also verify example switching, catalog disclosures, Copy SQL,
+Run feedback, local scrolling and interactions after navigating away and back.

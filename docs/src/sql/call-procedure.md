@@ -12,7 +12,7 @@ Run a procedure for a table format. Pass the table name as a single-quoted
 string using the named argument `table =>`. Use `'catalog.schema.table'` to
 identify the table explicitly. Shorter names use the current catalog and schema.
 
-## Supported catalogs
+## Supported Catalogs
 
 - [Paimon FileSystem](../catalogs/paimon-filesystem.md)
 

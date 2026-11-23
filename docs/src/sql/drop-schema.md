@@ -15,7 +15,7 @@ requirement explicit. `CASCADE` drops the schema and its tables.
 `IF EXISTS` skips a missing schema. An existing, nonempty schema still
 requires `CASCADE`.
 
-## Supported catalogs
+## Supported Catalogs
 
 - [Paimon FileSystem](../catalogs/paimon-filesystem.md) — `CASCADE` also deletes the data in those tables.
 

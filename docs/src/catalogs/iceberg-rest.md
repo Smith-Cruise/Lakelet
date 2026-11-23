@@ -11,7 +11,7 @@ catalog. Lakelet reuses `iceberg-rust` for REST requests and reads.
 | --- | --- | --- | --- |
 | `name` | String | Yes | Unique Lakelet catalog name. |
 | `uri` | String | Yes | HTTP(S) REST catalog base URL. |
-| `warehouse` | String | No | Warehouse identifiere. |
+| `warehouse` | String | No | Warehouse identifier. |
 | `token` | String | No | Bearer token for authenticating requests to the REST service. |
 
 
@@ -26,7 +26,8 @@ warehouse = "warehouse_name"
 token = "<REST catalog access token>"
 ```
 
-With explicit object storage credentials(it will override the vended credentials)
+To override credentials supplied by the REST catalog for S3, set `s3-storage`
+in the catalog configuration.
 
 ```toml
 [[catalog.iceberg-rest]]
@@ -36,7 +37,7 @@ warehouse = "warehouse_name"
 s3-storage = { region = "us-east-1", access-key = "<access key>", secret-key = "<secret key>" }
 ```
 
-## Storage credentials
+## Storage Credentials
 
 Lakelet resolves credentials per location scheme, in this order:
 

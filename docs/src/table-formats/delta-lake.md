@@ -4,7 +4,7 @@ icon: lucide/triangle
 
 # Delta Lake
 
-!!! warning "Experimental support"
+!!! warning "Experimental Support"
 
 An HMS or Glue table is treated as Delta Lake when its properties contain
 `spark.sql.sources.provider` with value `DELTA`, case-insensitively. Lakelet

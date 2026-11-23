@@ -1,7 +1,7 @@
 # Lakelet
 
-Lakelet is a single-binary SQL engine for LakeHouse tables. No Spark cluster is
-needed, query data lake tables directly with SQL.
+Lakelet queries lakehouse tables with SQL. It runs as a single binary without a
+Spark cluster.
 
 ```sql
 show catalogs;

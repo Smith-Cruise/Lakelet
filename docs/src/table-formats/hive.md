@@ -22,7 +22,7 @@ partition locations.
 
 These table and SerDe properties are honored:
 
-| Property |  Ddefault | Behavior |
+| Property | Default | Behavior |
 | --- |---| --- |
 | `field.delim`, `serialization.format` | `\001`| Field delimiter |
 | `serialization.null.format` | `\N`  | Text that reads as `NULL` |
@@ -45,7 +45,7 @@ Hive ACID tables are not supported.
 
 ### Avro
 
-Everything is good.
+Lakelet reads Hive Avro tables that use `AvroSerDe`.
 
 ## Data Types
 

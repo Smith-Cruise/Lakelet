@@ -4,8 +4,8 @@ icon: lucide/database
 
 # TPC-DS
 
-Use `[[catalog.tpcds]]` to query generated TPC-DS data. 
-Data is generated when queried; the catalog is read-only.
+Configure `[[catalog.tpcds]]` to query read-only TPC-DS tables. Lakelet
+generates the data on demand.
 
 ## Configuration
 

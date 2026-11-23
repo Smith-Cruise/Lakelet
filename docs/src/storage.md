@@ -17,7 +17,7 @@ Storage configuration is optional. Without storage credentials in config,
 Lakelet will authenticate with `OpenDAL`'s default credential chain:
 environment variables, a shared profile, or instance metadata.
 
-## AWS S3 / S3-compatible storge
+## AWS S3 / S3-Compatible Storage <span id="aws-s3-s3-compatible-storge"></span>
 
 Configure S3-compatible storage with the `s3-storage` inline table.
 

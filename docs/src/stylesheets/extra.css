@@ -302,8 +302,81 @@ body:has(.ll-home) .md-footer-meta__inner { padding-inline: calc(var(--ll-home-i
 .md-typeset .ll-no { color: var(--ll-ink-faint); }
 .md-typeset .ll-legend { display: flex; flex-wrap: wrap; gap: .7rem 1.2rem; margin: .7rem 0 0; font-size: .59rem; color: var(--ll-ink-soft); }
 .md-typeset .ll-legend span { display: inline-flex; align-items: center; gap: .35rem; }
-.md-typeset .ll-shot { margin-top: 1.4rem; border: 1px solid var(--ll-rule); box-shadow: 5px 5px 0 var(--ll-rule); line-height: 0; }
-.md-typeset .ll-shot img { display: block; width: 100%; height: auto; }
+/* Native console preview: match the desktop console's typography and rhythm. */
+.md-typeset .ll-console {
+  margin-top: 1.4rem;
+  border: 1px solid var(--ll-rule);
+  border-radius: 2px;
+  background: var(--ll-paper);
+  box-shadow: 5px 5px 0 var(--ll-rule);
+  color: var(--ll-ink);
+  font: 13px/1.5 var(--ll-sans);
+}
+.ll-console__viewport { overflow-x: auto; }
+.ll-console__app { min-width: 960px; }
+.ll-console__topbar { display: flex; align-items: center; gap: 10px; height: 60px; padding: 0 16px; }
+.ll-console__topbar > img { flex: none; }
+.ll-console__topbar > strong { font-size: 20px; letter-spacing: -.5px; }
+.ll-console__title { margin-left: 8px; padding-left: 12px; border-left: 1px solid var(--ll-line); color: var(--ll-ink-soft); font-size: 12px; }
+.ll-console__demo { margin-left: auto; padding: 2px 8px; border: 1px solid var(--ll-line); border-radius: 2px; background: var(--ll-sun-wash); font-size: 11px; font-weight: 500; }
+.ll-console__workspace { display: grid; grid-template-columns: 20% minmax(0, 1fr); margin: 0 12px; border: 1px solid var(--ll-rule); background: var(--ll-panel-alt); }
+.ll-console__explorer { min-width: 0; border-right: 1px solid var(--ll-line); background: var(--ll-paper); }
+.ll-console__explorer-title { display: flex; align-items: center; height: 38px; padding: 0 12px; border-bottom: 1px solid var(--ll-line); font-size: 12px; font-weight: 600; }
+.ll-console__tree { padding: 12px 0; }
+.md-typeset .ll-console__branch { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; font: 12px/1.5 var(--ll-mono); }
+.md-typeset .ll-console__branch > :last-child { margin-bottom: 0; }
+/* Outrank the theme's details:not([open]) > summary spacing as well. */
+.md-typeset .ll-console .ll-console__branch > summary { display: flex; align-items: center; gap: 6px; height: 30px; margin: 0; padding: 0 10px; border: 0; background: transparent; color: var(--ll-ink); font-weight: 400; list-style: none; cursor: pointer; }
+.md-typeset .ll-console__branch > summary::-webkit-details-marker { display: none; }
+.md-typeset .ll-console__branch > summary::before { position: static; flex: none; width: 12px; height: 12px; margin: 0; background: currentColor; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m4 2 4 4-4 4' fill='none' stroke='black' stroke-width='1.5'/%3E%3C/svg%3E") center / contain no-repeat; transform: none; }
+.md-typeset .ll-console__branch[open] > summary::before { transform: rotate(90deg); }
+.md-typeset .ll-console__branch > summary::after { display: none; }
+.md-typeset .ll-console__branch > summary:hover { background: var(--ll-sub); }
+.ll-console__schema { padding-left: 12px; }
+.ll-console__tables { padding-left: 12px; }
+.ll-console__icon { display: block; flex: none; width: 14px; height: 14px; }
+.ll-console__columns { padding: 2px 10px 8px 28px; }
+.ll-console__column { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 30px; font-size: 10.5px; }
+.ll-console__column > span:last-child { color: var(--ll-ink-faint); font-size: 9px; }
+.ll-console__main { min-width: 0; }
+.ll-console .ll-console__tabs { height: 38px; border-bottom: 1px solid var(--ll-line); background: var(--ll-paper); }
+.md-typeset .ll-console .ll-console__tab { padding: 0 16px; border-left: 0; border-right: 1px solid var(--ll-line); font: 11.5px var(--ll-mono); white-space: nowrap; }
+.md-typeset .ll-console .ll-console__tab[aria-selected="true"] { box-shadow: inset 0 2px 0 var(--ll-sky); }
+.ll-console__panel[hidden] { display: none; }
+.ll-console__toolbar { display: flex; align-items: center; gap: 16px; height: 46px; padding: 0 12px; border-bottom: 1px solid var(--ll-line); }
+.ll-console__scope { display: flex; align-items: center; gap: 8px; margin-right: auto; font: 11px var(--ll-mono); }
+.ll-console__scope > span { color: var(--ll-ink-faint); }
+.ll-console__copy { color: var(--ll-ink-soft); font-size: 11px; cursor: pointer; }
+.ll-console__copy:hover { color: var(--ll-link); }
+.md-typeset .ll-console__run { font: 600 12px var(--ll-sans); }
+.md-typeset .ll-console__run > .ll-button-face { gap: 8px; height: 32px; min-width: 80px; padding: 0 12px; border-width: 1px; }
+.ll-console__editor { display: flex; height: 198px; overflow: auto; }
+.ll-console__lines { flex: none; width: 42px; padding: 12px 10px 12px 0; background: var(--ll-panel); color: var(--ll-ink-faint); text-align: right; font: 13px/22px var(--ll-mono); user-select: none; }
+.ll-console__lines > span { display: block; }
+.md-typeset .ll-console__sql { flex: 1; margin: 0; padding: 12px; border: 0; border-radius: 0; background: var(--ll-panel-alt); color: var(--ll-ink); font: 13px/22px var(--ll-mono); }
+.md-typeset .ll-console__sql > code { display: block; padding: 0; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: inherit; font: inherit; white-space: pre; }
+.ll-console__sql .md-code__nav { display: none; }
+.ll-console__comment { color: var(--md-code-hl-comment-color); }
+.ll-console__keyword { color: var(--md-code-hl-keyword-color); }
+.ll-console__number { color: var(--md-code-hl-number-color); }
+.ll-console__results-heading { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-block: 1px solid var(--ll-line); background: var(--ll-sky-wash); font-size: 12px; }
+.ll-console__results-heading > span:first-child { font-weight: 600; }
+.ll-console__results-heading > span:nth-child(2) { margin-left: auto; color: var(--ll-ink-soft); font: 11px var(--ll-mono); }
+.ll-console__example-label { color: var(--ll-ink-faint); font-size: 11px; }
+.ll-console__results { height: 222px; overflow: auto; scrollbar-width: thin; }
+.md-typeset .ll-console__grid { width: max-content; margin: 0; border: 0; border-collapse: separate; border-spacing: 0; background: var(--ll-panel-alt); font: 12px/1.5 var(--ll-mono); }
+.ll-console__grid thead { position: sticky; top: 0; z-index: 1; }
+.ll-console__grid th, .ll-console__grid td { width: 160px; min-width: 160px; padding: 0 11px; border-right: 1px solid var(--ll-line-soft); border-bottom: 1px solid var(--ll-line-soft); white-space: nowrap; text-align: left; vertical-align: middle; }
+.ll-console__grid thead th { height: 36px; border-bottom-color: var(--ll-rule); background: var(--ll-sky-wash); color: var(--ll-ink-soft); font-size: 11px; font-weight: 500; }
+.ll-console__grid tbody th, .ll-console__grid td { height: 31px; font-weight: 400; }
+.ll-console__grid tbody tr:hover { background: var(--ll-sky-wash); }
+.ll-console__grid .ll-console__row-number { width: 52px; min-width: 52px; color: var(--ll-ink-faint); text-align: right; font-size: 11px; }
+.ll-console__grid .ll-console__numeric { text-align: right; }
+.ll-console__statusbar { display: flex; align-items: center; height: 28px; color: var(--ll-ink-soft); font: 10.5px var(--ll-mono); }
+.ll-console__statusbar > span { padding: 0 12px; border-right: 1px solid var(--ll-line); }
+.ll-console__statusbar > span:last-child { border-right: 0; }
+.ll-console__sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ll-console summary:focus-visible, .ll-console [tabindex="0"]:focus-visible { outline: 2px solid var(--ll-link); outline-offset: -2px; }
 
 /* Terminal captures keep exact line spacing for their box-drawing glyphs. */
 .md-typeset .ll-term { margin-top: 1.3rem; border: 1px solid var(--ll-rule); background: var(--ll-panel-alt); box-shadow: 5px 5px 0 var(--ll-rule); }

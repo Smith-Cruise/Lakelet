@@ -50,7 +50,7 @@ the new table. `LIKE source_table` creates an empty table with the source
 column names, types and nullability. Specify any partitioning and table
 options for the new table separately.
 
-## Supported catalogs
+## Supported Catalogs
 
 - [Paimon FileSystem](../catalogs/paimon-filesystem.md) — Creates tables under its configured warehouse and defaults to `USING PAIMON`.
 
@@ -78,7 +78,7 @@ SELECT id FROM sales.orders;
 CREATE TABLE sales.order_ids_copy LIKE sales.order_ids;
 ```
 
-## Table format options
+## Table Format Options
 
 ### Paimon
 

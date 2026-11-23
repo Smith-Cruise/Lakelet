@@ -17,9 +17,9 @@ You can attach [storage block](../storage.md) if you want to access authenticate
 
 TPC-H and TPC-DS provide generated, read-only data and require no external storage.
 
-## Multiple catalogs
+## Multiple Catalogs
 
-Catalog blocks are repeatable, you can create multiple catalogs like:
+Add a separate configuration block for each catalog.
 
 ```toml
 [[catalog.hms]]

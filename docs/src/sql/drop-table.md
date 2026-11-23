@@ -14,7 +14,7 @@ Use `table` for a table in the current schema, `schema.table` for another
 schema in the current catalog, or `catalog.schema.table` for a fully
 qualified name.
 
-## Supported catalogs
+## Supported Catalogs
 
 - [Paimon FileSystem](../catalogs/paimon-filesystem.md) — Dropping a table deletes its warehouse directory, including its data and metadata.
 

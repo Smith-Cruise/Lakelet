@@ -17,7 +17,7 @@ column list specifies which column receives each input value. Without a
 column list, values follow the table's column order. The result includes a
 `count` of the rows written.
 
-On [Paimon tables](../table-formats/paimon.md#writing-tables), `INSERT INTO`
+On [Paimon tables](../table-formats/paimon.md#supported-operations), `INSERT INTO`
 writes rows using the table's configured merge behavior. `INSERT OVERWRITE`
 replaces all rows in an unpartitioned table. In a partitioned table, it
 replaces the entire contents of each partition present in the input and

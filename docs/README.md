@@ -6,7 +6,7 @@ successor to MkDocs and Material for MkDocs by the same authors.
 - `zensical.toml` — site configuration
 - `src/` — markdown sources and assets
 
-## Local development
+## Local Development
 
 Requires Python 3.11 or newer. From this directory (`docs/`):
 
@@ -32,5 +32,4 @@ Each page also has a **Copy as Markdown** action.
 
 The site is deployed automatically by Cloudflare Pages: every push to `main`
 that touches `docs/` triggers a build (`zensical build` with root directory
-`docs`) and publishes the result to <https://lakelet.dev/>. No manual steps
-are needed.
+`docs`) and publishes the result to <https://lakelet.dev/>.

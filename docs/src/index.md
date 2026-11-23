@@ -15,7 +15,7 @@ hide:
 
 <p class="ll-hero__lead">Explore Iceberg, Delta Lake, Paimon and Hive with SQL. From your terminal or your browser.</p>
 
-[<span class="ll-button-face">Getting started</span>](getting-started.md){ .md-button .md-button--primary }
+[<span class="ll-button-face">Getting Started</span>](getting-started.md){ .md-button .md-button--primary }
 [<span class="ll-button-face">View on GitHub</span>](https://github.com/Smith-Cruise/Lakelet){ .md-button }
 
 <div class="ll-install" markdown>
@@ -39,7 +39,7 @@ curl -fsSL https://lakelet.dev/install.sh | sh
 
 <div class="ll-section" markdown>
 
-## Two ways to query
+## Two Ways to Query
 
 <div class="ll-modes" markdown>
 
@@ -91,7 +91,7 @@ Run queries, explore tables and execute scripts from your terminal.
 
 <div class="ll-section" markdown>
 
-## One engine across your lake
+## Supported Catalogs and Table Formats <span id="one-engine-across-your-lake"></span>
 
 <p class="ll-sub">Query open table formats through the catalogs you already use.</p>
 
@@ -151,7 +151,7 @@ Run queries, explore tables and execute scripts from your terminal.
 
 <div markdown>
 
-## Query from the browser
+## Query from the Browser
 
 <p class="ll-sub">Start Lakelet with <code>--server</code>, query in the built-in web console.</p>
 
@@ -161,8 +161,123 @@ Run queries, explore tables and execute scripts from your terminal.
 
 </div>
 
-<div class="ll-shot">
-<img src="assets/console.png" width="2880" height="1800" decoding="async" alt="The Lakelet web console: catalog explorer, SQL editor and a result grid">
+<div class="ll-console" role="region" aria-label="Lakelet console demo">
+<div class="ll-console__viewport" tabindex="0" aria-label="Console preview. Scroll horizontally on small screens.">
+<div class="ll-console__app">
+<div class="ll-console__topbar">
+<img src="assets/lakelet-mark.svg" width="28" height="28" alt="">
+<strong>Lakelet</strong><span class="ll-console__title">SQL console</span>
+<span class="ll-console__demo">Demo</span>
+</div>
+<div class="ll-console__workspace">
+<aside class="ll-console__explorer" aria-label="Sample catalog">
+<div class="ll-console__explorer-title">Data explorer</div>
+<div class="ll-console__tree">
+<details class="ll-console__branch" open><summary><svg class="ll-console__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0"/></svg>tpch</summary>
+<div class="ll-console__schema"><details class="ll-console__branch" open><summary><svg class="ll-console__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 7V4h6l3 3h9v13H3Z"/></svg>sf1</summary>
+<div class="ll-console__tables">
+<details class="ll-console__branch ll-console__table-node" open><summary><svg class="ll-console__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 9v12"/></svg>nation</summary><div class="ll-console__columns"><div class="ll-console__column"><span>n_nationkey</span><span>Int64</span></div><div class="ll-console__column"><span>n_name</span><span>Utf8View</span></div><div class="ll-console__column"><span>n_regionkey</span><span>Int64</span></div><div class="ll-console__column"><span>n_comment</span><span>Utf8View</span></div></div></details>
+<details class="ll-console__branch ll-console__table-node" open><summary><svg class="ll-console__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 9v12"/></svg>region</summary><div class="ll-console__columns"><div class="ll-console__column"><span>r_regionkey</span><span>Int64</span></div><div class="ll-console__column"><span>r_name</span><span>Utf8View</span></div><div class="ll-console__column"><span>r_comment</span><span>Utf8View</span></div></div></details>
+</div></details></div></details>
+</div>
+</aside>
+<div class="ll-console__main">
+<div class="ll-switch ll-console__tabs" role="tablist" aria-label="SQL examples">
+<button class="ll-switch__tab ll-console__tab" type="button" role="tab" id="console-tab-join" aria-controls="console-panel-join" aria-selected="true">Join tables</button>
+<button class="ll-switch__tab ll-console__tab" type="button" role="tab" id="console-tab-regions" aria-controls="console-panel-regions" aria-selected="false" tabindex="-1">Browse regions</button>
+<button class="ll-switch__tab ll-console__tab" type="button" role="tab" id="console-tab-counts" aria-controls="console-panel-counts" aria-selected="false" tabindex="-1">Count nations</button>
+</div>
+<div class="ll-console__panel" role="tabpanel" id="console-panel-join" aria-labelledby="console-tab-join">
+<div class="ll-console__toolbar"><span class="ll-console__scope"><svg class="ll-console__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0"/></svg>tpch <span>/</span> sf1</span>
+<button class="ll-console__copy" type="button" data-console-copy aria-label="Copy join tables SQL">Copy SQL</button>
+<button class="md-button md-button--primary ll-console__run" type="button" data-console-run aria-label="Run join tables demo" title="Show the preloaded example results"><span class="ll-button-face"><svg class="ll-console__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m7 4 14 8-14 8Z" fill="currentColor" stroke="none"/></svg><span data-console-run-label>Run</span></span></button>
+</div>
+<div class="ll-console__editor">
+<div class="ll-console__lines" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span></div>
+<pre class="ll-console__sql" tabindex="0" aria-label="Join tables SQL, read only"><code><span class="ll-console__comment">-- Find nations and their regions.</span>
+<span class="ll-console__keyword">select</span> n.n_nationkey <span class="ll-console__keyword">as</span> nation_id,
+       n.n_name <span class="ll-console__keyword">as</span> nation, r.r_name <span class="ll-console__keyword">as</span> region
+<span class="ll-console__keyword">from</span> tpch.sf1.nation n
+<span class="ll-console__keyword">join</span> tpch.sf1.region r <span class="ll-console__keyword">on</span> n.n_regionkey = r.r_regionkey
+<span class="ll-console__keyword">order</span> <span class="ll-console__keyword">by</span> region, nation
+<span class="ll-console__keyword">limit</span> <span class="ll-console__number">10</span>;</code></pre>
+</div>
+<div class="ll-console__results-heading"><span>Results</span><span>10 rows</span><span class="ll-console__example-label">Example result</span></div>
+<div class="ll-console__results" tabindex="0" role="region" aria-label="Join tables example results">
+<table class="ll-console__grid" aria-label="Join tables example results">
+<thead><tr><th scope="col" class="ll-console__row-number"><span class="ll-console__sr">Row</span></th><th scope="col" class="ll-console__numeric" title="Int64"><span>nation_id</span></th><th scope="col" title="Utf8View"><span>nation</span></th><th scope="col" title="Utf8View"><span>region</span></th></tr></thead>
+<tbody>
+<tr><th scope="row" class="ll-console__row-number">1</th><td class="ll-console__numeric">0</td><td>ALGERIA</td><td>AFRICA</td></tr>
+<tr><th scope="row" class="ll-console__row-number">2</th><td class="ll-console__numeric">5</td><td>ETHIOPIA</td><td>AFRICA</td></tr>
+<tr><th scope="row" class="ll-console__row-number">3</th><td class="ll-console__numeric">14</td><td>KENYA</td><td>AFRICA</td></tr>
+<tr><th scope="row" class="ll-console__row-number">4</th><td class="ll-console__numeric">15</td><td>MOROCCO</td><td>AFRICA</td></tr>
+<tr><th scope="row" class="ll-console__row-number">5</th><td class="ll-console__numeric">16</td><td>MOZAMBIQUE</td><td>AFRICA</td></tr>
+<tr><th scope="row" class="ll-console__row-number">6</th><td class="ll-console__numeric">1</td><td>ARGENTINA</td><td>AMERICA</td></tr>
+<tr><th scope="row" class="ll-console__row-number">7</th><td class="ll-console__numeric">2</td><td>BRAZIL</td><td>AMERICA</td></tr>
+<tr><th scope="row" class="ll-console__row-number">8</th><td class="ll-console__numeric">3</td><td>CANADA</td><td>AMERICA</td></tr>
+<tr><th scope="row" class="ll-console__row-number">9</th><td class="ll-console__numeric">17</td><td>PERU</td><td>AMERICA</td></tr>
+<tr><th scope="row" class="ll-console__row-number">10</th><td class="ll-console__numeric">24</td><td>UNITED STATES</td><td>AMERICA</td></tr>
+</tbody></table>
+</div>
+</div>
+<div class="ll-console__panel" role="tabpanel" id="console-panel-regions" aria-labelledby="console-tab-regions" hidden>
+<div class="ll-console__toolbar"><span class="ll-console__scope"><svg class="ll-console__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0"/></svg>tpch <span>/</span> sf1</span>
+<button class="ll-console__copy" type="button" data-console-copy aria-label="Copy browse regions SQL">Copy SQL</button>
+<button class="md-button md-button--primary ll-console__run" type="button" data-console-run aria-label="Run browse regions demo" title="Show the preloaded example results"><span class="ll-button-face"><svg class="ll-console__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m7 4 14 8-14 8Z" fill="currentColor" stroke="none"/></svg><span data-console-run-label>Run</span></span></button>
+</div>
+<div class="ll-console__editor">
+<div class="ll-console__lines" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
+<pre class="ll-console__sql" tabindex="0" aria-label="Browse regions SQL, read only"><code><span class="ll-console__comment">-- Explore a table in the sample catalog.</span>
+<span class="ll-console__keyword">select</span> r_regionkey <span class="ll-console__keyword">as</span> region_id,
+       r_name <span class="ll-console__keyword">as</span> region
+<span class="ll-console__keyword">from</span> tpch.sf1.region
+<span class="ll-console__keyword">order</span> <span class="ll-console__keyword">by</span> region_id;</code></pre>
+</div>
+<div class="ll-console__results-heading"><span>Results</span><span>5 rows</span><span class="ll-console__example-label">Example result</span></div>
+<div class="ll-console__results" tabindex="0" role="region" aria-label="Browse regions example results">
+<table class="ll-console__grid" aria-label="Browse regions example results">
+<thead><tr><th scope="col" class="ll-console__row-number"><span class="ll-console__sr">Row</span></th><th scope="col" class="ll-console__numeric" title="Int64"><span>region_id</span></th><th scope="col" title="Utf8View"><span>region</span></th></tr></thead>
+<tbody>
+<tr><th scope="row" class="ll-console__row-number">1</th><td class="ll-console__numeric">0</td><td>AFRICA</td></tr>
+<tr><th scope="row" class="ll-console__row-number">2</th><td class="ll-console__numeric">1</td><td>AMERICA</td></tr>
+<tr><th scope="row" class="ll-console__row-number">3</th><td class="ll-console__numeric">2</td><td>ASIA</td></tr>
+<tr><th scope="row" class="ll-console__row-number">4</th><td class="ll-console__numeric">3</td><td>EUROPE</td></tr>
+<tr><th scope="row" class="ll-console__row-number">5</th><td class="ll-console__numeric">4</td><td>MIDDLE EAST</td></tr>
+</tbody></table>
+</div>
+</div>
+<div class="ll-console__panel" role="tabpanel" id="console-panel-counts" aria-labelledby="console-tab-counts" hidden>
+<div class="ll-console__toolbar"><span class="ll-console__scope"><svg class="ll-console__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0"/></svg>tpch <span>/</span> sf1</span>
+<button class="ll-console__copy" type="button" data-console-copy aria-label="Copy count nations SQL">Copy SQL</button>
+<button class="md-button md-button--primary ll-console__run" type="button" data-console-run aria-label="Run count nations demo" title="Show the preloaded example results"><span class="ll-button-face"><svg class="ll-console__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m7 4 14 8-14 8Z" fill="currentColor" stroke="none"/></svg><span data-console-run-label>Run</span></span></button>
+</div>
+<div class="ll-console__editor">
+<div class="ll-console__lines" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span></div>
+<pre class="ll-console__sql" tabindex="0" aria-label="Count nations SQL, read only"><code><span class="ll-console__comment">-- Summarize nations by region.</span>
+<span class="ll-console__keyword">select</span> r.r_name <span class="ll-console__keyword">as</span> region, <span class="ll-console__keyword">count</span>(*) <span class="ll-console__keyword">as</span> nations
+<span class="ll-console__keyword">from</span> tpch.sf1.nation n
+<span class="ll-console__keyword">join</span> tpch.sf1.region r <span class="ll-console__keyword">on</span> n.n_regionkey = r.r_regionkey
+<span class="ll-console__keyword">group</span> <span class="ll-console__keyword">by</span> r.r_name
+<span class="ll-console__keyword">order</span> <span class="ll-console__keyword">by</span> region;</code></pre>
+</div>
+<div class="ll-console__results-heading"><span>Results</span><span>5 rows</span><span class="ll-console__example-label">Example result</span></div>
+<div class="ll-console__results" tabindex="0" role="region" aria-label="Count nations example results">
+<table class="ll-console__grid" aria-label="Count nations example results">
+<thead><tr><th scope="col" class="ll-console__row-number"><span class="ll-console__sr">Row</span></th><th scope="col" title="Utf8View"><span>region</span></th><th scope="col" class="ll-console__numeric" title="Int64"><span>nations</span></th></tr></thead>
+<tbody>
+<tr><th scope="row" class="ll-console__row-number">1</th><td>AFRICA</td><td class="ll-console__numeric">5</td></tr>
+<tr><th scope="row" class="ll-console__row-number">2</th><td>AMERICA</td><td class="ll-console__numeric">5</td></tr>
+<tr><th scope="row" class="ll-console__row-number">3</th><td>ASIA</td><td class="ll-console__numeric">5</td></tr>
+<tr><th scope="row" class="ll-console__row-number">4</th><td>EUROPE</td><td class="ll-console__numeric">5</td></tr>
+<tr><th scope="row" class="ll-console__row-number">5</th><td>MIDDLE EAST</td><td class="ll-console__numeric">5</td></tr>
+</tbody></table>
+</div>
+</div>
+</div>
+</div>
+<div class="ll-console__statusbar"><span>Example data</span><span>tpch.sf1</span><span data-console-status role="status" aria-live="polite" aria-atomic="true">Choose a tab to explore</span></div>
+</div>
+</div>
 </div>
 
 </div>
@@ -290,7 +405,7 @@ Lakelet: compiled with a0f747f 2026-09-21 13:47:20 UTC
 
 <div class="ll-band ll-close" markdown>
 
-## Start querying
+## Start Querying
 
 `curl -fsSL https://lakelet.dev/install.sh | sh`
 
