@@ -74,6 +74,7 @@ SQL = ["sql/*.md"]
 
 # Lakeside has one light theme; extra.css supplies the shared design tokens.
 
+[project.markdown_extensions.admonition]
 [project.markdown_extensions.attr_list]
 [project.markdown_extensions.md_in_html]
 [project.markdown_extensions.pymdownx.superfences]

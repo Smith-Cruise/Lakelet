@@ -11,34 +11,33 @@ partition locations.
 
 ## Supported Data File Formats
 
-| Input format | SerDe | Status
-| --- | --- | --- |
-| TextFile | `LazySimpleSerDe` | Supported
-| Parquet | `ParquetHiveSerDe` | Supported
-| ORC | `OrcSerde` | Supported
-| Avro | `AvroSerDe` | Supported
+| Data file format | SerDe
+| --- | --- |
+| TextFile | `LazySimpleSerDe`
+| Parquet | `ParquetHiveSerDe`
+| ORC | `OrcSerde`
+| Avro | `AvroSerDe`
 
 ### TextFile
 
 These table and SerDe properties are honored:
 
-| Property | Behavior |
-| --- | --- |
-| `field.delim`, `serialization.format` | Field delimiter, default `\001` |
-| `serialization.null.format` | Text that reads as `NULL`, default `\N` |
-| `skip.header.line.count` | `0` or `1` |
+| Property |  Ddefault | Behavior |
+| --- |---| --- |
+| `field.delim`, `serialization.format` | `\001`| Field delimiter |
+| `serialization.null.format` | `\N`  | Text that reads as `NULL` |
+| `skip.header.line.count` | 0  | `0` or `1` |
 
-A value that cannot be parsed as its column type is read as `NULL`, as in
-Hive. Empty fields are also read as `NULL`.
+A value that cannot be parsed as its column type is read as `NULL`. 
+Empty fields are also read as `NULL`.
 
-Complex type columns (`array`, `map`, `struct` and `uniontype`) are currently
-read as `NULL`. The other columns of the table are read as usual.
+Complex type columns (`array`, `map`, `struct` and `uniontype`) are not supported,
+so read as `NULL`. The other types are read as usual.
 
 ### Parquet
 
 `INT96` timestamps, as written by Hive, Impala and older Spark versions, are
-read as microsecond timestamps. Their values are taken as UTC, with no timezone
-conversion.
+read as microsecond timestamps without timezone.
 
 ### ORC
 
@@ -86,21 +85,21 @@ SELECT * FROM `table_name$data_files`;
 
 | Column | Description |
 | --- | --- |
-| `file_path` | Full path of the data file, including the storage scheme |
+| `file_path` | Full path of the data file |
 | `file_size` | Size of the data file in bytes |
 
 **partitions**
 
-The `partitions` metadata table returns one row for each metastore partition:
+The `partitions` metadata table returns metastore partitions:
 
 ```sql
 SELECT * FROM `table_name$partitions`;
 ```
 
-An unpartitioned table returns no rows.
+An unpartitioned table returns empty.
 
 | Column | Description |
 | --- | --- |
 | `partition` | Partition values as a string, such as `dt=2026-01-01/country=CN` |
-| `data_file_count` | Number of data files in the partition, counted the same way as `data_files` |
-| `total_data_file_size` | Combined size in bytes of those data files |
+| `data_file_count` | Number of data files in the partition |
+| `total_data_file_size` | Combined size in bytes of data files |
