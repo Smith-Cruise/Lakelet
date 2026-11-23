@@ -64,7 +64,7 @@ A configuration file can contain the following top-level sections:
 | `[[catalog.tpch]]` | No | Generated TPC-H data. |
 | `[[catalog.tpcds]]` | No | Generated TPC-DS data. |
 
-The built-in `internal` catalog is always available, 
+The built-in `internal` catalog is always available,
 even when no external catalog is configured.
 
 To try Lakelet without an external data source, add the TPC-H catalog to your
@@ -158,7 +158,7 @@ Open `http://localhost:32010/` in your browser.
 ### Flight SQL
 
 Each Flight SQL query uses a fresh session. `USE` and `SET` changes do not carry
-over to the next query. 
+over to the next query.
 
 Use fully qualified table names, or set `default-catalog` and `default-schema`
 as needed in the request headers.

@@ -28,7 +28,7 @@ These table and SerDe properties are honored:
 | `serialization.null.format` | `\N`  | Text that reads as `NULL` |
 | `skip.header.line.count` | 0  | `0` or `1` |
 
-A value that cannot be parsed as its column type is read as `NULL`. 
+A value that cannot be parsed as its column type is read as `NULL`.
 Empty fields are also read as `NULL`.
 
 Complex type columns (`array`, `map`, `struct` and `uniontype`) are not supported,
