@@ -73,6 +73,14 @@ Everything is good.
 | `struct<name:T,...>` | `Struct` |
 | `uniontype<T,...>` | Sparse `Union` |
 
+## Supported Operations
+
+| Operation | Notes |
+| --- | --- |
+| `SELECT` | |
+| [`DESCRIBE`](../sql/describe.md) | |
+| [`SHOW CREATE TABLE`](../sql/show-create-table.md) | |
+
 ## Metadata Table
 
 **data_files**

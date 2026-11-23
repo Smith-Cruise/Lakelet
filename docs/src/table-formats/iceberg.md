@@ -16,6 +16,14 @@ by `metadata_location` property.
 
 The same as `iceberg-rust`.
 
+## Supported Operations
+
+| Operation | Notes |
+| --- | --- |
+| `SELECT` | |
+| [`DESCRIBE`](../sql/describe.md) | |
+| [`SHOW CREATE TABLE`](../sql/show-create-table.md) | |
+
 ## Metadata Table
 
 Iceberg metadata tables are served by `iceberg-rust`.

@@ -11,6 +11,21 @@ An HMS or Glue table is treated as Paimon when its properties contain
 
 Same as `paimon-rust`.
 
+## Supported Operations
+
+| Operation | Notes |
+| --- | --- |
+| `SELECT` | |
+| [`DESCRIBE`](../sql/describe.md) | |
+| [`SHOW CREATE TABLE`](../sql/show-create-table.md) | |
+| [`CREATE SCHEMA`](../sql/create-schema.md) | Paimon FileSystem catalog only. |
+| [`DROP SCHEMA`](../sql/drop-schema.md) | Paimon FileSystem catalog only. |
+| [`CREATE TABLE`](../sql/create-table.md) | Paimon FileSystem catalog only. Supports `AS SELECT` and `LIKE`. |
+| [`DROP TABLE`](../sql/drop-table.md) | Paimon FileSystem catalog only. |
+| [`INSERT INTO`](../sql/insert.md) | |
+| [`INSERT OVERWRITE`](../sql/insert.md) | Replaces only the partitions present in the input. For an unpartitioned table, it replaces all rows. |
+| [`CALL`](../sql/call.md) | Paimon FileSystem catalog only. |
+
 ## Create schema
 
 ```sql

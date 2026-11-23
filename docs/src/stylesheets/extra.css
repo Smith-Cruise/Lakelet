@@ -167,6 +167,7 @@ a:focus-visible, button:focus-visible, input:focus-visible,
 
 /* Reading surfaces: fine outlines and blue-wash table headers. */
 .md-typeset code { border-radius: 2px; background: var(--ll-panel-alt); box-shadow: inset 0 0 0 1px var(--ll-line); padding: .08em .35em; }
+.md-typeset a > code { color: inherit; }
 .md-typeset pre > code { background: transparent; box-shadow: none; }
 .md-typeset .highlight, .md-typeset pre { border-radius: 2px; }
 .md-typeset .highlight { border: 1px solid var(--ll-line); background: var(--ll-panel-alt); }
