@@ -29,7 +29,7 @@ nav = [
       { "Paimon" = "table-formats/paimon.md" },
     ] },
     { "SQL" = [
-      { "CALL" = "sql/call.md" },
+      { "CALL PROCEDURE" = "sql/call-procedure.md" },
       { "CREATE SCHEMA" = "sql/create-schema.md" },
       { "CREATE TABLE" = "sql/create-table.md" },
       { "DESCRIBE" = "sql/describe.md" },

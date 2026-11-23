@@ -8,13 +8,16 @@ DROP SCHEMA [ IF EXISTS ] [ catalog. ]schema_name [ CASCADE | RESTRICT ]
 
 ## Description
 
-Remove a schema from a [Paimon FileSystem catalog](../catalogs/paimon-filesystem.md).
-An unqualified name uses the current catalog. By default, the schema must be
-empty. `RESTRICT` makes that requirement explicit. `CASCADE` removes the
-schema and all tables and data in it.
+Drop a schema from the current catalog, or use `catalog.schema` to select
+another catalog. By default, the schema must be empty. `RESTRICT` makes that
+requirement explicit. `CASCADE` drops the schema and its tables.
 
 `IF EXISTS` skips a missing schema. An existing, nonempty schema still
 requires `CASCADE`.
+
+## Supported catalogs
+
+- [Paimon FileSystem](../catalogs/paimon-filesystem.md) — `CASCADE` also deletes the data in those tables.
 
 ## Examples
 

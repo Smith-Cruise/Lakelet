@@ -8,9 +8,13 @@ CREATE SCHEMA [ IF NOT EXISTS ] [ catalog. ]schema_name
 
 ## Description
 
-Create a schema in a [Paimon FileSystem catalog](../catalogs/paimon-filesystem.md).
-A schema name on its own uses the current catalog. If the schema already
-exists, the statement fails unless you specify `IF NOT EXISTS`.
+Create a schema in the current catalog, or use `catalog.schema` to select
+another catalog. If the schema already exists, the statement fails unless
+you specify `IF NOT EXISTS`.
+
+## Supported catalogs
+
+- [Paimon FileSystem](../catalogs/paimon-filesystem.md)
 
 ## Examples
 

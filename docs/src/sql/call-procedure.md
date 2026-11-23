@@ -1,4 +1,4 @@
-# CALL
+# CALL PROCEDURE
 
 ## Synopsis
 
@@ -12,11 +12,9 @@ Run a procedure for a table format. Pass the table name as a single-quoted
 string using the named argument `table =>`. Use `'catalog.schema.table'` to
 identify the table explicitly. Shorter names use the current catalog and schema.
 
-### Paimon
+## Supported catalogs
 
-Paimon procedures run on tables in a
-[Paimon FileSystem catalog](../catalogs/paimon-filesystem.md). The procedure
-prefix is always `paimon.`, even if the catalog has a different name.
+- [Paimon FileSystem](../catalogs/paimon-filesystem.md)
 
 ## Examples
 
@@ -27,7 +25,7 @@ tag the latest snapshot for later reference.
 CALL paimon.create_tag(table => 'paimon_local.sales.orders', tag => 'daily_close');
 ```
 
-To remove that tag, call `delete_tag` with the same table and tag name.
+To remove that tag, run the `delete_tag` procedure with the same table and tag name.
 
 ```sql
 CALL paimon.delete_tag(table => 'paimon_local.sales.orders', tag => 'daily_close');
