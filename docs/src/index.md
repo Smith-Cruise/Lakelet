@@ -1,4 +1,5 @@
 ---
+title: A Lightweight Lakehouse Query Engine
 icon: lucide/house
 hide:
   - navigation
