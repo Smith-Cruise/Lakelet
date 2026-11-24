@@ -1,6 +1,5 @@
 ---
-template: home.html
-browser_title: Lakelet – A Lightweight Lakehouse Query Engine
+title: A Lightweight Lakehouse Query Engine
 icon: lucide/house
 hide:
   - navigation
