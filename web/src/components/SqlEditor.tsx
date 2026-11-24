@@ -140,16 +140,16 @@ export function SqlEditor({ tab: active, running, onRun }: Props) {
   }, [active.id, active.sql]);
 
   return (
-    <section className="flex h-full min-h-0 flex-col">
+    <section className="flex h-full min-h-0 flex-col bg-panel-alt">
       {/* Tab strip: the open statements, newest last. */}
-      <div className="flex h-[30px] shrink-0 items-stretch overflow-x-auto border-b border-line-strong bg-page [scrollbar-width:thin]">
+      <div className="flex h-[38px] shrink-0 items-stretch overflow-x-auto border-b border-line bg-page [scrollbar-width:thin]">
         {tabs.map((tab) => {
           const on = tab.id === activeTabId;
           return (
             <div
               key={tab.id}
               className={`group relative flex shrink-0 items-center gap-1.5 border-r border-line pr-1.5 pl-3 font-mono text-[11.5px] ${
-                on ? "bg-panel font-bold text-fg" : "text-fg-faint hover:text-fg"
+                on ? "bg-panel-alt font-medium text-fg" : "text-fg-faint hover:text-fg"
               }`}
             >
               <button type="button" className="whitespace-nowrap" onClick={() => setActiveTab(tab.id)}>
@@ -179,18 +179,20 @@ export function SqlEditor({ tab: active, running, onRun }: Props) {
       </div>
 
       {/* Toolbar: where this tab's names resolve, and the Run button. */}
-      <div className="flex h-[38px] shrink-0 items-center gap-1.5 border-b border-line px-2.5">
+      <div className="flex h-[46px] shrink-0 items-center gap-2 border-b border-line px-3">
         <ScopePicker tab={active} />
         <div className="flex-1" />
         <button
           type="button"
           onClick={runCurrent}
           disabled={running}
-          className="flex h-7 items-center gap-2 border border-line-strong bg-accent px-3.5 font-mono text-[11.5px] font-extrabold tracking-[.12em] text-accent-contrast shadow-press transition-[transform,box-shadow] hover:bg-accent-deep active:translate-x-px active:translate-y-px active:shadow-none disabled:opacity-60 disabled:shadow-press"
+          className="lk-button-base"
         >
-          {running ? <LoaderCircle size={12} className="animate-spin" /> : <Play size={12} fill="currentColor" />}
-          {running ? "RUNNING" : "RUN"}
-          <kbd className="font-mono text-[11px] font-medium tracking-normal opacity-60">⌘↵</kbd>
+          <span className="lk-button-face flex h-8 items-center gap-2 rounded border border-line-strong bg-accent px-3 text-[12px] font-semibold text-accent-contrast">
+            {running ? <LoaderCircle size={12} className="animate-spin" /> : <Play size={12} fill="currentColor" />}
+            {running ? "Running" : "Run"}
+            <kbd className="font-mono text-[11px] font-medium opacity-70">⌘↵</kbd>
+          </span>
         </button>
       </div>
 

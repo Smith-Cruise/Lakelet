@@ -24,6 +24,8 @@ function llSelectTab(tab) {
     var panel = document.getElementById(other.getAttribute("aria-controls"))
     if (panel) panel.hidden = !on
   })
+  var demo = tab.closest(".ll-console")
+  if (demo) demo.querySelector("[data-console-status]").textContent = tab.textContent + " · Example data"
 }
 
 document.addEventListener("click", function (ev) {
@@ -46,4 +48,30 @@ document.addEventListener("keydown", function (ev) {
   ev.preventDefault()
   llSelectTab(next)
   next.focus()
+})
+
+// The homepage console only presents preloaded examples. Delegation keeps its
+// controls working after Zensical's instant navigation replaces the page.
+document.addEventListener("click", async function (ev) {
+  var button = ev.target.closest("[data-console-run], [data-console-copy]")
+  if (!button) return
+  var panel = button.closest(".ll-console__panel")
+  var status = button.closest(".ll-console").querySelector("[data-console-status]")
+  if (button.hasAttribute("data-console-copy")) {
+    try {
+      await navigator.clipboard.writeText(panel.querySelector("code").textContent)
+      status.textContent = "SQL copied"
+    } catch (_) {
+      status.textContent = "Select the SQL text to copy it"
+    }
+    return
+  }
+  var results = panel.querySelector(".ll-console__results")
+  results.scrollTop = 0
+  results.scrollLeft = 0
+  var label = button.querySelector("[data-console-run-label]")
+  label.textContent = "Shown"
+  status.textContent = "Showing " + panel.querySelectorAll("tbody tr").length + " example rows · No query executed"
+  clearTimeout(button.llDemoTimer)
+  button.llDemoTimer = setTimeout(function () { label.textContent = "Run" }, 1500)
 })

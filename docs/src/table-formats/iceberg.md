@@ -6,22 +6,29 @@ icon: lucide/mountain-snow
 
 An HMS or Glue table is treated as Iceberg when its properties contain
 `table_type` with value `ICEBERG`, case-insensitively. Lakelet loads the table
-directly from the metadata file in the `metadata_location` property.
+by `metadata_location` property.
 
-Only Parquet data files are currently supported.
+## Supported Data File Formats
+
+* Parquet
 
 ## Data Types
 
 The same as `iceberg-rust`.
 
+## Supported Operations
+
+| Operation | Notes |
+| --- | --- |
+| `SELECT` | |
+| [`DESCRIBE`](../sql/describe.md) | |
+| [`SHOW CREATE TABLE`](../sql/show-create-table.md) | |
+
 ## Metadata Table
 
-Iceberg metadata tables are served by `iceberg-rust`, so their columns follow
-that crate's schema rather than one defined by Lakelet.
+Iceberg metadata tables are served by `iceberg-rust`.
 
 **snapshots**
-
-Returns one row for each snapshot in the table metadata:
 
 ```sql
 SELECT * FROM `table_name$snapshots`;
@@ -37,9 +44,6 @@ SELECT * FROM `table_name$snapshots`;
 | `summary` | Snapshot summary properties, as a string-to-string map |
 
 **manifests**
-
-Returns one row for each manifest file in the **current** snapshot's manifest
-list. A table with no current snapshot returns no rows:
 
 ```sql
 SELECT * FROM `table_name$manifests`;
@@ -61,9 +65,6 @@ SELECT * FROM `table_name$manifests`;
 | `partition_summaries` | Per-partition-field summaries, as a list of structs with `contains_null`, `contains_nan`, `lower_bound`, and `upper_bound` |
 
 **history**
-
-Returns one row for each entry in the table's snapshot log, including entries
-that are no longer part of the current lineage after a rollback:
 
 ```sql
 SELECT * FROM `table_name$history`;

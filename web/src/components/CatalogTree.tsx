@@ -27,7 +27,7 @@ function nodeKey(...parts: string[]): string {
 }
 
 const ROW =
-  "flex h-[26px] w-full items-center gap-1.5 px-2.5 text-left font-mono text-[12.5px] whitespace-nowrap hover:bg-hover";
+  "flex h-[30px] w-full items-center gap-1.5 px-2.5 text-left font-mono text-[12.5px] whitespace-nowrap hover:bg-hover";
 
 export function CatalogTree({
   catalogs,
@@ -44,9 +44,9 @@ export function CatalogTree({
     filter.trim() === "" || name.toLowerCase().includes(filter.trim().toLowerCase());
 
   return (
-    <aside className="flex h-full w-full flex-col bg-panel">
-      <div className="flex h-[30px] shrink-0 items-center border-b border-line px-2.5">
-        <span className="truncate font-mono text-[10px] font-bold tracking-[.16em] text-fg-faint uppercase">
+    <aside className="flex h-full w-full flex-col bg-page">
+      <div className="flex h-[38px] shrink-0 items-center border-b border-line px-3">
+        <span className="truncate text-[12px] font-semibold text-fg">
           Data explorer
         </span>
         <button
@@ -59,12 +59,13 @@ export function CatalogTree({
         </button>
       </div>
 
-      <div className="m-2 flex h-[30px] shrink-0 items-center gap-2 border border-line-strong bg-panel-alt px-2.5 focus-within:shadow-[0_0_0_2px_var(--lk-accent)]">
+      <div className="m-3 flex h-[32px] shrink-0 items-center gap-2 rounded border border-line bg-panel-alt px-2.5 focus-within:outline-2 focus-within:outline-link">
         <Search size={13} className="text-fg-faint" />
         <input
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
-          placeholder="search tables"
+          aria-label="Search tables"
+          placeholder="Search tables…"
           className="w-full bg-transparent font-mono text-[12px] outline-none placeholder:text-fg-faint"
         />
       </div>
@@ -122,7 +123,7 @@ function CatalogNode({
 
   return (
     <div>
-      <button type="button" className={ROW} onClick={onToggle}>
+      <button type="button" className={ROW} aria-expanded={expanded} onClick={onToggle}>
         <Chevron expanded={expanded} />
         <Database size={14} className="shrink-0 text-fg-faint" />
         <span className="truncate">{catalog}</span>
@@ -186,7 +187,7 @@ function SchemaNode({
 
   return (
     <div>
-      <button type="button" className={`${ROW} pl-6`} onClick={onToggle}>
+      <button type="button" className={`${ROW} pl-6`} aria-expanded={expanded} onClick={onToggle}>
         <Chevron expanded={expanded} />
         <Folder size={14} className="shrink-0 text-fg-faint" />
         <span className="truncate">{schema}</span>
@@ -243,6 +244,7 @@ function TableNode({ catalog, schema, table, expanded, onToggle, selected, onPic
     <div>
       <button
         type="button"
+        aria-expanded={expanded}
         onClick={onToggle}
         onDoubleClick={() => onPickTable(catalog, schema, table)}
         className={`${ROW} pl-10 ${
@@ -277,7 +279,7 @@ function TableNode({ catalog, schema, table, expanded, onToggle, selected, onPic
             </div>
           ))}
           {columns.data && columns.data.length === 0 ? (
-            <p className="h-[26px] pl-[72px] font-mono text-[12px] leading-[26px] text-fg-faint">no columns</p>
+            <p className="h-[30px] pl-[72px] font-mono text-[12px] leading-[30px] text-fg-faint">no columns</p>
           ) : null}
         </NodeStatus>
       ) : null}
@@ -304,7 +306,7 @@ function NodeStatus({
   if (pending) {
     return (
       <p
-        className="h-[26px] font-mono text-[12px] leading-[26px] text-fg-faint"
+        className="h-[30px] font-mono text-[12px] leading-[30px] text-fg-faint"
         style={{ paddingLeft: indent + 8 }}
       >
         loading…

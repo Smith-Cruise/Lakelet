@@ -9,7 +9,7 @@ const MONO = "var(--lk-mono)";
 export const editorTheme = EditorView.theme({
   "&": {
     height: "100%",
-    background: "var(--lk-panel)",
+    background: "var(--lk-panel-alt)",
     color: "var(--lk-fg)",
     fontSize: "13px",
   },
@@ -19,7 +19,7 @@ export const editorTheme = EditorView.theme({
   ".cm-line": { padding: "0 12px 0 6px" },
 
   ".cm-gutters": {
-    background: "var(--lk-panel)",
+    background: "var(--lk-panel-alt)",
     color: "var(--lk-fg-faint)",
     border: "none",
     paddingLeft: "10px",
@@ -38,7 +38,7 @@ export const editorTheme = EditorView.theme({
   ".cm-tooltip.cm-tooltip-autocomplete": {
     background: "var(--lk-panel-alt)",
     border: "1px solid var(--lk-border-strong)",
-    borderRadius: "0",
+    borderRadius: "2px",
     boxShadow: "var(--lk-shadow)",
     padding: "4px",
     overflow: "hidden",
@@ -53,14 +53,14 @@ export const editorTheme = EditorView.theme({
     height: "26px",
     lineHeight: "26px",
     padding: "0 10px",
-    borderRadius: "0",
+    borderRadius: "2px",
     color: "var(--lk-fg)",
   },
   ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
     background: "var(--lk-accent-bg)",
     color: "var(--lk-fg)",
   },
-  // Volt is a fill, not a text colour: the match reads through weight and a
+  // Blue is a fill, not a text colour: the match reads through weight and a
   // wash behind it rather than through hue.
   ".cm-completionMatchedText": {
     color: "var(--lk-fg)",
@@ -71,7 +71,7 @@ export const editorTheme = EditorView.theme({
 });
 
 /** The same four syntax colours the rest of the app defines. They stay low in
- * chroma on purpose, so volt remains the only saturated thing on screen. */
+ * chroma on purpose, so the query stays easy to read. */
 export const sqlHighlight = syntaxHighlighting(
   HighlightStyle.define([
     { tag: [tags.keyword, tags.operatorKeyword, tags.typeName], color: "var(--lk-syntax-keyword)" },

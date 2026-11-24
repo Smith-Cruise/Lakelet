@@ -1,398 +1,194 @@
-# Lakebed — Lakelet's design language
+# Lakeside — Lakelet's design language
 
-Lakelet has two user-facing surfaces, and they share one look:
+Lakelet's docs and web console share a light, illustrated language inspired by
+MotherDuck: warm paper, lake-blue controls, charcoal outlines, and small hard shadows.
+The subject is Lakelet's own world: a small engine exploring open data lakes. The
+homepage's lake-and-table illustration is the focal point; the console is the quiet
+working counterpart, where SQL and data take priority over decoration.
 
-- **the docs site** — `docs/`, built with [Zensical](https://zensical.org/)
-- **the web console** — `web/`, React 19 + Vite + Tailwind v4, embedded in the binary and
-  served on the same port as Flight SQL
+Read this file before changing anything visual in `web/` or `docs/`.
 
-Lakebed is near-black ink on warm paper, square corners, hard rules, and a single
-high-voltage accent. The docs site is the loud version of it; the console is the quiet
-version. Same vocabulary, different volume — the console shows a hundred rows of data at a
-time, so anything that fights the data loses.
+## Principles
 
-This file is the contract. Read it before changing anything visual on either surface.
+1. Paper is the canvas, blue is the action, yellow is a highlight. Pale fills carry
+   charcoal text. Use the separate deep-blue token for links and focus outlines.
+2. One light theme. No theme toggle or automatic colour-scheme change.
+3. Quiet structure: 1px outlines in the console, up to 2px on docs feature frames.
+   Internal separators are lighter. Avoid nested decorative boxes.
+4. Hard depth, small scale. No blurred shadows, gradients or glows. Buttons and
+   floating surfaces use solid depth; data panes stay flat.
+5. Shared vocabulary, different density. The homepage is expressive; prose pages and
+   the console support sustained reading.
 
----
+## Shared tokens
 
-## The five rules
+The console uses `--lk-*`; the docs use `--ll-*`. Update both together.
 
-These are the ones that break the design if you get them wrong. Everything else is detail.
-
-1. **Volt is a fill and mark colour, never a text colour.** `#C8F135` sits at roughly 2:1
-   against paper — unreadable as type. Use it as a background, a bar, a border, a block.
-   Anything drawn *on* volt is ink. A "success" tick is a filled volt square, not a volt
-   glyph. An active tree row is a volt wash with ink text and a volt edge bar.
-2. **There is one theme.** No dark mode, no theme toggle, no `prefers-color-scheme`
-   branch. This is deliberate, not unfinished — see [No dark mode](#no-dark-mode).
-3. **Nothing is rounded.** Zero radius everywhere. No pills, no capsules, no rounded
-   avatars.
-4. **Depth is offset, never blurred.** Raised things carry a hard shadow
-   (`4px 4px 0`, `5px 5px 0`, `6px 6px 0` by weight). No soft shadows, no blur, no glow,
-   no gradients — the one exception is the hero band's faint grid texture.
-5. **Both surfaces share one palette.** A colour changed in one belongs in the other.
-   See [Where the tokens live](#where-the-tokens-live).
-
----
-
-## Colour
-
-One palette, two names for it: `--lk-*` in the console, `--ll-*` in the docs. The values
-are identical; only the prefix differs.
-
-| Role | Value | Console token | Docs token |
+| Role | Value | Console | Docs |
 | --- | --- | --- | --- |
-| Ink — body text and structural borders | `#14170F` | `--lk-fg`, `--lk-border-strong` | `--ll-ink`, `--ll-rule` |
-| Ink, secondary text | `#5A5E4E` | `--lk-fg-muted` | `--ll-ink-soft` |
-| Ink, tertiary text and placeholders | `#8C907E` | `--lk-fg-faint` | `--ll-ink-faint` |
-| Paper — page canvas, recessed strips | `#EBE9DE` | `--lk-page` | `--ll-paper` |
-| Panel — the working surface | `#F7F6EF` | `--lk-panel` | `--ll-panel` |
-| Panel alt — grid rows, popovers, cards | `#FFFFFF` | `--lk-panel-alt` | `--ll-panel-alt` |
-| Sub — inset chips, `kbd` | `#E4E2D6` | `--lk-sub` | — |
-| Hairline — internal dividers | `rgba(20,23,15,.14)` | `--lk-border` | `--ll-line` |
-| Finest line — grid rows | `rgba(20,23,15,.07)` | `--lk-border-soft` | — |
-| **Volt** — the only accent | `#C8F135` | `--lk-accent` | `--ll-volt` |
-| Volt deep — volt hovers and edges | `#A7CE1C` | `--lk-accent-deep` | `--ll-volt-deep` |
-| Volt wash — selection, run marks | `#EDF9C4` | `--lk-accent-bg` | `--ll-volt-wash` |
-| On volt — text sitting on volt | `#14170F` | `--lk-accent-contrast` | (ink) |
-| Danger | `#C4392B` / wash `#F7DED9` | `--lk-danger-fg` / `-bg` | `--ll-danger` |
-| Warning | `#B8791A` / wash `#F6E9C9` | `--lk-warning-fg` / `-bg` | `--ll-warning` |
+| Ink / structural border | `#30383A` | `--lk-fg`, `--lk-border-strong` | `--ll-ink`, `--ll-rule` |
+| Secondary text | `#5B686A` | `--lk-fg-muted` | `--ll-ink-soft` |
+| Quiet text | `#627174` | `--lk-fg-faint` | `--ll-ink-faint` |
+| Paper | `#F5F1E9` | `--lk-page` | `--ll-paper` |
+| Panel | `#FFFCF7` | `--lk-panel` | `--ll-panel` |
+| Work surface | `#FFFFFF` | `--lk-panel-alt` | `--ll-panel-alt` |
+| Inset surface | `#ECE8DF` | `--lk-sub` | `--ll-sub` |
+| Hairline | `rgba(48,56,58,.18)` | `--lk-border` | `--ll-line` |
+| Grid line | `rgba(48,56,58,.08)` | `--lk-border-soft` | `--ll-line-soft` |
+| Lake blue | `#95D5EE` | `--lk-accent` | `--ll-sky` |
+| Blue hover fill | `#78C4E2` | `--lk-accent-deep` | `--ll-sky-deep` |
+| Blue wash | `#E5F4FA` | `--lk-accent-bg` | `--ll-sky-wash` |
+| Deep blue text / focus | `#24657C` | `--lk-link` | `--ll-link` |
+| Sun yellow | `#F3CF65` | `--lk-sun` | `--ll-sun` |
+| Yellow wash | `#FFF3CE` | `--lk-sun-bg` | `--ll-sun-wash` |
+| Danger / wash | `#A6362B` / `#FCE9E4` | `--lk-danger-fg` / `-bg` | `--ll-danger` / `-wash` |
+| Warning / wash | `#805A12` / `#FFF3CE` | `--lk-warning-fg` / `-bg` | `--ll-warning` / `-wash` |
 
-**Ink is greenish-black, paper is warm off-white.** Neither is neutral grey. Do not
-substitute `#000`, `#111`, `#FFF` or a Tailwind grey.
-
-**Success is volt.** `--lk-success-fg` is ink and `--lk-success-bg` is the volt wash, on
-purpose: a successful query lights up the one high-voltage colour. There is no green.
-
-### Colour on ink bands
-
-The header, the tab strip, the status bar and the closing band are solid ink. On ink, saturated mid-tone colours fail: `#C4392B` reads at about 2.5:1. So a failure
-state on an ink band is a **filled chip** — danger background with paper text — not
-coloured lettering. Volt is the exception; it is bright enough to be text on ink, and that
-is the only place volt may carry a word.
-
-### SQL syntax colours
-
-Deliberately low in chroma, so volt stays the only saturated thing on screen.
-
-| Token | Value | Console token |
-| --- | --- | --- |
-| keyword | `#B5451F` | `--lk-syntax-keyword` |
-| string | `#3D7A2E` | `--lk-syntax-string` |
-| number | `#8A6A1F` | `--lk-syntax-number` |
-| comment | `#8C907E` | `--lk-syntax-comment` |
-
+Success uses ink on blue wash and an explicit icon or label. Syntax colours are
+`#285E88` (keyword), `#39704E` (string), `#95602C` (number), and quiet text (comment).
 The docs mirror these through `--md-code-hl-*`.
-
----
 
 ## Typography
 
-Two families, and the split carries meaning: **mono is for anything machine-shaped** —
-headings, labels, identifiers, code, data, numbers, status. **Inter is for prose** —
-paragraphs, descriptions, help text.
+Use JetBrains Mono for display, code, identifiers and data; Inter for prose,
+navigation and ordinary controls. The lighter mono heading feels approachable.
+Avoid artificially wide uppercase labels.
 
-| Use | Family | Weight | Notes |
-| --- | --- | --- | --- |
-| Display / hero | JetBrains Mono | 800 | `letter-spacing: -0.03em`, `line-height: 0.95` |
-| Headings | JetBrains Mono | 800 / 700 | H2 on the docs home is uppercase |
-| Eyebrow labels | JetBrains Mono | 700 | 10–11px, uppercase, `letter-spacing: .16em` |
-| Body | Inter | 400 / 500 | `line-height` 1.6 |
-| Code, data, UI values | JetBrains Mono | 400 / 500 | every result-grid cell |
+| Use | Family | Weight / size |
+| --- | --- | --- |
+| Homepage heading | JetBrains Mono | 500, fluid 32–54px, 1.16 leading |
+| Section / document headings | JetBrains Mono | 500, 24–36px |
+| Brand wordmark | Inter | 700 |
+| Prose | Inter | 400, 1.7 leading |
+| UI labels | Inter | 500 / 600, 12–13px |
+| Editor / grid | JetBrains Mono | 400, 13px / 12px |
 
-Eyebrows are everywhere: `DATA EXPLORER`, `RESULTS`, `CONSOLE`, `INTERFACES`, `COVERAGE`.
-They mark a region without a heading. Keep them small, wide-tracked and faint.
+Both fonts are self-hosted, including the docs. Use only the Latin variable WOFF2
+subsets from the installed Fontsource packages, with their OFL licences. Do not import
+all script subsets or depend on a font CDN. The docs set `theme.font = false` and
+use font faces declared in `extra.css`.
 
-**Fonts are self-hosted in the console.** It ships inside the binary and often runs with no
-internet, so `web/src/styles.css` declares its own `@font-face` rules pointing at the
-`@fontsource-variable/*` latin woff2 files. **Do not `@import` the packages' own
-stylesheets** — they carry every script and drag ~2 MB into the bundle instead of 88 KB.
-The docs site loads the same two families from Google Fonts, plus one extra `@import` for
-JetBrains Mono 800, because the theme's own font link stops at 700.
+## Geometry and motion
 
----
+- Controls and cards have a 2px radius; tables, pane joins and code stay square.
+- Primary actions use a fixed ink base and a separate coloured face. At rest they
+  overlap. Hover moves the face 7px right and 7px up in 120ms ease-in-out, exposing
+  the base below and to the left. Press returns it to the base in 30ms; release
+  restores the hover lift. Apply this to homepage CTAs and the console Run button.
+  Keep the base as the stable hover target and do not move surrounding layout.
+- Hard shadow: 3px on floating menus and 5px on showcase frames.
+- Focus: 2px deep-blue outline with a 2px offset. Pale blue alone is insufficient.
+- Keyboard focus gets the same lift plus an outline. Disabled controls do not lift;
+  reduced motion uses a colour change instead. Pointer hover requires a fine pointer.
+  Shared button tokens are `--lk/ll-button-lift`, `--lk/ll-button-duration` and
+  `--lk/ll-button-press-duration`. No entrance animations, parallax or decorative loops.
+- Illustrations may use curves: lake contours and ripples are organic shapes.
 
-## The mark
+## Mark and illustration
 
-An ink bolt on a volt tile, cut into three rows, on a 32×32 artboard:
+Keep the existing cut-through bolt; its tile is now sun yellow and its ink charcoal.
+All copies must match: `web/src/components/Logo.tsx`, `web/public/favicon.svg`,
+`docs/src/assets/lakelet-mark.svg`, and the generated 64px `docs/src/assets/favicon.png`.
+Keep the tile square and its three cuts legible.
 
+`docs/src/assets/lake-query.svg` is an original vector illustration: a blue lake connects
+four open table formats to a small SQL window. The image is decorative; the text and
+coverage matrix carry the facts. Do not copy MotherDuck's ducks or proprietary graphics.
+
+## Layout
+
+Home and Docs share a 58.4rem (1168px) outer grid for the header, tabs and footer.
+The docs reading layout uses this same grid. Only the homepage's main container
+extends to full width for its paper / blue-wash bands, with content capped at
+56rem (1120px). Keep shared chrome at the same width across navigation.
+Content aligns left. The two-column hero becomes one column on phones.
+
+```text
+Lakelet                            Home   Docs   Search   GitHub
+---------------------------------------------------------------
+Product heading                    Lake + open tables
+Explanation                        SQL window illustration
+Get started / GitHub
+Install command
+---------------------------------------------------------------
+Two ways to query                  Server / CLI entry points
+One engine across your lake        Catalog × format matrix
+---------------------------------------------------------------
+Query from the browser             Guide
+[ Native console demo: catalog, SQL examples, result grid     ]
+---------------------------------------------------------------
+Query from the CLI                 Guide
+[ Explore | Query | Script                                   ]
+---------------------------------------------------------------
+Start querying                     Install command
 ```
-<rect width="32" height="32" fill="#C8F135"/>
-<polygon points="18.5,3.5 8,18 15,18 13,28.5 24,13.5 17,13.5" fill="#14170F"/>
-<rect y="9" width="32" height="1.5" fill="#C8F135"/>
-<rect y="15" width="32" height="1.5" fill="#C8F135"/>
-<rect y="21" width="32" height="1.5" fill="#C8F135"/>
-```
 
-The bolt says what the engine is for: fast queries from one small binary. Its bounding
-box is centred on the artboard. The cuts are tile-coloured bars drawn over the bolt
-rather than a mask, so every copy stays plain shapes with no ids. They hint at table rows
-and are the one detail allowed in the mark. At 1.5 units thick they still show as thin
-lines in a 16px favicon on a retina screen, and at 1x they fade out while the bolt's
-silhouette stays readable. Don't add anything finer than the cuts.
+The lake illustration makes the design specific to Lakelet. Avoid arbitrary statistics,
+repeated numbered labels and screenshot annotations. Keep supported/experimental
+states and captured CLI output accurate.
 
-The tile is square and full-bleed: it carries its own background, so never pad it into a
-circle, add a radius, or drop the tile and use the bare bolt. The docs header is ink, so
-an ink tile would vanish into it. It lives in four places and
-they must stay identical — `docs/src/assets/lakelet-mark.svg` (the docs header),
-`docs/src/assets/favicon.png` (64×64, rendered from the same SVG),
-`web/public/favicon.svg`, and `web/src/components/Logo.tsx`, which is the only copy that
-draws from CSS variables rather than literal hexes.
+### Documentation
 
-## Geometry, depth and motion
+Cream header and tab row, blue active navigation, readable prose, white code and table
+surfaces. Links have deep-blue text and visible underlines. Table headers use blue wash;
+alerts use a label/icon and a coloured edge. Wide code and tables scroll locally.
 
-- **Radius: 0.** Everywhere.
-- **Borders:** structural edges are full-strength ink — 2px in the docs, 1px in the
-  console. Internal dividers are the hairline token. Grid rows use the finest line.
-- **Shadows:** `4px 4px 0` for popovers and buttons, `5px 5px 0` for cards, `6px 6px 0`
-  for the install card, `8px 8px 0` for the console screenshot frame. Buttons use
-  `2px 2px 0` and swap it for a 1px translate on `:active`, so pressing looks like
-  pressing.
-- **Focus:** `0 0 0 2px var(--lk-accent)`. Highly visible and on-brand. Never remove a
-  focus ring.
-- **Hover on raised cards:** translate `-2px, -2px` and deepen the shadow — the card lifts
-  toward you. 120ms.
-- **Motion is minimal.** Short transitions on transform, shadow and colour. No entrance
-  animations, no parallax, no easing showpieces.
+Zensical details to preserve:
 
----
-
-## No dark mode
-
-Lakebed is a single theme. This was a decision, not an omission, and it is enforced in
-both surfaces:
-
-- `docs/zensical.toml` has **no `[[project.theme.palette]]` table**. Without one the theme
-  emits no `data-md-color-scheme` on `<body>`, renders no light/dark toggle in the header,
-  and falls back to its own `:root` defaults, which `extra.css` overrides wholesale. Adding
-  a palette entry back would reintroduce the toggle.
-- `web/src/styles.css` has a single `:root` with `color-scheme: light`, no
-  `@media (prefers-color-scheme: dark)` block and no `[data-theme]` selector. The store
-  carries no theme state and clears the retired `lakelet.theme` key on load.
-
-If dark mode is ever wanted again, the token indirection makes it cheap: add a second set
-of values behind the same `--lk-*` / `--ll-*` names and the components do not change. Do
-not reintroduce it without being asked.
-
----
-
-## Where the tokens live
-
-| What | File |
-| --- | --- |
-| Console tokens, fonts, Tailwind theme bridge | `web/src/styles.css` |
-| Console grid theme | `web/src/components/TableView.tsx` (`themeQuartz.withParams`) |
-| Console editor theme and syntax colours | `web/src/editor/theme.ts` |
-| Docs tokens, site chrome, home page | `docs/src/stylesheets/extra.css` |
-| Docs theme config, logo, favicon, fonts | `docs/zensical.toml` |
-| Docs home page markup | `docs/src/index.md` |
-| Mark, favicon, console screenshot | `docs/src/assets/`, `web/public/favicon.svg`, `web/src/components/Logo.tsx` |
-
-### Console specifics
-
-- Tailwind v4 is CSS-first; there is no `tailwind.config.js`. Tokens reach utility classes
-  through the `@theme inline` block: `bg-page`, `bg-panel`, `bg-panel-alt`, `border-line`,
-  `border-line-strong`, `text-fg`/`-muted`/`-faint`, `bg-accent`, `bg-accent-bg`,
-  `text-accent-contrast`, `shadow-card`, `shadow-press`, `font-mono`, `font-sans`.
-  **Use these, never raw Tailwind palette colours** (`slate-500` and friends do not exist
-  in this design).
-- The same `@theme inline` block sets every `--radius-*` to `0`, which flattens all
-  `rounded-*` utilities at once. If something is still rounded, it is using an arbitrary
-  value like `rounded-[7px]` — fix that at the call site rather than adding overrides.
-- `TableView.tsx` and `editor/theme.ts` read the CSS variables directly rather than
-  duplicating hexes. Keep it that way.
-
-### Docs specifics
-
-- `extra.css` overrides Material's `--md-*` variables on plain `:root`. `extra_css` loads
-  after the theme stylesheet, so same-specificity wins. There is no
-  `[data-md-color-scheme=…]` selector anywhere, and there should not be.
-- The `modern` variant paints the header translucent white; Lakebed forces it to ink so the
-  header and tab row read as one block, matching the console's top bar. The header's search
-  icon is a mask painted with the default foreground, so it needs an explicit paper colour
-  or it disappears.
-- `.md-header`, `.md-tabs` and the prev/next footer sit **outside** `.md-typeset`, so
-  they do not inherit the typeset link colour. Style them explicitly. `.md-footer-meta`
-  is the opposite trap: it *carries* `.md-typeset`, so the site's link rule reaches it,
-  and on top of that the theme repaints its links with an `html`-prefixed selector
-  (`html .md-footer-meta.md-typeset a:not(:focus, :hover)`) that resolves to ink — ink
-  on an ink band. Overriding it needs the same `html` prefix.
-- Doc tables render as `display: inline-block` so they can scroll. A full-width table must
-  say `display: table` and carry its own class, or Material's `table:not([class])` rules
-  collapse it to its content width.
-- Home page sections are full-bleed bands. `body:has(.ll-home)` strips the content padding
-  and the grid max-width; each band supplies its own padding. A block with side margins
-  must use `width: auto; max-width: …`, not `width: min(100%, …)`, or it overflows on
-  narrow screens.
-- `navigation.instant` swaps page content without a reload, so every handler in
-  `docs/src/javascripts/extra.js` is delegated on `document`. Never bind to an element at
-  load time — it survives exactly one navigation.
-- `md_in_html` wraps a markdown link in its own `<p>`, so an `<a>` inside a card is not
-  the flex item. Padding on an inline box does not grow its line, so vertical padding on
-  such a link bleeds over the text above it. Put the spacing and any `margin-top: auto` on
-  the wrapping paragraph, and give the link `display: inline-block`.
-- The theme's `.md-typeset ol:not([hidden])` out-specifies `.md-typeset .some-class`, so
-  a class alone cannot change a list's `display`. Name the element too (`ol.some-class`).
-
----
-
-## Surface patterns
-
-### Docs home page
-
-Seven bands, top to bottom, all full-bleed. Classes live in `docs/src/index.md` and are
-styled in the home-page section of `extra.css`.
-
-1. `.ll-hero` — volt band with a faint ink grid, an ink `.ll-kicker` chip, a mono-800 H1,
-   an Inter `.ll-lead`, and two buttons (primary = ink fill with volt text).
-2. `.ll-install` — terminal card straddling the band's bottom edge, `6px 6px 0` shadow.
-   The `$` prompt is a `::before`, so the copied command stays runnable.
-3. `.ll-modes` — two hard-edged cards that lift on hover. They are a mid-page table of
-   contents, not a destination: each jumps to its own showcase band further down, in the
-   same order the bands appear. The links out to the docs belong in those bands, not here.
-4. `.ll-matrix` — catalog × table-format grid. Three states, three shapes, so colour is
-   never the only cue: `.ll-yes` (filled volt block with a tick), `.ll-beta` (outlined,
-   volt-wash, `β`), `.ll-no` (a dash). Always ship the `.ll-legend` with it. **Keep the
-   cells honest** — they are read out of `docs/src/catalogs/*.md` and
-   `docs/src/table-formats/*.md`, not invented.
-5. `.ll-shot` — the console. A real screenshot, nothing on top of it, in a 2px frame
-   with an `8px 8px 0` shadow.
-6. `.ll-term` — the CLI. A terminal card with a tab strip over three captured sessions.
-7. `.ll-close` — ink band, volt-bordered install command, colophon on its own line.
-
-Bands 5 and 6 are a pair and should stay one: a picture of the console, then the same
-engine as type. Each closes with a `.ll-caption` giving the command that starts it and a
-`.ll-go` link into the docs.
-
-The screenshot was once annotated: four numbered volt markers over the image, each
-opening a card about the region under it. It was tried and removed as a net loss. The
-markers land on top of the one thing the band exists to show, and they sell the UI short
-— a console whose parts need labelling has not made its case. If a part of the console
-genuinely needs explaining, explain it in `server.md`, not on top of the picture.
-
-There was once another band between the install card and the modes: a stat strip of four
-big volt figures. It was removed, and a replacement should not be added back without new
-material. Two of its four cells were not quantities at all, so the device contradicted
-itself, and three of the four restated the hero's own lead sentence six lines above them.
-The page does not need a band there — the hero's weight, the install card's shadow, the
-matrix's ink header row and the closing band already carry the rhythm.
-
-#### Terminal card — `.ll-term`
-
-A grown-up `.ll-install`: same ink frame, same three window marks, same paper surface,
-`8px 8px 0` shadow. It is deliberately **not** a dark terminal; a black panel here would
-read as a stray dark theme.
-
-- Sessions are `<pre>` with hand-marked spans: `.ll-t-p` for the prompt (volt-deep, the
-  only accented thing), `.ll-t-box` for box-drawing characters, `.ll-t-dim` for banners
-  and footers, `.ll-t-kw` / `.ll-t-str` from the SQL palette, `.ll-t-err` in danger.
-- `line-height` stays at exactly `1`, at a whole-pixel `font-size`. The box-drawing
-  characters are not in the webfont's subset, come from the fallback monospace, and fill
-  exactly one em: any looser leading leaves a printed table as stacked rectangles, and a
-  fractional size gaps on subpixel rounding. Terminal leading is the right look anyway —
-  the blank lines between statements carry the spacing.
-- A blank line inside the `<pre>` is written as `<span class="ll-t-gap"></span>`. A truly
-  empty line would end the raw HTML block that the `<pre>` lives in.
-- `.ll-term__body` carries a `min-height` equal to the tallest session, so switching tabs
-  never resizes the card. Re-measure it when a session changes.
-- **The sessions are captured, not composed.** Run the binary and paste what it prints.
-  The REPL renders with comfy-table (`╭─┬─╮`); `--command` and `--file` render plain
-  ASCII (`+---+`). Getting that wrong is the tell that a session was invented. Table and
-  column names may stand in for a lake nobody can reach, but every byte of the framing,
-  the prompts (`sql> `, `  -> `) and the `N row(s) fetched.` / `Elapsed …` footer is real.
-
-#### Tab strips — `.ll-switch`
-
-Hard-edged file tabs on the recessed tone, the active one lifted onto the panel under a
-2px volt cap — the same device the console uses for its editor tabs, and it should stay
-that way on both surfaces. Real `role="tablist"` / `role="tab"` / `aria-selected`, panels
-toggled with `hidden`, and roving `tabindex` driven from
-`docs/src/javascripts/extra.js`.
-
-### Docs content pages
-
-Ink header and tab row; volt underline on the active tab; volt left bar plus wash on the
-active sidebar item; square code blocks with a 2px ink border; inline code on panel with a
-hairline (**not** volt wash — several per paragraph would turn the accent into wallpaper);
-ink header rows on tables; admonitions square with a 4px coloured left edge; links are ink
-with a volt underline, and gain a volt wash on hover.
+- No `[[project.theme.palette]]` table, which would restore a theme toggle.
+- `project.extra.generator = false` removes the footer generator credit.
+- Overrides use plain `:root` and load after the theme stylesheet.
+- Header and footer are outside `.md-typeset`; style their links explicitly.
+- The coverage table uses `display: table; width: 100%` inside a scrolling wrapper.
+- Instant navigation requires delegated handlers in `extra.js`.
+- Markdown wraps card links in paragraphs; put flex spacing on those wrappers.
+- CLI tabs keep their roles, roving tabindex and hidden panels. Captured terminal
+  output uses whole-pixel font sizes and exactly `line-height: 1` so box characters
+  connect. Do not fabricate output or change the captured sessions for decoration.
 
 ### Web console
 
-Fixed rhythm — keep it unless there is a reason: top bar 44px, tab strip 30px, editor
-toolbar 38px, results header 30px, status bar 24px, tree row 26px, grid row 27px, grid
-header 30px, base font 13px, editor 13px, grid 12px.
+Cream top and status bars frame an outlined workspace. The explorer is paper; editor
+and grid are white. Active query tabs have a blue cap; Run is a blue press button.
+Results have a light-blue header and fine row dividers.
 
-- **Top bar** — ink band, volt logo tile, mono wordmark, `CONSOLE` badge outlined in volt,
-  and a quiet `DOCS ↗` link on the right. No theme toggle.
-- **Explorer** — mono tree on panel, square rows; the selected table gets the volt wash,
-  ink text and `inset 3px 0 0` volt bar.
-- **Editor** — tabs are hard-edged files on the recessed page tone; the active one lifts
-  onto the panel with a volt cap on top. Run is a volt button with ink text, an ink border
-  and a press shadow. The statement Run would execute is marked by the volt gutter bar plus
-  a wash across its lines.
-- **Results** — recessed header strip with a mono `RESULTS` eyebrow, a volt block and mono
-  figures for the outcome, and a square CSV button. The grid is entirely monospaced so
-  digits line up down a column; the header sits a shade back over one full-strength rule,
-  rows are separated by the finest line, and there is no zebra striping.
-- **Status bar** — ink strip of mono cells: connection, endpoint, scope, rows, elapsed,
-  and the run shortcut. Failure states are filled chips.
+Rhythm: top bar 60px, tabs 38px, toolbar 46px, results header 38px, status bar 28px,
+tree rows 30px, grid rows 31px, grid header 36px. Preserve resizable panels. The console
+targets desktop use with a 960px minimum workspace width; it does not need a mobile
+layout or collapsible explorer. Long scope names truncate without moving Run offscreen.
 
----
+The editor and grid read CSS variables in `editor/theme.ts` and `TableView.tsx`.
+Tailwind v4's `@theme inline` maps shared tokens to utilities. Use those utilities
+instead of raw palette classes. The embedded console's fonts must work offline.
 
-## Accessibility
+### Homepage console demo
 
-- Volt never carries text on paper. On ink, volt is the only colour that may.
-- State is never colour alone: pair it with a shape, an icon or a word — the matrix's
-  block/outline/dash, the results' volt square beside its row count.
-- Body text meets 4.5:1 against its surface. Check any new pairing, especially on ink
-  bands.
-- Focus rings are 2px volt and must stay visible. Do not trade them for a subtler cue.
-- Pointer targets are 24×24 CSS px in the docs. The console is denser, and a few icon
-  buttons sit at 20×20 inside a 30px strip; treat 20px as the floor there and do not go
-  below it for an action that has no other route.
-- Interactive home-page devices carry real semantics, not just styling: the tab strip is
-  a `role="tablist"` with roving `tabindex` and arrow/Home/End keys, and its panels are
-  toggled with `hidden`. Anything hidden at a narrow width reappears as readable text
-  rather than disappearing.
-- Where a focus ring lands on paper, volt alone is far too quiet, so pair it:
-  `0 0 0 2px volt, 0 0 0 4px ink` — volt first to stay on-brand, ink behind it to be
-  seen. The home page's tab strip and session panels use exactly that.
+Render the console showcase with HTML, shared `--ll-*` tokens and a little delegated
+JavaScript. Keep the actual console's fonts, panel colours, row heights and button
+motion. Text stays selectable at its native size. The desktop layout scrolls locally
+below 960px; do not shrink the entire preview or add a mobile console layout.
+Reset the documentation theme's closed-summary margins and table-cell alignment
+inside the demo: collapsed tree rows stay 30px apart, and grid text is vertically
+centred. Match the console's 36px column headers, 52px row-number column and 160px
+minimum data columns. Column types appear on hover, not beside the column names.
 
----
+Show a complete SQL example and its matching result on first paint. Example tabs
+switch both together; the sample catalog expands using native disclosure controls.
+Run shows preloaded results, Copy SQL copies the displayed statement, and the Demo
+badge and example labels distinguish this from a connected session. Use consistent
+TPC-H nation/region data; never invent query timings, connection state or loading
+delays. Keep the markup readable without fetching data or loading the React app.
 
-## Changing the design
+## Verification and maintenance
 
-Small change — a new component, a new page section:
+When changing colour, font or geometry, update `web/src/styles.css`,
+`docs/src/stylesheets/extra.css` and this file together. When the console changes,
+keep the native homepage demo's appearance aligned with it.
 
-1. Build it from existing tokens. If you need a colour that is not in the table above,
-   that is a signal the design is being diluted, not that a token is missing.
-2. Check it against [the five rules](#the-five-rules).
-3. Verify in a browser, both surfaces if the change touches shared vocabulary.
-
-Changing a token value, a font, or the geometry:
-
-1. Update **both** `web/src/styles.css` and `docs/src/stylesheets/extra.css`.
-2. Update this file's tables in the same change.
-3. Re-check the ink bands — most contrast regressions land there.
-4. Re-take `docs/src/assets/console.png` if the console's look changed; the docs home page
-   shows the real UI, and a stale screenshot is worse than none.
-
-Do not switch away from Lakebed — different accent, dark mode, rounded corners, a soft
-shadow scale — unless the user explicitly asks for it. If a change would quietly erode it,
-say so instead of shipping it.
-
-### Verifying
-
-```bash
-pnpm -C web dev                 # console on :5173, proxies Flight SQL to :32010
-pnpm -C web typecheck           # required when web/ changes
-docs/.venv/bin/zensical serve   # docs on :8000
-```
-
-Check: no horizontal scroll at 1440 / 768 / 375; `prefers-color-scheme: dark` leaves both
-surfaces on paper; the docs header has no light/dark toggle; fonts actually load
-(`document.fonts.check`); focus rings visible; a real query renders in the grid.
-
-To see the console as shipped rather than in dev, `pnpm -C web build` then `cargo build` —
-the binary embeds `web/dist`.
+Verify docs at desktop and phone widths, and the console at desktop widths. Check
+keyboard focus, navigation/search, CLI tabs,
+catalog expansion, SQL execution, error feedback and result sorting. Colour never
+carries state alone. Run web typecheck/build and docs build in the selected Python
+environment. Follow `AGENTS.md` for PR checks.
+For the homepage demo, also verify example switching, catalog disclosures, Copy SQL,
+Run feedback, local scrolling and interactions after navigating away and back.

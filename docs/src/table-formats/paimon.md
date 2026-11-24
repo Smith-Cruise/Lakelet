@@ -5,213 +5,59 @@ icon: lucide/layers
 # Paimon
 
 An HMS or Glue table is treated as Paimon when its properties contain
-`table_type` with value `PAIMON`, case-insensitively. Tables from a
-[Paimon FileSystem catalog](../catalogs/paimon-filesystem.md) are always
-Paimon. Lakelet loads the latest Paimon schema from the table location.
+`table_type` with value `PAIMON`, case-insensitively.
 
 ## Data Types
 
-Same as paimon-rust.
+Same as `paimon-rust`.
 
-## Create schema
+## Supported Operations
 
-```sql
-CREATE SCHEMA [IF NOT EXISTS] schema_name;
-```
-
-## Drop schema
-
-```sql
-DROP SCHEMA [IF EXISTS] schema_name [CASCADE | RESTRICT];
-```
-
-## Create table
-
-```sql
-CREATE TABLE [IF NOT EXISTS] table_name (
-    column_definition [, ...]
-    [, PRIMARY KEY (column_name [, ...])]
-)
-[PARTITIONED BY (column_name [, ...])]
-[USING PAIMON]
-[WITH ('key' = 'value' [, ...])];
-
-column_definition:
-    column_name data_type
-    [NULL | NOT NULL]
-    [COMMENT 'text']
-    [PRIMARY KEY]
-```
-
-- `IF NOT EXISTS` leaves an existing table unchanged; it does not compare or
-  update its definition. Without it, creating an existing table is an error.
-- Columns are nullable by default. Primary-key columns become non-nullable and
-  cannot be declared explicitly `NULL`. Only one primary key is allowed, either
-  inline or as a table constraint.
-- `PARTITIONED BY` references existing column names without types.
-- `USING PAIMON` is optional. Other table formats are not accepted.
-- `WITH` accepts single-quoted string keys and values.
-- Table locations are chosen under the configured warehouse.
-
-### Table options
-
-Set Paimon table options with `WITH ('key' = 'value' [, ...])` when creating a
-table. Keys and values, including numbers and booleans, must be single-quoted
-strings. The options below follow the
-[Paimon table options reference](https://paimon.apache.org/docs/rust/sql/#table-options).
-
-#### Bucket Configuration
-
-| Option | Description |
+| Operation | Notes |
 | --- | --- |
-| `'bucket' = 'N'` | Fixed N buckets (e.g. 1, 2, 4) |
-| `'bucket' = '-1'` | Dynamic bucket mode (HASH index) |
-| `'bucket' = '-2'` | Postpone bucket mode (deferred assignment) |
-| `'bucket-key' = 'col'` | Explicit bucket key column |
-| `'bucket-function.type' = 'default' \| 'mod' \| 'hive'` | Function used to map fixed bucket keys to bucket ids |
+| `SELECT` | |
+| [`DESCRIBE`](../sql/describe.md) | |
+| [`SHOW CREATE TABLE`](../sql/show-create-table.md) | |
+| [`CREATE SCHEMA`](../sql/create-schema.md) | Paimon FileSystem catalog only. |
+| [`DROP SCHEMA`](../sql/drop-schema.md) | Paimon FileSystem catalog only. |
+| [`CREATE TABLE`](../sql/create-table.md) | Paimon FileSystem catalog only. Supports `AS SELECT` and `LIKE`. |
+| [`DROP TABLE`](../sql/drop-table.md) | Paimon FileSystem catalog only. |
+| [`INSERT INTO`](../sql/insert.md) | |
+| [`INSERT OVERWRITE`](../sql/insert.md) | Replaces only the partitions present in the input. For an unpartitioned table, it replaces all rows. |
+| [`CALL PROCEDURE`](../sql/call-procedure.md) | Paimon FileSystem catalog only. |
 
-#### Merge Engine
+## Supported Call Procedures
 
-| Option | Description |
-| --- | --- |
-| `'merge-engine' = 'deduplicate'` | Deduplicate engine (default for PK tables), last write wins |
-| `'merge-engine' = 'first-row'` | Keeps the first written row |
-| `'merge-engine' = 'partial-update'` | Basic partial-update engine for PK tables |
-| `'merge-engine' = 'aggregation'` | Basic aggregation engine for PK tables |
+Use `CALL paimon.<procedure>` on a table in a [Paimon FileSystem catalog](../catalogs/paimon-filesystem.md).
+Every procedure takes a named `table` argument. For example, to tag the latest snapshot:
 
-For primary-key tables, `partial-update` keeps the latest non-null value of each
-field. Set `'ignore-delete' = 'true'` or
-`'partial-update.ignore-delete' = 'true'` to ignore retract rows; otherwise they
-are rejected. Once enabled, `ignore-delete` cannot be changed back to `false`.
-Creating partial-update tables with sequence groups or aggregation options is
-not supported.
+```sql
+CALL paimon.create_tag(table => 'paimon_local.sales.orders', tag => 'daily_close');
+```
 
-The basic `aggregation` engine supports fixed buckets and dynamic buckets
-(`'bucket' = '-1'`) when the primary key includes all partition columns. Configure
-functions with `fields.<field>.aggregate-function` or
-`fields.default-aggregate-function`. Supported functions are `sum`, `product`,
-`min`, `max`, `last_value`, `first_value`, `last_non_null_value`,
-`first_non_null_value`, `bool_and`, `bool_or`, and `listagg`. Sequence fields
-always use `last_value` and cannot have an explicit aggregate function.
-Retract rows, deletion-vector writes, cross-partition dynamic bucket writes,
-and advanced aggregation options such as `ignore-retract`, `distinct`,
-`nested-key`, `count-limit`, and sequence groups are not supported.
+The table lists the remaining named arguments. Brackets mark optional arguments.
 
-For deletion-vector-enabled primary-key tables using `deduplicate`, batch reads
-hide uncompacted level-0 files by default. Set
-`'deletion-vectors.merge-on-read' = 'true'` to include and merge them on read.
-This option only takes effect when `'deletion-vectors.enabled' = 'true'` and
-only affects batch snapshot reads. Deletion-vector writes and merge-on-read
-are not supported for `partial-update` or `aggregation` tables.
-
-#### Global Index Options
-
-| Option | Default | Description |
+| Procedure | Other named arguments | What it does |
 | --- | --- | --- |
-| `row-tracking.enabled` | `false` | Enables stable row ids required by global index files. |
-| `data-evolution.enabled` | `false` | Enables row-id-aware table evolution and partial-column writes. |
-| `global-index.enabled` | `true` | Enables global index metadata and global-index-aware reads. |
-| `global-index.row-count-per-shard` | `100000` | Maximum row count per vector global-index shard. |
-| `sorted-index.records-per-range` | `100000` | Maximum row count per BTree, bitmap, multivalue, or FM global-index file range; falls back to legacy `btree-index.records-per-range`. |
-| `btree-index.block-size` | `64kb` | Target BTree data-block size. |
-| `btree-index.file-version` | `1` | BTree file version to write: `1` or `2`. V2 uses adaptive postings and requires V2-capable readers. |
-| `btree-index.bloom-filter.enabled` | `false` | Writes a Bloom filter used to avoid BTree data-block reads for missing equality and `IN` keys. |
-| `btree-index.compression` | `none` | BTree block compression: `none`, `zstd`, `lz4`, or `lzo`. |
-| `btree-index.compression-level` | `1` | BTree compression level (used by codecs that support levels). |
-| `bitmap-index.dictionary-block-size` | `16kb` | Target bitmap dictionary-block size. |
-| `bitmap-index.compression` | `none` | Bitmap dictionary/index block compression: `none`, `zstd`, `lz4`, or `lzo`. |
-| `bitmap-index.compression-level` | `1` | Bitmap compression level (used by codecs that support levels). |
-| `multivalue-index.dictionary-block-size` | `16kb` | Target multivalue dictionary-block size. |
-| `multivalue-index.compression` | `none` | Multivalue dictionary/index block compression: `none`, `zstd`, `lz4`, or `lzo`. |
-| `multivalue-index.compression-level` | `1` | Multivalue compression level (used by codecs that support levels). |
-| `fm-index.partition-size` | `16mb` | Maximum encoded symbol count targeted by each FM partition. A single encoded value must be smaller than this limit. |
-| `fm-index.partition-row-count` | `100000` | Maximum row count per FM partition. |
-| `fm-index.sa-sample-rate` | `32` | Power-of-two suffix-array sampling rate used by FM locate operations. |
-| `fm-index.compression` | `lz4` | FM block compression: `none`, `zstd`, `lz4`, or `lzo`. |
-| `fm-index.compression-level` | `1` | FM compression level (used by codecs that support levels). |
-| `fm-index.read-cache-size` | `64mb` | Scan-scoped decoded FM block cache size. |
-| `fm-index.demand-page-size` | `512kb` | Target compressed-block read-ahead size for FM demand paging. |
-| `fm-index.locate-cost-ratio` | `0.001` | Maximum estimated locate work as a fraction of indexed text; denser matches fall back to the source scan. |
-| `btree-index.fallback-scan-max-size` | `256mb` | Maximum total size of BTree global-index files requiring fallback scans for range/between and suffix/contains/complex LIKE predicates; files proven to match completely by metadata need no scan and are excluded. `0` disables BTree fallback index scans. |
-| `bitmap-index.fallback-scan-max-size` | `256mb` | Maximum total size of selected bitmap global-index files for fallback scans used by range/between and suffix/contains/complex LIKE predicates; `0` disables bitmap fallback index scans. |
-| `global-index.search-mode` | `fast` | Global index coverage mode for reads: `fast`, `full`, or `detail`. |
-| `global-index.thread-num` | `32` | Number of concurrent global-index search tasks; must be greater than 0 and must not exceed the runtime's task limit. This does not limit Vindex file range reads. |
-| `global-index.vindex.read-thread-num` | `64` | Maximum number of concurrent Vindex file range reads shared by one search operation; must be greater than 0 and must not exceed the runtime semaphore limit. |
-| `global-index.column-update-action` | `THROW_ERROR` | What a commit does when it updates an indexed column: `THROW_ERROR` rejects the commit, `DROP_PARTITION_INDEX` drops the affected partition index instead. |
+| `create_tag` | `tag`, `[snapshot_id]`, `[time_retained]` | Tags a snapshot. Omitting `snapshot_id` selects the latest snapshot. |
+| `create_tag_from_timestamp` | `tag`, `timestamp` | Tags the earliest retained snapshot committed at or after the given Unix timestamp in milliseconds. |
+| `create_tag_from_watermark` | `tag`, `watermark`, `[time_retained]` | Tags the snapshot with the lowest watermark at or above the given value in milliseconds. |
+| `replace_tag` | `tag`, `[snapshot_id]`, `[time_retained]` | Moves an existing tag to the specified snapshot, or to the latest snapshot if omitted. |
+| `rename_tag` | `tag`, `target_tag` | Renames an existing tag. |
+| `delete_tag` | `tag` | Deletes one tag or a comma-separated list of tags. |
+| `create_branch` | `branch`, `[tag]`, `[ignore_if_exists]` | Creates a branch from the main table's schema. Supply a tag to start from its snapshot. |
+| `rename_branch` | `from_branch`, `to_branch` | Renames an existing branch. |
+| `delete_branch` | `branch` | Deletes one branch or a comma-separated list of branches. |
+| `rollback_to` | `snapshot_id` or `tag` | Restores the table to the specified snapshot or the snapshot referenced by the tag. |
+| `rollback_to_timestamp` | `timestamp` | Restores the latest retained snapshot committed at or before the given Unix timestamp in milliseconds. |
+| `reset_consumer` | `consumer_id`, `[next_snapshot_id]` | Sets the next snapshot a consumer will read. Omitting `next_snapshot_id` deletes its saved position. |
+| `clear_consumers` | `[including_consumers]`, `[excluding_consumers]` | Clears saved positions for matching consumer IDs and skips excluded IDs. Omitting both patterns clears all positions for the table. |
+| `create_global_index` | `index_column`, `[index_type]`, `[options]` | Builds a global index on a column. The default index type is `btree`. |
+| `drop_global_index` | `index_column`, `[index_type]`, `[partitions]`, `[dry_run]` | Drops the column's index for the selected partitions or the whole table. Use `dry_run => true` to preview the change. |
+| `compact` | `[partitions]` | Compacts eligible data files across the table or in the selected partitions. |
 
-Global index creation in Paimon requires row tracking and data evolution;
-primary-key tables and tables with deletion vectors enabled are not supported.
-Setting these options alone does not build an index.
-
-`global-index.vindex.read-thread-num` is independent of `global-index.thread-num`.
-Set both explicitly if index search tasks and Vindex file reads should use the
-same concurrency limit.
-
-#### Variant Shredding Options
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `variant.shreddingSchema` | unset | Configured shredding schema as a Paimon `ROW` type JSON string. Top-level field names match `VARIANT` column names, and their nested types describe the typed fields to extract. |
-| `parquet.variant.shreddingSchema` | unset | Parquet-scoped alias for `variant.shreddingSchema`. |
-| `variant.inferShreddingSchema` | `false` | Enables per-writer schema inference for `VARIANT` columns when no configured shredding schema is set. |
-| `parquet.variant.inferShreddingSchema` | `false` | Parquet-scoped alias for `variant.inferShreddingSchema`. |
-| `variant.shredding.maxInferBufferRow` | `4096` | Number of initial rows buffered per data-file writer before inferring the shredding schema. If fewer rows are written, inference runs when the writer is flushed or closed. |
-| `variant.shredding.maxSchemaDepth` | `50` | Maximum nested depth considered by inference. |
-| `variant.shredding.maxSchemaWidth` | `300` | Maximum number of inferred typed fields across inferred Variant schemas. |
-| `variant.shredding.minFieldCardinalityRatio` | `0.1` | Minimum ratio of sampled non-null Variant values that must contain a field before inference keeps it as a typed field. |
-
-These options apply to `VARIANT` columns written to Parquet. They control the
-file layout while preserving the logical `VARIANT` type. Configured shredding
-takes precedence over inferred shredding. Tables without `VARIANT` columns, or
-without shredding enabled, use the normal file layout.
-
-#### Other Options
-
-| Option | Description |
-| --- | --- |
-| `'sequence.field' = 'col'` | Sequence field used to determine which record wins during deduplication |
-| `'row-tracking.enabled' = 'true'` | Enable stable row ids |
-| `'data-evolution.enabled' = 'true'` | Enable data evolution and partial-column writes |
-| `'manifest.sidecar.enabled' = 'true'` | Write and read manifest block sidecars for partition, row-id, and bucket pruning; when unset, inherits `manifest-sort.enabled` |
-| `'global-index.enabled' = 'true'` | Enable global index metadata and reads |
-| `'deletion-vectors.enabled' = 'true'` | Enable deletion vectors |
-| `'deletion-vectors.merge-on-read' = 'true'` | Include and key-merge uncompacted level-0 files in DV-enabled deduplicate batch reads |
-| `'changelog-producer' = 'input'` | Changelog producer; primary-key tables support reads and writes in this mode |
-
-Cross-partition update mode applies when `'bucket' = '-1'` and the primary key
-does not contain every partition column; it has no separate option.
-
-## Drop table
-
-```sql
-DROP TABLE [IF EXISTS] table_name;
-```
-
-## Writing tables
-
-Existing Paimon tables support `INSERT INTO` and `INSERT OVERWRITE`. The storage
-credentials must allow writes to the table location.
-
-```sql
-INSERT INTO table_name [(column_name [, ...])]
-{ VALUES (expression [, ...]) [, ...] | query };
-```
-
-Braces group alternatives; choose either `VALUES` or a query. Create the
-destination table before inserting rows or query results. Creation and insertion
-are separate operations; an INSERT failure does not undo table creation.
-INSERT results report the number of rows written.
-
-### Overwrite data
-
-```sql
-INSERT OVERWRITE table_name [(column_name [, ...])]
-{ VALUES (expression [, ...]) [, ...] | query };
-```
-
-For an unpartitioned table, `INSERT OVERWRITE` replaces all its data. For a
-partitioned table, it replaces only the partitions present in the new data.
-Other partitions remain unchanged.
+See [CALL PROCEDURE](../sql/call-procedure.md) for Lakelet's procedure syntax and the
+[Paimon Rust procedure reference](https://paimon.apache.org/docs/rust/sql/#procedures) for more examples.
 
 ## Metadata Table
 

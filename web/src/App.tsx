@@ -97,11 +97,15 @@ export function App() {
   );
 
   return (
-    <div className="flex h-full flex-col bg-panel">
+    <div className="lk-shell flex h-full flex-col bg-page">
       <TopBar />
 
-      <Group orientation="horizontal" className="min-h-0 flex-1">
-        <Panel defaultSize="18" minSize="12" maxSize="40">
+      <Group
+        orientation="horizontal"
+        className="lk-workspace min-h-0 flex-1"
+        style={{ width: "auto" }}
+      >
+        <Panel defaultSize="20" minSize="12" maxSize="40">
           <CatalogTree
             catalogs={catalogs.data ?? []}
             catalogsError={catalogs.error ? describeError(catalogs.error) : undefined}
