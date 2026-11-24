@@ -50,6 +50,7 @@ nav = [
 generator = false
 
 [project.theme]
+custom_dir = "overrides"
 language = "en"
 # Fonts are self-hosted in assets/fonts for reliable loading.
 font = false
