@@ -493,7 +493,7 @@ mod tests {
 
     #[tokio::test]
     async fn predicates_preserve_rows_without_indexes() -> Result<()> {
-        use crate::data_file_format::case_insensitive_adapter::CaseInsensitivePhysicalExprAdapterFactory;
+        use super::super::case_insensitive_adapter::CaseInsensitivePhysicalExprAdapterFactory;
         use datafusion::arrow::datatypes::Schema;
         use futures::TryStreamExt;
 

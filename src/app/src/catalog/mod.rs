@@ -1,5 +1,4 @@
 pub(crate) mod benchmark;
-pub(crate) mod data_file_format;
 pub(crate) mod glue;
 pub(crate) mod hms;
 mod iceberg;
