@@ -1,5 +1,11 @@
 # Lakelet
 
+<p align="center">
+  <a href="https://codecov.io/gh/Smith-Cruise/Lakelet">
+    <img src="https://codecov.io/gh/Smith-Cruise/Lakelet/graph/badge.svg" alt="codecov" />
+  </a>
+</p>
+
 Lakelet queries lakehouse tables with SQL. It runs as a single binary without a
 Spark cluster.
 

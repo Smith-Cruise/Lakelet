@@ -1,0 +1,27 @@
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+comment:
+  layout: "header, diff, flags, files"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+
+# Exclude standalone unit-test modules placed inside `src/` and the web UI.
+ignore:
+  - "**/tests.rs"
+  - "web/**"
+
+# CI can skip one suite for changes confined to the web UI or integration tests.
+flags:
+  unit:
+    carryforward: true
+  integration:
+    carryforward: true

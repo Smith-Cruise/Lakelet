@@ -8,6 +8,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Leave room for instrumented binaries and the integration test containers.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   build:
@@ -36,21 +39,20 @@ jobs:
         # Dependency changes (root Cargo.toml/Cargo.lock) must also trigger Rust CI
         # so the new dependency graph is actually validated. web/ is included
         # because the binary embeds the built UI.
-        if git diff --name-only "$base" "$head" | grep -Eq '^(src/|web/|Cargo\.(toml|lock)$)'; then
+        shared_paths=(src/ Cargo.toml Cargo.lock .github/workflows/rust.yml codecov.yml)
+        if ! git diff --quiet "$base" "$head" -- "${shared_paths[@]}" web/; then
           echo "src_changed=true" >> "$GITHUB_OUTPUT"
         else
           echo "src_changed=false" >> "$GITHUB_OUTPUT"
         fi
 
-        if git diff --name-only "$base" "$head" | grep -Eq '^(src/|integration-tests/|Cargo\.(toml|lock)$)'; then
+        if ! git diff --quiet "$base" "$head" -- "${shared_paths[@]}" integration-tests/; then
           echo "integration_changed=true" >> "$GITHUB_OUTPUT"
         else
           echo "integration_changed=false" >> "$GITHUB_OUTPUT"
         fi
 
-    # The web UI is built once here and embedded into every binary below: the
-    # integration binary gets it through web/dist, the unit tests download the
-    # same artifact so the embed path is what gets tested.
+    # Both test jobs download the same web bundle.
     - name: Install pnpm
       if: steps.changes.outputs.src_changed == 'true' || steps.changes.outputs.integration_changed == 'true'
       uses: pnpm/action-setup@v5
@@ -83,25 +85,6 @@ jobs:
         path: web/dist
         if-no-files-found: error
 
-    - name: Install Rust toolchain
-      if: steps.changes.outputs.integration_changed == 'true'
-      uses: dtolnay/rust-toolchain@stable
-    - name: Rust Cache
-      if: steps.changes.outputs.integration_changed == 'true'
-      uses: Swatinem/rust-cache@v2
-
-    - name: Build Lakelet binary
-      if: steps.changes.outputs.integration_changed == 'true'
-      run: cargo build -p lakelet-app --bin lakelet
-
-    - name: Upload Lakelet binary
-      if: steps.changes.outputs.integration_changed == 'true'
-      uses: actions/upload-artifact@v6
-      with:
-        name: lakelet-debug-bin
-        path: target/debug/lakelet
-        if-no-files-found: error
-
   unittest:
 
     runs-on: ubuntu-latest
@@ -114,7 +97,12 @@ jobs:
       if: needs.build.outputs.src_changed == 'true'
       uses: dtolnay/rust-toolchain@stable
       with:
-        components: clippy, rustfmt
+        components: clippy, rustfmt, llvm-tools-preview
+    - name: Install cargo-llvm-cov
+      if: needs.build.outputs.src_changed == 'true'
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-llvm-cov@0.9.2
     - name: Rust Cache
       if: needs.build.outputs.src_changed == 'true'
       uses: Swatinem/rust-cache@v2
@@ -132,7 +120,9 @@ jobs:
     # only run that covers the paths taken when `web/dist` holds no bundle.
     - name: Run tests (no web UI bundle)
       if: needs.build.outputs.src_changed == 'true'
-      run: cargo test --all-targets --all-features --verbose
+      run: |
+        cargo llvm-cov clean --workspace
+        cargo llvm-cov --workspace --all-targets --all-features --no-report
 
     - name: Download web UI bundle
       if: needs.build.outputs.src_changed == 'true'
@@ -143,7 +133,19 @@ jobs:
 
     - name: Run tests (with web UI bundle)
       if: needs.build.outputs.src_changed == 'true'
-      run: cargo test --all-targets --all-features --verbose
+      run: |
+        cargo llvm-cov --workspace --all-targets --all-features --no-report
+        cargo llvm-cov report --lcov --output-path unit.lcov
+
+    - name: Upload unit coverage
+      if: needs.build.outputs.src_changed == 'true'
+      uses: codecov/codecov-action@v7
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: unit.lcov
+        flags: unit
+        disable_search: true
+        fail_ci_if_error: false
 
   integration-test:
 
@@ -169,17 +171,39 @@ jobs:
     - name: Docker Compose version
       if: needs.build.outputs.integration_changed == 'true'
       run: docker compose version
-    - name: Download Lakelet binary
+    - name: Download web UI bundle
       if: needs.build.outputs.integration_changed == 'true'
       uses: actions/download-artifact@v7
       with:
-        name: lakelet-debug-bin
-        path: target/debug
-    - name: Make Lakelet binary executable
+        name: web-dist
+        path: web/dist
+    - name: Install Rust toolchain
       if: needs.build.outputs.integration_changed == 'true'
-      run: chmod +x target/debug/lakelet
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: llvm-tools-preview
+    - name: Install cargo-llvm-cov
+      if: needs.build.outputs.integration_changed == 'true'
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-llvm-cov@0.9.2
+    - name: Rust Cache
+      if: needs.build.outputs.integration_changed == 'true'
+      uses: Swatinem/rust-cache@v2
     - name: Run integration tests
       if: needs.build.outputs.integration_changed == 'true'
-      env:
-        LAKELET_BIN: ${{ github.workspace }}/target/debug/lakelet
-      run: ./integration-tests/integration-test.sh
+      run: |
+        source <(cargo llvm-cov show-env --sh --export-prefix)
+        cargo llvm-cov clean --workspace
+        cargo build -p lakelet-app --bin lakelet
+        LAKELET_BIN="${CARGO_TARGET_DIR}/debug/lakelet" ./integration-tests/integration-test.sh
+        cargo llvm-cov report --lcov --output-path integration.lcov
+    - name: Upload integration coverage
+      if: needs.build.outputs.integration_changed == 'true'
+      uses: codecov/codecov-action@v7
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: integration.lcov
+        flags: integration
+        disable_search: true
+        fail_ci_if_error: false
