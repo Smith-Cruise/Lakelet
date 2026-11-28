@@ -1,8 +1,7 @@
 pub(crate) mod benchmark;
-pub(crate) mod data_file_format;
 pub(crate) mod glue;
 pub(crate) mod hms;
-pub(crate) mod iceberg_rest;
+mod iceberg;
 pub(crate) mod internal;
 pub(crate) mod manager;
 pub(crate) mod paimon_fs;
@@ -13,7 +12,7 @@ pub(crate) mod table_format;
 use crate::LakeletContext;
 use crate::catalog::glue::GlueCatalog;
 use crate::catalog::hms::HMSCatalog;
-use crate::catalog::iceberg_rest::IcebergRestCatalog;
+use crate::catalog::iceberg::rest::IcebergRestCatalog;
 use crate::catalog::internal::InternalCatalog;
 use crate::catalog::paimon_fs::PaimonFSCatalog;
 use async_trait::async_trait;

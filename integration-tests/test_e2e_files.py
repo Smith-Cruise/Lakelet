@@ -1,6 +1,7 @@
 import datetime
 import os
 import re
+import signal
 import socket
 import subprocess
 import time
@@ -57,8 +58,14 @@ def flight_server():
         wait_for_server(process)
         yield f"grpc://127.0.0.1:{FLIGHT_PORT}"
     finally:
-        process.terminate()
-        process.wait()
+        # Lakelet handles SIGINT and flushes LLVM coverage on normal exit.
+        process.send_signal(signal.SIGINT)
+        try:
+            process.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            raise
 
 
 def wait_for_server(process: subprocess.Popen) -> None:
@@ -73,7 +80,6 @@ def wait_for_server(process: subprocess.Popen) -> None:
                 return
         except OSError:
             time.sleep(0.1)
-    process.terminate()
     raise AssertionError(
         f"Lakelet Flight SQL server did not open port {FLIGHT_PORT} within {SERVER_READY_TIMEOUT_SECONDS}s"
     )

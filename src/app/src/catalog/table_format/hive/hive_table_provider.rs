@@ -1,9 +1,9 @@
-use crate::data_file_format::case_insensitive_adapter::CaseInsensitivePhysicalExprAdapterFactory;
-use crate::data_file_format::orc::OrcSource;
-use crate::data_file_format::parquet::{
+use crate::table_format::hive::HiveStorageInfo;
+use crate::table_format::hive::data_file_format::case_insensitive_adapter::CaseInsensitivePhysicalExprAdapterFactory;
+use crate::table_format::hive::data_file_format::orc::OrcSource;
+use crate::table_format::hive::data_file_format::parquet::{
     ExtendedParquetFileReaderFactory, ExtendedParquetReaderOptions,
 };
-use crate::table_format::hive::HiveStorageInfo;
 use crate::table_format::hive::hive_file_utils::{list_files, list_files_by_directories};
 use crate::table_format::hive::hive_partition::HivePartition;
 use crate::table_format::hive::hive_storage_info::HiveInputFormat;
@@ -2116,7 +2116,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_scan_orc_predicates_keep_complete_sql_filtering() -> Result<()> {
-        let no_index = crate::data_file_format::orc::no_index_predicate_file();
+        let no_index = crate::table_format::hive::data_file_format::orc::no_index_predicate_file();
         let fields = hive_fields(&[
             ("id", "bigint"),
             ("text", "string"),

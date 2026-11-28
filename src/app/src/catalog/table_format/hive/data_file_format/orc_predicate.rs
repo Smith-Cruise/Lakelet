@@ -259,8 +259,8 @@ fn reverse(op: ComparisonOp) -> ComparisonOp {
 
 #[cfg(test)]
 mod tests {
+    use super::super::case_insensitive_adapter::CaseInsensitivePhysicalExprAdapterFactory;
     use super::*;
-    use crate::data_file_format::case_insensitive_adapter::CaseInsensitivePhysicalExprAdapterFactory;
     use datafusion::arrow::datatypes::Field;
     use datafusion::common::{Result, ToDFSchema};
     use datafusion::physical_expr_adapter::PhysicalExprAdapterFactory;

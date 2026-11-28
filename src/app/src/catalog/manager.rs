@@ -1,5 +1,5 @@
 use crate::catalog::benchmark::BenchmarkCatalogConfig;
-use crate::catalog::iceberg_rest::IcebergRestCatalogConfig;
+use crate::catalog::iceberg::rest::IcebergRestCatalogConfig;
 use crate::glue_catalog::GlueCatalogConfig;
 use crate::hms_catalog::HMSCatalogConfig;
 use crate::internal_catalog::INTERNAL_CATALOG;

@@ -38,3 +38,7 @@ target
 /web/dist
 /web/node_modules
 /web/*.tsbuildinfo
+
+# Local coverage artifacts
+*.lcov
+*.profraw

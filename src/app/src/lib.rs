@@ -8,7 +8,6 @@ pub(crate) mod catalog;
 pub use catalog::statistics::StatisticsManager;
 pub use context::LakeletContext;
 
-pub(crate) use catalog::data_file_format;
 pub(crate) use catalog::glue as glue_catalog;
 pub(crate) use catalog::hms as hms_catalog;
 pub(crate) use catalog::internal as internal_catalog;
