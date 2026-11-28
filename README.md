@@ -1,6 +1,6 @@
 # Lakelet
 
-<p align="center">
+<p align="left">
   <a href="https://codecov.io/gh/Smith-Cruise/Lakelet">
     <img src="https://codecov.io/gh/Smith-Cruise/Lakelet/graph/badge.svg" alt="codecov" />
   </a>
