@@ -193,10 +193,11 @@ jobs:
     - name: Run integration tests
       if: needs.build.outputs.integration_changed == 'true'
       run: |
-        source <(cargo llvm-cov show-env --sh --export-prefix)
+        cargo llvm-cov show-env --sh > "$RUNNER_TEMP/lakelet-coverage-env.sh"
+        source "$RUNNER_TEMP/lakelet-coverage-env.sh"
         cargo llvm-cov clean --workspace
         cargo build -p lakelet-app --bin lakelet
-        LAKELET_BIN="${CARGO_TARGET_DIR}/debug/lakelet" ./integration-tests/integration-test.sh
+        LAKELET_BIN="${CARGO_LLVM_COV_TARGET_DIR}/debug/lakelet" ./integration-tests/integration-test.sh
         cargo llvm-cov report --lcov --output-path integration.lcov
     - name: Upload integration coverage
       if: needs.build.outputs.integration_changed == 'true'
