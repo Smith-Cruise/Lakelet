@@ -1,10 +1,12 @@
+use super::schema::IcebergSchema;
+use super::to_datafusion_error;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
-use datafusion::common::{DataFusionError, ResolvedTableReference, Result};
-use iceberg::{Catalog, CatalogBuilder, ErrorKind, NamespaceIdent, TableIdent};
+use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider};
+use datafusion::common::{DataFusionError, Result};
+use iceberg::{Catalog, CatalogBuilder, NamespaceIdent};
 use iceberg_catalog_rest::{
     REST_CATALOG_PROP_URI, REST_CATALOG_PROP_WAREHOUSE, RestCatalogBuilder,
 };
@@ -13,9 +15,6 @@ use tokio::sync::OnceCell;
 
 use crate::catalog::LakeletCatalogProvider;
 use crate::table_format::iceberg::iceberg_file_io::IcebergStorageFactory;
-use crate::table_format::iceberg::iceberg_metadata_table_provider::IcebergMetadataTableProvider;
-use crate::table_format::iceberg::iceberg_table_provider::IcebergTableProvider;
-use crate::table_format::table_provider_factory::parse_table_reference;
 use lakelet_storage::storage::Storage;
 
 // Upstream exports constants for `uri` and `warehouse` only.
@@ -53,10 +52,6 @@ impl IcebergRestCatalogConfig {
         }
         props
     }
-}
-
-fn to_datafusion_error(error: iceberg::Error) -> DataFusionError {
-    DataFusionError::External(Box::new(error))
 }
 
 fn namespace_from_schema(name: &str) -> Result<NamespaceIdent> {
@@ -147,51 +142,10 @@ impl AsyncCatalogProvider for IcebergRestCatalog {
         {
             return Ok(None);
         }
-        Ok(Some(Arc::new(IcebergRestSchema {
+        Ok(Some(Arc::new(IcebergSchema {
             catalog_name: self.config.name.clone(),
             namespace,
             client,
         })))
-    }
-}
-
-struct IcebergRestSchema {
-    catalog_name: String,
-    namespace: NamespaceIdent,
-    client: Arc<dyn Catalog>,
-}
-
-#[async_trait]
-impl AsyncSchemaProvider for IcebergRestSchema {
-    async fn table(&self, name: &str) -> Result<Option<Arc<dyn TableProvider>>> {
-        let (base_name, metadata_type) = parse_table_reference(name)?;
-        let ident = TableIdent::new(self.namespace.clone(), base_name);
-        let table = match self.client.load_table(&ident).await {
-            Ok(table) => table,
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    ErrorKind::TableNotFound | ErrorKind::NamespaceNotFound
-                ) =>
-            {
-                return Ok(None);
-            }
-            Err(error) => return Err(to_datafusion_error(error)),
-        };
-        if let Some(metadata_type) = metadata_type {
-            return Ok(Some(Arc::new(IcebergMetadataTableProvider::try_new(
-                table,
-                metadata_type,
-            )?)));
-        }
-        let reference = ResolvedTableReference {
-            catalog: self.catalog_name.as_str().into(),
-            schema: self.namespace.to_string().into(),
-            table: ident.name.as_str().into(),
-        };
-        let location = table.metadata().location().to_string();
-        Ok(Some(Arc::new(
-            IcebergTableProvider::try_new_from_table(reference, location, table).await?,
-        )))
     }
 }

@@ -4,7 +4,9 @@ pub mod iceberg;
 mod metadata_table;
 pub mod paimon;
 pub mod table_format_detector;
-pub mod table_provider_factory;
+pub mod table_provider_builder;
+
+pub use metadata_table::parse_table_reference;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TableFormat {

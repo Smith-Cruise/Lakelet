@@ -1,12 +1,11 @@
 mod ddl;
 
 use crate::catalog::{
-    CallProcedureRequest, CatalogConfig, CreateTableOutcome, CreateTableRequest,
-    LakeletCatalogProvider,
+    CallProcedureRequest, CreateTableOutcome, CreateTableRequest, LakeletCatalogProvider,
 };
 use crate::context::LakeletContext;
-use crate::table_format::TableFormat;
-use crate::table_format::table_provider_factory::{TableProviderBuilder, parse_table_reference};
+use crate::table_format::paimon::PaimonTableProviderFactory;
+use crate::table_format::{TableFormat, parse_table_reference};
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
 use datafusion::common::{ResolvedTableReference, Result, SchemaReference, not_impl_err};
@@ -20,7 +19,6 @@ use paimon::catalog::{Catalog, Identifier};
 use paimon::{CatalogOptions, FileSystemCatalog, Options};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -249,7 +247,7 @@ impl AsyncCatalogProvider for PaimonFSCatalog {
 }
 
 struct PaimonFSSchema {
-    lakelet_context: Arc<LakeletContext>,
+    _lakelet_context: Arc<LakeletContext>,
     config: Arc<PaimonFSCatalogConfig>,
     schema_name: String,
 }
@@ -261,7 +259,7 @@ impl PaimonFSSchema {
         schema_name: &str,
     ) -> Self {
         Self {
-            lakelet_context,
+            _lakelet_context: lakelet_context,
             config,
             schema_name: schema_name.to_string(),
         }
@@ -280,17 +278,14 @@ impl AsyncSchemaProvider for PaimonFSSchema {
             table: table_name.as_str().into(),
         };
 
-        // The table format is fixed by the catalog type, no deduction needed.
-        let table_provider_builder = TableProviderBuilder::new(
-            self.lakelet_context.clone(),
-            table_location,
+        let provider = PaimonTableProviderFactory::try_create_table_provider(
             table_reference,
-            HashMap::new(),
-            TableFormat::Paimon,
-            CatalogConfig::PaimonFS(self.config.deref().clone()),
+            table_location,
+            metadata_table_type,
+            self.config.storage.clone(),
         )
-        .with_metadata_table_type(metadata_table_type);
-        Ok(Some(table_provider_builder.build().await?))
+        .await?;
+        Ok(Some(provider))
     }
 }
 

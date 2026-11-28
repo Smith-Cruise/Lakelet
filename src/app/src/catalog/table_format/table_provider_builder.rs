@@ -1,4 +1,4 @@
-use crate::catalog::{CatalogConfig, TableDefinitionBuilder};
+use crate::catalog::TableDefinitionBuilder;
 use crate::context::LakeletContext;
 use crate::table_format::TableFormat;
 use crate::table_format::delta::DeltaTableProviderFactory;
@@ -16,6 +16,12 @@ use lakelet_storage::storage::Storage;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Constructs a [`TableProvider`] for tables resolved from metastore-based
+/// catalogs (HMS and AWS Glue).
+///
+/// Metastore tables can back multiple table formats (Iceberg, Delta, Hive,
+/// Paimon). After format detection, this builder dispatches to the matching
+/// format-specific factory.
 pub struct TableProviderBuilder {
     lakelet_context: Arc<LakeletContext>,
     table_location: String,
@@ -35,19 +41,8 @@ impl TableProviderBuilder {
         table_reference: ResolvedTableReference,
         table_properties: HashMap<String, String>,
         table_format: TableFormat,
-        catalog_config: CatalogConfig,
+        storage: Storage,
     ) -> Self {
-        let storage = match catalog_config {
-            CatalogConfig::GLUE(glue_config) => glue_config.storage.clone(),
-            CatalogConfig::HMS(hms_config) => hms_config.storage.clone(),
-            CatalogConfig::PaimonFS(paimon_fs_config) => paimon_fs_config.storage.clone(),
-            CatalogConfig::Internal
-            | CatalogConfig::IcebergRest(_)
-            | CatalogConfig::Tpch(_)
-            | CatalogConfig::Tpcds(_) => {
-                panic!("unreachable")
-            }
-        };
         Self {
             lakelet_context,
             table_location,
@@ -149,24 +144,6 @@ impl TableProviderBuilder {
     }
 }
 
-pub fn parse_table_reference(tbl_name: &str) -> Result<(String, Option<MetadataTableType>)> {
-    let (table_name, metadata_table_name) = match tbl_name.split_once("$") {
-        Some((table_name, metadata_table_name)) => (table_name, Some(metadata_table_name)),
-        None => (tbl_name, None),
-    };
-
-    if table_name.is_empty() {
-        return Err(DataFusionError::Plan("table name can't be empty".into()));
-    }
-
-    let metadata_table_type = metadata_table_name
-        .map(MetadataTableType::try_from)
-        .transpose()
-        .map_err(DataFusionError::Plan)?;
-
-    Ok((table_name.to_string(), metadata_table_type))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,11 +164,7 @@ mod tests {
             },
             HashMap::new(),
             TableFormat::Hive,
-            CatalogConfig::HMS(crate::hms_catalog::HMSCatalogConfig {
-                name: "catalog".to_string(),
-                metastore_uri: "localhost:9083".to_string(),
-                storage: Storage::default(),
-            }),
+            Storage::default(),
         )
         .with_hive_storage_info(Some(test_hive_storage_info()))
         .with_hive_partitions(Some(vec![]))

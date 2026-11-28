@@ -1,12 +1,12 @@
+use crate::catalog::LakeletCatalogProvider;
 use crate::catalog::table_format::hive::parse_statistics_from_table_properties;
-use crate::catalog::{CatalogConfig, LakeletCatalogProvider};
 use crate::context::LakeletContext;
-use crate::table_format::TableFormat;
 use crate::table_format::hive::HMSTableSchemaBuilder;
 use crate::table_format::hive::hive_partition::HivePartition;
 use crate::table_format::hive::hive_storage_info::HiveStorageInfo;
 use crate::table_format::table_format_detector::TableFormatDetector;
-use crate::table_format::table_provider_factory::{TableProviderBuilder, parse_table_reference};
+use crate::table_format::table_provider_builder::TableProviderBuilder;
+use crate::table_format::{TableFormat, parse_table_reference};
 use async_trait::async_trait;
 use datafusion::catalog::{AsyncCatalogProvider, AsyncSchemaProvider, TableProvider};
 use datafusion::common::ResolvedTableReference;
@@ -21,7 +21,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::net::ToSocketAddrs;
-use std::ops::Deref;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 use volo_thrift::MaybeException;
@@ -268,12 +267,11 @@ impl AsyncSchemaProvider for HMSSchema {
             table_reference,
             hms_table_properties,
             table_format,
-            CatalogConfig::HMS(self.config.deref().clone()),
-        );
-        let table_provider_builder = table_provider_builder
-            .with_metadata_table_type(metadata_table_type)
-            .with_hive_storage_info(hive_storage_info)
-            .with_hive_partitions(hive_partitions);
+            self.config.storage.clone(),
+        )
+        .with_metadata_table_type(metadata_table_type)
+        .with_hive_storage_info(hive_storage_info)
+        .with_hive_partitions(hive_partitions);
         Ok(Some(table_provider_builder.build().await?))
     }
 }

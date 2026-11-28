@@ -1,3 +1,6 @@
+use datafusion::common::Result;
+use datafusion::error::DataFusionError;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetadataTableType {
     DataFiles,
@@ -46,10 +49,27 @@ impl TryFrom<&str> for MetadataTableType {
     }
 }
 
+pub fn parse_table_reference(tbl_name: &str) -> Result<(String, Option<MetadataTableType>)> {
+    let (table_name, metadata_table_name) = match tbl_name.split_once("$") {
+        Some((table_name, metadata_table_name)) => (table_name, Some(metadata_table_name)),
+        None => (tbl_name, None),
+    };
+
+    if table_name.is_empty() {
+        return Err(DataFusionError::Plan("table name can't be empty".into()));
+    }
+
+    let metadata_table_type = metadata_table_name
+        .map(MetadataTableType::try_from)
+        .transpose()
+        .map_err(DataFusionError::Plan)?;
+
+    Ok((table_name.to_string(), metadata_table_type))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::catalog::table_format::table_provider_factory::parse_table_reference;
     use crate::sql::parser::ExtendedParser;
     use crate::sql::statements::ExtendedStatement;
     use sqlparser::ast::{ObjectNamePart, SetExpr, Statement, TableFactor};
